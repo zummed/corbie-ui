@@ -1,0 +1,61 @@
+# Corbie UI
+
+The UI shows machines and their runs in a browser, and does to runs what Corbie's commands do. It is the program `corbie-ui`, which `corbie ui` runs. It reads a directory of machines and the store through Corbie's packages, acts with Corbie's commands as the parties it is started as, and keeps nothing of its own.
+
+## What it acts as
+
+What the UI shows and does follows from the parties it is started as, and from what the store lets them read.
+
+```
+corbie ui                      the machines in a directory, and every party the config holds
+corbie ui none                 no party: the status of every run, and /metrics
+corbie ui client               the config's client: its runs in full, and the machines in a directory
+corbie ui client controller    the controller as well: its runners, clients and secrets
+```
+
+Three uses follow from this.
+
+- A person with a directory of machines and no store runs `corbie ui` there, and reads the machines.
+- A UI a team shares is started as no party, with `corbie ui none` on the controller's computer or with a viewer's key to the bucket. Prometheus reads its `/metrics`, and Grafana shows what Prometheus keeps.
+- A person's own UI is started as their client, and as the controller where they own it, on their own computer.
+
+## How it holds together
+
+The UI is a client of Corbie and adds nothing to Corbie. Every action on the store runs one of Corbie's commands in the UI's process, as `corbie manual mcp` runs one, and the page shows the command and what it answered. The command line, a model through `corbie manual mcp` and the UI can therefore do the same things to the store, and the UI can do nothing more.
+
+Pages read the store through Corbie's packages. The UI reads the list of runs at every interval, once for every page and scraper it serves, and each open run's page follows that run's record. It keeps nothing on disk, and what it holds in memory it has read from the store, so any number of copies can run against one store, and any of them can be stopped at any moment.
+
+A page shows what changes as it changes: the UI sends each page the parts that changed, drawn by the templates that drew the page.
+
+## The program
+
+This repository builds the program `corbie-ui`. `corbie ui` runs it from PATH, and `corbie start controller runner ui` starts it beside the roles, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
+
+The program links Corbie's packages. Its `main` runs a job's own process for Test, and carries the machine types and the plugins, as Corbie's does.
+
+Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
+
+- Corbie's command line opens a config's parties to read the store.
+- `corbie run submit` reads a definition with the files beside it, and refuses one outside its directory.
+- `corbie run show` prints the words of a run and of its record.
+- The flow package has the rule by which a stage waits for others (see Drawing).
+
+## Reading these specs
+
+Each area below has an overview here, and the overviews are the authority. Its rules are in `rules/`, under the same headings, and say nothing the overview does not. Each area is one package of the code, and Corbie's own specs are at `../corbie/specs/`.
+
+## Areas
+
+**[Serving](serve.md).** `corbie ui`: the parties it acts as, its address and its token, and which pages each party opens.
+
+**[Pages](page.md).** What every page shares: the header, the look, motion, and how a page follows the store.
+
+**[Runs](runs.md).** The list of runs and their timeline, and one run: its record, its drawing, what it waits on, and what can be sent to it.
+
+**[Machines](machines.md).** The definitions in a directory: the list of what names what, each machine's drawing, its text and its check, the secrets it names, testing it in memory and starting it. The parts in the directory, and what opens each.
+
+**[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
+
+**[Controller](controller.md).** The runners and clients the controller trusts, and its secrets.
+
+**[Metrics](metrics.md).** The counts Prometheus reads, from the status of every run.

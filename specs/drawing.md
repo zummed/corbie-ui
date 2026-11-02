@@ -1,0 +1,55 @@
+# Drawing
+
+A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart and an agent, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs: a page makes it smaller to fit, and never larger. The same drawing is on a run's page and on the Machines page.
+
+Every box is a card of one width: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `machine: ./who.yaml`. A card's tooltip gives its `when:` and a tool's `does:`.
+
+An arrow goes straight down. Arrows from one card, or into one row, run along a rail above the row, so a branch is one line that divides. A drawing has as few arrows as say what it does.
+
+## A flow
+
+- A stage is a card.
+- An arrow goes to a stage from each stage it waits for: each stage an expression of it reads, whether its output, its error, whether it failed or was skipped, or its emitted items; each stage it names in `follows:`; and the stage it names in `emits:`. No arrow is drawn from a stage it waits for through another.
+- Stages are placed top to bottom in the order the arrows give, and stages that run at the same time are placed side by side.
+- A stage with `each:`, `emits:` or `blob:` is drawn as a stack of cards, and a stage with `when:` has a dashed border.
+
+Which stage waits for which is the flow package's rule, which it keeps to itself. The UI applies the same rule to the same expressions, read with Corbie's `machine.Reads`, `machine.ReadsIn` and `machine.ReadsOf`.
+
+## A statechart
+
+- A state is a card, and a state that holds states is drawn around them.
+- States are placed top to bottom by how many transitions each is from the state its level starts in.
+- The state each level starts in has a short arrow into it.
+- A final state is a narrow card with a double border, drawn in rowan for `end: failed`.
+- An arrow goes from a state to each later state its `on:` names, one arrow for all the rules between the two, with their events and conditions as written on a chip, shortened to fit, and whole in its tooltip: `verdict, when event.data.ok`. A timer's arrow is dashed and its chip gives its time: `too_long, 48h`.
+- A rule to an earlier state, or to the same state, has no arrow. It is written in the card: `done, failed ↩ waiting`, or `done ↻`.
+- A state's ticket and timers are written in its card.
+- A `send:` that names a machine is a card of its own, below the state, with a dashed arrow whose chip gives the event.
+
+## An agent
+
+An agent is three things, one below another, joined by one line.
+
+1. The model is a card, holding the model's name.
+2. Its tools are in one box. Each part is a box inside it, holding its name, the file it is included from, its tools and its ask. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the box gives how many turns the agent has.
+3. `reply` is a narrow card.
+
+A tool with `approve: true` says so in its card. Tools that are Corbie's own, whose script begins `corbie:`, are drawn only on a run's page.
+
+## A machine inside a machine
+
+On the Machines page, a card whose job names a machine is a link, and so is the card of a `send:`. The link unfolds that machine's drawing inside the card, and the card then has the link that folds it again. Any number can be unfolded at once, at any depth, and the address names them, so a person can send the address to another.
+
+A job whose machine is an expression is known only when it runs, and has no link.
+
+## A run on the drawing
+
+Each machine type shows a watcher its state, in each step of the record, and the drawing marks what it shows. A run is therefore drawn only when the UI may read its record.
+
+```
+flow         each stage's status: waiting, running, done, failed or skipped
+statechart   the states it is in; states it was in before are outlined in moss, and states never entered faintly
+agent        the turn it is on; and while it waits on tools, the tools its latest step started
+```
+
+A transition taken at the latest step is marked on its arrow, as Pages says. The states a run ended in are outlined in moss, as states it was in.

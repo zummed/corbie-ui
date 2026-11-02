@@ -1,0 +1,21 @@
+[tools]
+go = "1.27.1"
+
+[env]
+CGO_ENABLED = "0"
+
+[tasks.build]
+description = "Build the program corbie-ui"
+run = "go build -o bin/corbie-ui ./cmd/corbie-ui"
+
+[tasks.test]
+description = "Run every package's tests, with Go's checks on unsafe pointers switched on"
+run = "go test -gcflags=all=-d=checkptr ./..."
+
+[tasks.vet]
+description = "Vet the module"
+run = "go vet ./..."
+
+[tasks.check]
+description = "Vet and test"
+depends = ["vet", "test"]

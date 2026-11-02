@@ -1,0 +1,85 @@
+// A page that follows the store opens a WebSocket to the UI, and puts each
+// part it is sent in its place. What changed in a part is lit, as the look
+// says, and what a person was typing stays as it was.
+const live = document.getElementById('live');
+const main = document.querySelector('main[data-stream]');
+
+// mark lights what changed between a part as shown and as sent: a line
+// that is new, a line that changed, a run that ended, a count that moved.
+// A line is found as it was anywhere on the page, since a run that ends
+// moves from one part to another.
+function mark(old, next) {
+  for (const el of next.querySelectorAll('[data-key]')) {
+    const was = document.querySelector(`${el.tagName}[data-key="${CSS.escape(el.dataset.key)}"]`);
+    if (!was) el.classList.add('new');
+    else if (was.dataset.status !== el.dataset.status && el.dataset.ended === 'true') el.classList.add('ended');
+    else if (was.outerHTML !== el.outerHTML && !el.classList.contains('runbar')) el.classList.add('moved');
+  }
+  const counts = new Map([...old.querySelectorAll('[data-count]')].map(el => [el.dataset.count, el.textContent]));
+  for (const el of next.querySelectorAll('[data-count]')) {
+    if (counts.has(el.dataset.count) && counts.get(el.dataset.count) !== el.textContent) el.classList.add('bump');
+  }
+}
+
+// keep carries into a part what was typed into it, which field had the
+// keyboard, and the answer a command gave, form by form.
+function keep(old, next) {
+  const action = el => el.closest('form')?.getAttribute('action') ?? '';
+  for (const field of old.querySelectorAll('input[name]:not([type=hidden]), textarea[name]')) {
+    const twin = [...next.querySelectorAll(`[name="${CSS.escape(field.name)}"]`)].find(t => action(t) === action(field));
+    if (!twin) continue;
+    if (field.value !== field.defaultValue) twin.value = field.value;
+    if (document.activeElement === field) queueMicrotask(() => { twin.focus(); twin.setSelectionRange?.(field.selectionStart, field.selectionEnd); });
+  }
+  for (const said of old.querySelectorAll('form .said')) {
+    const twin = [...next.querySelectorAll('form .said')].find(t => action(t) === action(said));
+    if (twin && said.textContent) { twin.textContent = said.textContent; twin.className = said.className; }
+  }
+}
+
+function place(id, html) {
+  const old = document.getElementById(id);
+  if (!old) return;
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  const next = t.content.firstElementChild;
+  mark(old, next);
+  keep(old, next);
+  old.replaceWith(next);
+  document.dispatchEvent(new CustomEvent('part', { detail: next }));
+}
+
+function follow() {
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${main.dataset.stream}`);
+  ws.onopen = () => live.classList.remove('lost');
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.id) place(m.id, m.html);
+    if (m.store) live.classList.toggle('lost', m.store === 'lost');
+  };
+  ws.onclose = () => { live.classList.add('lost'); setTimeout(follow, 2000); };
+}
+if (main) follow();
+
+// A form that runs a command shows the command's answer beside its button,
+// or its error, untouched; while the command waits, the form says so.
+document.addEventListener('submit', async e => {
+  const form = e.target;
+  if (!form.matches('form[data-act]')) return;
+  e.preventDefault();
+  const said = form.querySelector('.said');
+  const button = form.querySelector('button[type=submit], button:not([type])');
+  if (button) button.disabled = true;
+  if (said) { said.textContent = 'waiting for the answer'; said.className = 'said waiting'; }
+  try {
+    const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) });
+    const text = await res.text();
+    if (res.redirected) { location = res.url; return; }
+    if (said) { said.textContent = text.trim(); said.className = res.ok ? 'said' : 'said bad'; }
+    if (res.ok && form.dataset.act === 'reset') for (const f of form.querySelectorAll('input:not([type=hidden]), textarea')) f.value = '';
+  } catch (err) {
+    if (said) { said.textContent = String(err); said.className = 'said bad'; }
+  } finally {
+    if (button) button.disabled = false;
+  }
+});
