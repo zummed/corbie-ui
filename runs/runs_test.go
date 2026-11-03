@@ -48,33 +48,73 @@ func run(id, machine, kind, status string, started, ended time.Duration, more fu
 	return r
 }
 
-func ids(rows []row) []string {
+func titles(s section) []string {
 	var out []string
-	for _, r := range rows {
-		out = append(out, r.ID)
+	for _, l := range s.Lines {
+		out = append(out, l.Title)
 	}
 	return out
 }
 
-func Test_runs_list_running_then_ended_in_the_window(t *testing.T) {
-	parent := run("a-client/1", "nightly", "statechart", "running", 3*time.Hour, 0, nil)
-	child := run("a-client/2", "report", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Parent = parent.ID })
-	endedChild := run("a-client/3", "report", "flow", "done", 2*time.Hour, 90*time.Minute, func(r *client.Run) { r.Parent = parent.ID })
-	later := run("b-client/4", "digest", "flow", "running", 10*time.Minute, 0, nil)
-	old := run("b-client/5", "digest", "flow", "done", 30*time.Hour, 29*time.Hour, nil)
-	recent := run("b-client/6", "digest", "flow", "failed", 20*time.Minute, 15*time.Minute, func(r *client.Run) { r.Failure = "error" })
-	v := listOf([]*client.Run{parent, child, endedChild, later, old, recent}, narrowingOf(url.Values{}), at)
-	if got := strings.Join(ids(v.Running), " "); got != "b-client/4 a-client/1 a-client/2" {
-		t.Errorf("the running runs are listed as %s", got)
+func Test_runs_list_roots_by_section(t *testing.T) {
+	file := map[string]string{client.LabelMachine: "bridges/slack.yaml", client.LabelHash: "new"}
+	was := map[string]string{client.LabelMachine: "bridges/slack.yaml", client.LabelHash: "old"}
+	runs := []*client.Run{
+		run("a-client/01", "slack-bridge", "flow", "cancelled", 9*time.Hour, 5*time.Hour, func(r *client.Run) { r.Key, r.Labels = "file:bridges/slack.yaml", was }),
+		run("a-client/02", "slack-bridge", "flow", "running", 5*time.Hour, 0, func(r *client.Run) { r.Key, r.Labels = "file:bridges/slack.yaml", file }),
+		run("a-client/03", "slack-listen", "statechart", "running", 5*time.Hour, 0, func(r *client.Run) { r.Parent, r.Jobs, r.Labels = "a-client/02", 1, file }),
+		run("a-client/04", "chat", "statechart", "running", 4*time.Hour, 0, func(r *client.Run) { r.Key, r.Labels = "slack:C1/1", was }),
+		run("a-client/05", "message", "flow", "running", 4*time.Hour, 0, func(r *client.Run) { r.Parent, r.Labels = "a-client/04", was }),
+		run("a-client/06", "question", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Parent, r.Key, r.Timers = "a-client/05", "question:06", 1 }),
+		run("a-client/07", "question", "statechart", "running", 2*time.Hour, 0, func(r *client.Run) { r.Parent, r.Timers = "a-client/05", 1 }),
+		run("a-client/08", "who", "flow", "done", 4*time.Hour, 4*time.Hour, func(r *client.Run) { r.Parent = "a-client/05" }),
+		run("a-client/09", "chat", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Key, r.Timers, r.Labels = "slack:C1/2", 1, was }),
+		run("a-client/10", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Key, r.Timers, r.Labels = "slack:C1/3", 1, file }),
+		run("b-client/11", "door", "statechart", "waiting", 0, 0, nil),
+		run("b-client/12", "digest", "flow", "failed", 20*time.Minute, 15*time.Minute, func(r *client.Run) { r.Failure = "error" }),
+		run("b-client/13", "digest", "flow", "done", 30*time.Hour, 29*time.Hour, nil),
+		run("b-client/14", "fetch", "flow", "done", 19*time.Minute, 18*time.Minute, func(r *client.Run) { r.Parent = "b-client/12" }),
 	}
-	if !v.Running[2].Child || v.Running[1].Child {
-		t.Errorf("the running child is not listed under its running parent")
+	v := listOf(runs, nil, narrowingOf(url.Values{}), at, "a-client")
+	for _, c := range []struct {
+		s    section
+		want string
+	}{{v.Busy, "door slack:C1/1"}, {v.Idle, "slack:C1/3 slack:C1/2"}, {v.Services, "file:bridges/slack.yaml"}, {v.Ended, "digest file:bridges/slack.yaml"}} {
+		if got := strings.Join(titles(c.s), " "); got != c.want {
+			t.Errorf("%s holds %s, not %s", c.s.Name, got, c.want)
+		}
 	}
-	if got := strings.Join(ids(v.Ended), " "); got != "b-client/6 a-client/3" {
-		t.Errorf("the runs that ended in the window are listed as %s", got)
+	busy := v.Busy.Lines[1]
+	var chain []string
+	for _, l := range busy.Chain {
+		chain = append(chain, l.Machine)
 	}
-	if v.Ended[0].Status != "failed" || v.Ended[0].Failure != "error" || v.Ended[0].Took != "5m 0s" {
-		t.Errorf("an ended run is listed as %+v", v.Ended[0])
+	if strings.Join(chain, " ") != "chat message question" || busy.Chain[2].ID != "a-client/07" || busy.Waits != "timer" {
+		t.Errorf("the chain to the deepest running run is %v, waiting on %q", busy.Chain, busy.Waits)
+	}
+	if len(busy.Tree) != 4 || busy.Tree[2].ID != "a-client/06" || busy.Tree[2].Depth != 2 || busy.Tree[1].Waits != "child question, child question" || busy.Tree[2].Waits != "timer, events at key question:06" {
+		t.Errorf("the line unfolds to %+v", busy.Tree)
+	}
+	if !busy.Old || !v.Idle.Lines[1].Old || v.Idle.Lines[0].Old || v.Services.Lines[0].Old {
+		t.Errorf("the runs on old versions are not the ones marked")
+	}
+	if got := v.Services.Lines[0].Waits; got != "job" {
+		t.Errorf("a service's line waits on %q", got)
+	}
+	digest := v.Ended.Lines[0]
+	if digest.Status != "failed" || digest.Failure != "error" || digest.Took != "5m 0s" || digest.Under != 1 {
+		t.Errorf("an ended run is listed as %+v", digest)
+	}
+}
+
+func Test_runs_own_runs_wait_by_name(t *testing.T) {
+	l, viewer, _ := local(t)
+	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
+	body := get(t, h, "/runs")
+	for _, want := range []string{`review</a><span class="dim">[waiting]</span>`, "ticket verdict, timer too_long.waiting due "} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the line of the client's own run does not show %s:\n%s", want, body)
+		}
 	}
 }
 
@@ -86,52 +126,64 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 		run("ci-client/3", "prices", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Jobs = 1 }),
 		run("laptop-client/4", "review", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels = data; r.Tickets = []string{"verdict"} }),
 	}
-	v := listOf(runs, narrowingOf(url.Values{"client": {"ci-client"}, "label": {"team=data"}}), at)
-	if v.Now.Running != 1 || v.Now.Jobs != 3 || v.Now.Tickets != 0 {
-		t.Errorf("the counts beside the timeline are %+v", v.Now)
+	v := listOf(runs, nil, narrowingOf(url.Values{"client": {"ci-client"}, "label": {"team=data"}}), at, "")
+	if got := titles(v.Busy); len(got) != 1 || v.Busy.Lines[0].ID != "ci-client/1" || len(v.Ended.Lines) != 1 || len(v.Idle.Lines) != 0 {
+		t.Errorf("the page holds %v and %v", got, titles(v.Ended))
 	}
-	if len(v.Running) != 1 || v.Running[0].ID != "ci-client/1" || len(v.Ended) != 1 {
-		t.Errorf("the list holds %v and %v", ids(v.Running), ids(v.Ended))
+	if len(v.Clients) != 2 || !v.Clients[0].Current {
+		t.Errorf("the clients offered are %+v", v.Clients)
 	}
-	if len(v.Timeline.Lanes) != 1 || v.Timeline.Lanes[0].Key != "digest" || len(v.Timeline.Lanes[0].Bars) != 2 {
-		t.Errorf("the timeline holds %+v", v.Timeline.Lanes)
-	}
-	v = listOf(runs, narrowingOf(url.Values{"status": {"running"}}), at)
-	counts := map[string]int{}
-	for _, s := range v.Statuses {
-		counts[s.Name] = s.Count
-	}
-	if counts["All"] != 4 || counts["Running"] != 3 || counts["Done"] != 1 || len(v.Ended) != 0 {
-		t.Errorf("narrowed to running, the statuses count %v and %d ended runs are listed", counts, len(v.Ended))
+	v = listOf(runs, nil, narrowingOf(url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
+	if got := strings.Join(titles(v.Busy), " "); got != "review digest" || len(v.Ended.Lines) != 1 {
+		t.Errorf("narrowed to team in the last hour, the page holds %s and %v", got, titles(v.Ended))
 	}
 }
 
-func Test_runs_timeline_lanes_and_bars(t *testing.T) {
+func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
+	was := map[string]string{client.LabelMachine: "chat.yaml", client.LabelHash: "old"}
 	runs := []*client.Run{
-		run("ci-client/1", "digest", "flow", "running", 2*time.Hour, 0, func(r *client.Run) { r.Labels = map[string]string{"team": "data"} }),
-		run("ci-client/2", "digest", "flow", "done", 3*time.Hour, 90*time.Minute, func(r *client.Run) { r.Labels = map[string]string{"team": "data"} }),
-		run("laptop-client/3", "door", "statechart", "running", 9*time.Hour, 0, nil),
+		run("lab-client/1", "chat", "statechart", "done", 9*time.Hour, 8*time.Hour, func(r *client.Run) {
+			r.Key, r.Labels = "file:chat.yaml", map[string]string{client.LabelHash: "new"}
+		}),
+		run("lab-client/2", "chat", "statechart", "running", 7*time.Hour, 0, func(r *client.Run) { r.Timers, r.Labels = 1, was }),
+		run("lab-client/3", "chat", "statechart", "running", 6*time.Hour, 0, func(r *client.Run) { r.Timers, r.Labels = 1, was }),
+		run("lab-client/4", "chat", "statechart", "running", 6*time.Hour, 0, func(r *client.Run) { r.Tickets, r.Labels = []string{"go"}, was }),
+		run("ci-client/5", "chat", "statechart", "running", 6*time.Hour, 0, func(r *client.Run) { r.Timers, r.Labels = 1, was }),
 	}
-	v := listOf(runs, narrowingOf(url.Values{}), at)
-	lanes := v.Timeline.Lanes
-	if len(lanes) != 2 || lanes[0].Key != "digest" || lanes[1].Key != "door" || lanes[0].Type != "flow" {
-		t.Fatalf("the lanes by machine are %+v", lanes)
+	v := listOf(runs, nil, narrowingOf(url.Values{}), at, "lab-client")
+	c := v.Idle.Cancel
+	if c == nil || strings.Join(c.IDs, " ") != "lab-client/3 lab-client/2" || c.Commands != "corbie run cancel lab-client/3\n$ corbie run cancel lab-client/2" {
+		t.Fatalf("Cancel on the idle runs on old versions is %+v", c)
 	}
-	a, b := lanes[0].Bars[0], lanes[0].Bars[1]
-	if a.Top == b.Top || lanes[0].Height <= lanes[1].Height {
-		t.Errorf("two runs of digest that overlap are drawn on one line: %+v %+v", a, b)
+	if v = listOf(runs, nil, narrowingOf(url.Values{}), at, ""); v.Idle.Cancel != nil {
+		t.Errorf("with no client the page offers %+v", v.Idle.Cancel)
 	}
-	door := lanes[1].Bars[0]
-	if !door.Clipped || door.Left != 0 || door.Width != 100 {
-		t.Errorf("a run that started before the window and runs on is drawn as %+v", door)
+
+	var calls []string
+	command := func(_ context.Context, c page.Call) page.Answer {
+		calls = append(calls, c.String())
+		return page.Answer{Out: `{"taken":true}`}
 	}
-	v = listOf(runs, narrowingOf(url.Values{"lanes": {"team"}}), at)
-	if len(v.Timeline.Lanes) != 2 || v.Timeline.Lanes[0].Key != "data" || v.Timeline.Lanes[1].Name != "no team=" {
-		t.Errorf("the lanes by team= are %+v", v.Timeline.Lanes)
+	mine, err := identity.New("lab-client", identity.Client)
+	if err != nil {
+		t.Fatal(err)
 	}
-	v = listOf(runs, narrowingOf(url.Values{"lanes": {"client"}}), at)
-	if len(v.Timeline.Lanes) != 2 || v.Timeline.Lanes[0].Key != "ci-client" || v.Timeline.Lanes[1].Key != "laptop-client" {
-		t.Errorf("the lanes by client are %+v", v.Timeline.Lanes)
+	list := &fixed{from: client.New(nil, identity.Card{}, store.NewMemory().As(store.Party{Kind: store.Viewer}))}
+	h := New(Config{List: list, Client: client.New(mine, identity.Card{}, nil), Command: command, Shell: page.Shell{}})
+	post := func(ids ...string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/runs/cancel", strings.NewReader(url.Values{"id": ids}.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		h.ServeHTTP(w, r)
+		return w
+	}
+	own := "lab-client/20261015T091204.118Z-3be1c07a2f"
+	if w := post(own, own); w.Code != 200 || w.Body.String() != "taken: 2" || len(calls) != 2 || calls[0] != "corbie run cancel "+own {
+		t.Errorf("Cancel answered %d %q and ran %v", w.Code, w.Body.String(), calls)
+	}
+	calls = nil
+	if w := post(own, "ci-client/20261015T091204.118Z-3be1c07a2f"); w.Code != http.StatusForbidden || len(calls) != 0 {
+		t.Errorf("Cancel with another client's run answered %d and ran %v", w.Code, calls)
 	}
 }
 

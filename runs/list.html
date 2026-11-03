@@ -2,70 +2,47 @@
 
 {{define "status"}}<span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span>{{end}}
 
-{{define "row"}}<tr data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="{{.Href}}"{{if .Child}} class="child"{{end}}>
-<td>{{template "status" .}}</td><td class="m">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</td><td class="run"><span class="who">{{.Who}}/</span>{{.Stamp}}</td><td class="num">{{.Step}}</td>
-{{- if .Ended}}<td class="dim">{{.When}}</td><td class="dim">{{.Took}}</td><td></td>
-{{- else}}<td>{{if .Waits}}{{.Waits}}{{else}}<span class="dim">—</span>{{end}}</td><td class="tag">{{.Labels}}</td><td class="dim">{{.When}}</td>{{end}}</tr>{{end}}
+{{define "machine"}}<a href="/run/{{.ID}}" title="{{.Machine}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}
 
-{{define "now"}}{{with .Now}}<div class="now" id="now">
-  <div class="hero"><b data-count="running">{{.Running}}</b><span>running</span></div>
-  <h2>Waiting on</h2>
-  <div class="waits">
-    <b data-count="jobs">{{.Jobs}}</b><span>{{word .Jobs "job"}}</span>
-    <b data-count="timers">{{.Timers}}</b><span>{{word .Timers "timer"}}</span>
-    <b data-count="tickets">{{.Tickets}}</b><span>{{word .Tickets "ticket"}}</span>
+{{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}">
+<span>{{template "status" .}}</span><span class="title" title="{{.Title}}">{{.Title}}</span>
+{{- if .Ended}}<span class="chain">{{template "machine" .}}</span><span class="dim">{{.Under}} {{word .Under "run"}} under it</span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span>
+{{- else}}<span class="chain">{{range $i, $l := .Chain}}{{if $i}}<i>›</i>{{end}}{{template "machine" $l}}{{end}}{{if .Shown}}<span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
+</summary>
+<div class="tree">{{range .Tree}}<a class="node" href="/run/{{.ID}}"><span>{{template "status" .}}</span><span class="name" style="--d: {{.Depth}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}{{if .Shown}} <span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span></span></a>{{end}}</div>
+</details>{{end}}
+
+{{define "section"}}<section class="panel reqs" id="{{.ID}}"{{if and (not .Lines) (not .Windows)}} hidden{{end}}>
+  <div class="head"><h2>{{.Name}}</h2><span class="facts" data-count="{{.ID}}">{{len .Lines}}</span>
+    <span class="acts">
+      {{- with .Cancel}}<form data-act method="post" action="/runs/cancel">{{range .IDs}}<input type="hidden" name="id" value="{{.}}">{{end}}<span class="said"></span><button class="btn sm stop" data-cmd="{{.Commands}}">Cancel the {{len .IDs}} idle {{word (len .IDs) "run"}} on old versions</button></form>{{end}}
+      {{- if .Windows}}<span class="pills">{{range .Windows}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</span>{{end}}
+    </span>
   </div>
-</div>{{end}}{{end}}
+  {{range .Lines}}{{template "line" .}}{{else}}<p class="none dim">none in the window</p>{{end}}
+</section>{{end}}
 
-{{define "statuses"}}<span class="seg" id="statuses">{{range .Statuses}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}{{if eq .Name "Failed"}} class="failed"{{end}}>{{.Name}}<b data-count="status-{{.Name}}">{{.Count}}</b></a>{{end}}</span>{{end}}
-
-{{define "timeline"}}<div class="tlbody" id="timeline">
-  <div class="tracks">{{range .Timeline.Lanes}}<div class="lane" data-lane="{{.Key}}" style="height: {{px .Height}}">
-    <span class="who">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Name}}</span>
-    <span class="track">{{range .Bars}}<a class="runbar {{.Status}}{{if .Clipped}} clipped{{end}}" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{ne .Status "running"}}" data-tip="{{.Tip}}" href="{{.Href}}" style="left: {{pct .Left}}; width: {{pct .Width}}; top: {{px .Top}}"></a>{{end}}</span>
-  </div>{{end}}</div>
-  <div class="grid">{{range .Timeline.Ticks}}<i style="left: {{pct .Left}}"></i>{{end}}</div>
-  <div class="axis">{{range .Timeline.Ticks}}<span style="left: {{pct .Left}}">{{.Label}}</span>{{end}}<span class="nowl">now</span></div>
-</div>{{end}}
-
-{{define "running"}}<tbody id="running">{{range .Running}}{{template "row" .}}{{end}}</tbody>{{end}}
-
-{{define "ended"}}<tbody id="ended">{{range .Ended}}{{template "row" .}}{{end}}</tbody>{{end}}
+{{define "busy"}}{{template "section" .Busy}}{{end}}
+{{define "idle"}}{{template "section" .Idle}}{{end}}
+{{define "services"}}{{template "section" .Services}}{{end}}
+{{define "ended"}}{{template "section" .Ended}}{{end}}
 
 {{define "list"}}
-<section class="panel band" aria-label="The runs of the window, up to now">
-  <div class="tl">
-    <div class="tl-head">
-      <h2>Lanes</h2><span class="pills">{{range .Timeline.By}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</span>
-      <span class="pills" id="win">{{range .Timeline.Windows}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</span>
-    </div>
-    {{template "timeline" .}}
-    <div class="tip" id="tip"></div>
-  </div>
-  {{template "now" .}}
-</section>
-<div class="tools">
-  {{template "statuses" .}}
-  <select id="client" aria-label="Only the runs of this client">
-    <option value="{{.Narrowing.WithClient ""}}">every client</option>
-    {{range .Clients}}<option value="{{.Href}}"{{if .Current}} selected{{end}}>{{.Name}}</option>{{end}}
-  </select>
-  <form class="narrow" method="get" action="/runs">
-    {{with .Narrowing}}{{if .Status}}<input type="hidden" name="status" value="{{.Status}}">{{end}}{{if .Client}}<input type="hidden" name="client" value="{{.Client}}">{{end}}{{if ne .Window "6h"}}<input type="hidden" name="window" value="{{.Window}}">{{end}}{{if ne .Lanes "machine"}}<input type="hidden" name="lanes" value="{{.Lanes}}">{{end}}{{end}}
-    <input name="label" value="{{.Narrowing.LabelText}}" size="18" placeholder="label k=v" aria-label="Only the runs with these labels">
-  </form>
+<div class="head">
+  <span>Runs</span>
+  <span class="acts">
+    {{if or (gt (len .Clients) 1) .Narrowing.Client}}<select id="client" aria-label="Only the runs of this client">
+      <option value="{{.Narrowing.WithClient ""}}">every client</option>
+      {{range .Clients}}<option value="{{.Href}}"{{if .Current}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>{{end}}
+    <form class="narrow" method="get" action="/runs">
+      {{with .Narrowing}}{{if .Client}}<input type="hidden" name="client" value="{{.Client}}">{{end}}{{if ne .Window "6h"}}<input type="hidden" name="window" value="{{.Window}}">{{end}}{{end}}
+      <input name="label" value="{{.Narrowing.LabelText}}" size="22" placeholder="label k=v" aria-label="Only the runs with these labels">
+    </form>
+  </span>
 </div>
-<section>
-  <table class="list runs"><colgroup><col class="status"><col class="machine"><col class="run"><col class="step"></colgroup>
-    <thead><tr><th>Status</th><th>Machine</th><th>Run</th><th class="num">Step</th><th>Waiting on</th><th>Labels</th><th>Started</th></tr></thead>
-    {{template "running" .}}
-  </table>
-</section>
-<section>
-  <h2>Ended in the window</h2>
-  <table class="list runs"><colgroup><col class="status"><col class="machine"><col class="run"><col class="step"></colgroup>
-    <thead><tr><th>Status</th><th>Machine</th><th>Run</th><th class="num">Step</th><th>Ended</th><th>Took</th><th></th></tr></thead>
-    {{template "ended" .}}
-  </table>
-</section>
+{{template "busy" .}}
+{{template "idle" .}}
+{{template "services" .}}
+{{template "ended" .}}
 {{end}}
