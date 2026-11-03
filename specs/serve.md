@@ -42,7 +42,7 @@ A UI listens on this computer only, and refuses a `--listen` address of any othe
 ```
 the directory   Machines and Parts, to read; every UI but none
 no party        Runs, with every run's status; /metrics
-client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value; Machines, to edit, test and start
+client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value
 controller      Controller; cancelling any run
 ```
 
@@ -66,7 +66,7 @@ Prometheus    as Authorization: Bearer <token>
 
 A request that a page of another origin makes is refused, whatever site it says it is from. A browser sends the cookie to every server on this computer, whatever its port.
 
-Anyone with the token can do what the UI's parties can do. With a client, that includes Test, which runs scripts on this computer as the person who started the UI. A UI that a team shares is therefore started as no party, with `corbie ui none`.
+Anyone with the token can do what the UI's parties can do: with a client, reply to, send to and cancel its runs, and with the controller, change what it trusts. A UI that a team shares is therefore started as no party, with `corbie ui none`.
 
 A UI started again without `--token-file` makes a new token. A page open from before turns its dot rowan, and loading it again is refused.
 

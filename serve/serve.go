@@ -180,7 +180,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		o.asClient, o.asController = cfg.Has(identity.Client), cfg.Has(identity.Controller)
 	}
 	if !o.asNone && !loopback(o.listen) {
-		return nil, cli.Mistake("a UI listens on this computer only, and %s is not on it: its token shows the directory and runs scripts here, and it has no TLS; none makes it a viewer of runs alone", o.listen)
+		return nil, cli.Mistake("a UI listens on this computer only, and %s is not on it: its token shows the directory and acts as its parties, and it has no TLS; none makes it a viewer of runs alone", o.listen)
 	}
 	dir, err := filepath.Abs(o.dir)
 	if err != nil {

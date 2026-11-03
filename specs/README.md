@@ -31,7 +31,7 @@ A page shows what changes as it changes: the UI sends each page the parts that c
 
 This repository builds the program `corbie-ui`. `corbie ui` runs it from PATH, and `corbie start controller runner ui` starts it beside the roles, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
 
-The program links Corbie's packages. Its `main` runs a job's own process for Test, and carries the machine types and the plugins, as Corbie's does.
+The program links Corbie's packages. Its `main` runs a job's own process when it is given `run-one-job`, and carries the machine types and the plugins, as Corbie's does.
 
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 
@@ -52,7 +52,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its record, its drawing, what it waits on, and what can be sent to it.
 
-**[Machines](machines.md).** The definitions in a directory: the list of what names what, each machine's drawing, its text and its check, the secrets it names, testing it in memory and starting it. The parts in the directory, and what opens each.
+**[Machines](machines.md).** The machines in a directory, read only: the list, the problems Corbie finds in them, each machine's drawing and text, and the secrets it names. The parts in the directory, and what opens and starts each.
 
 **[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
 
