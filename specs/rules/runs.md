@@ -14,7 +14,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## One run
 
-**R-runs-04** A run the UI's client started is shown in full: its drawing with its state marked, each ticket with its value, each timer with its time, and its record in the words `corbie run show --record` prints. *Test:* `runs_own_run_shown_in_full`
+**R-runs-04** A run the UI's client started is shown in full: its drawing with its state marked, what it waits on with each ticket's value and each timer's due time from its latest step, and its record in the words `corbie run show --record` prints, each entry named by its run's machine. *Test:* `runs_own_run_shown_in_full`
 
 **C-runs-01** A file of a run's result is sent as a download, with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. A result can hold HTML or SVG a script fetched from anywhere, and shown in a page it would run with the UI's cookie. *Test:* `runs_result_file_is_a_download`
 
@@ -22,8 +22,8 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## Acting on a run
 
-**R-runs-05** Reply, Send and Cancel run `corbie run reply`, `corbie run send` and `corbie run cancel`, an answer and an event's data written out again from the JSON typed; Reply runs on any run with a ticket's value, Send and Cancel only on the client's own runs, and with the controller Cancel on another client's run runs `corbie controller cancel`. *Test:* `runs_actions_run_their_commands`
+**R-runs-05** Reply, Send and Cancel run `corbie run reply`, `corbie run send` and `corbie run cancel`, an answer and an event's data written out again from the JSON typed; Reply runs on any run with a ticket's value, Send and Cancel only on the client's own runs, with Send offered on its statecharts alone, and with the controller Cancel on another client's run runs `corbie controller cancel`. *Test:* `runs_actions_run_their_commands`
 
 ## Interfaces
 
-Runs uses Pages for the shell, the stream and the commands its buttons run (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Call`, `page.Command`), and Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`).
+Runs uses Pages for the shell, the stream and the commands its buttons run (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Call`, `page.Command`), and Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`, `drawing.Step`, `drawing.Child`).

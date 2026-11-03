@@ -218,7 +218,7 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{tickets["verdict"], "timer too_long, 48h", "<b>&lt;-</b> start", "<b>-&gt;</b> job drafting: a script, on runner", `class="state now"`, `class="edge taken"`, `action="/run/` + id + `/send"`} {
+	for _, want := range []string{tickets["verdict"], "<span>timer too_long due ", "<b>&lt;-</b> start", "<b>-&gt;</b> job drafting: a script, on runner", `<span class="i" title="review">review</span>`, `class="state now"`, `class="edge taken"`, `action="/run/` + id + `/send"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the run's own page does not show %s", want)
 		}
@@ -298,6 +298,11 @@ func Test_runs_actions_run_their_commands(t *testing.T) {
 	}
 	if w := post("/run/"+own+"/reply", url.Values{"ticket": {"aa"}, "value": {"not json"}}); w.Code != http.StatusBadRequest {
 		t.Errorf("an answer that is not JSON answered %d", w.Code)
+	}
+	for kind, offered := range map[string]bool{"statechart": true, "flow": false, "agent": false} {
+		if sends(&client.Run{Type: kind, Status: "running"}) != offered {
+			t.Errorf("Send on a running %s is offered: %v", kind, !offered)
+		}
 	}
 	h = New(Config{List: list, Client: client.New(mine, identity.Card{}, nil), Controller: true, Command: command, Shell: page.Shell{}})
 	calls = nil

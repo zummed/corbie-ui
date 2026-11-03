@@ -45,13 +45,20 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 	if name == "" {
 		name = "model"
 	}
-	groups := groupsOf(agentName, a, run, w)
+	groups := groupsOf(agentName, a, w)
 	var askItem *item
 	if ask != nil {
 		it := item{name: "ask"}
-		w.describe(&it, ask)
-		it.href, it.in = w.open("ask", ask.Machine)
+		w.describe(&it, "ask", ask)
 		askItem = &it
+	}
+	// The ask going is a part's where a tool it holds is held, and the
+	// agent's otherwise.
+	partAsk := ""
+	for _, g := range groups {
+		if g.ask != nil && slices.ContainsFunc(g.tools, func(t string) bool { return run != nil && slices.Contains(run.Held, t) }) {
+			partAsk = g.name
+		}
 	}
 
 	across, high := float64(max(len(groups)-1, 0))*sideGap, 0.0
@@ -79,7 +86,7 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 	reply := item{name: "reply", narrow: true}.size()
 	reply.x = left + (total-reply.w)/2
 
-	waiting, _ := shown(run.shownOrNil(), "waiting").(string)
+	waiting, _ := shown(run.latest(), "waiting").(string)
 	var d drawn
 	y := top.bottom()
 	class := ""
@@ -92,14 +99,14 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 		for _, g := range groups {
 			g.at.x, g.at.y = x, ty
 			x += g.at.w + sideGap
-			if d.paintGroup(g, run, waiting) {
+			if d.paintGroup(g, run, g.name == partAsk) {
 				class = "taken"
 			}
 		}
 		if askItem != nil {
 			b := askItem.size()
 			b.x, b.y = tools.cx()-b.w/2, tools.bottom()-inner-b.h
-			d.paint(*askItem, b, "state ask", 10, "")
+			d.paint(*askItem, b, strings.TrimSpace("state ask "+jobMark(run, "ask", partAsk == "")), cardR, "")
 		}
 		turns := a.Turns
 		if turns == 0 {
@@ -122,9 +129,9 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 			mark = "now"
 		}
 	}
-	d.paint(model, top, strings.TrimSpace("state model "+mark), 12, "")
+	d.paint(model, top, strings.TrimSpace("state model "+mark), cardR, "")
 	if run != nil {
-		if turn, ok := shown(run.Shown, "turn").(float64); ok {
+		if turn, ok := shown(run.latest(), "turn").(float64); ok {
 			fmt.Fprintf(&d.shapes, `<text class="tag" x="%s" y="%s" text-anchor="start">turn %d</text>`, num(top.x+4), num(top.y-8), int(turn))
 		}
 	}
@@ -133,7 +140,7 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 }
 
 // groupsOf gives each part of an agent, then the tools in no part.
-func groupsOf(agentName string, a *agent.Agent, run *Run, w *walker) []*partBox {
+func groupsOf(agentName string, a *agent.Agent, w *walker) []*partBox {
 	var groups []*partBox
 	byName := map[string]*partBox{}
 	for _, part := range sortedKeys(a.Parts) {
@@ -143,8 +150,7 @@ func groupsOf(agentName string, a *agent.Agent, run *Run, w *walker) []*partBox 
 		}
 		if ask := a.Parts[part].Ask; ask != nil {
 			it := item{name: "ask"}
-			w.describe(&it, ask)
-			it.href, it.in = w.open("open."+part+".ask", ask.Machine)
+			w.describe(&it, "open."+part+".ask", ask)
 			g.ask = &it
 		}
 		byName[part] = g
@@ -153,7 +159,7 @@ func groupsOf(agentName string, a *agent.Agent, run *Run, w *walker) []*partBox 
 	var free *partBox
 	for _, t := range sortedKeys(a.Tools) {
 		tool := a.Tools[t]
-		if run == nil && tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
+		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
 		g := byName[tool.Part]
@@ -164,12 +170,9 @@ func groupsOf(agentName string, a *agent.Agent, run *Run, w *walker) []*partBox 
 			g = free
 		}
 		it := item{name: t, title: tool.Does}
-		w.describe(&it, tool.Job)
-		if tool.Job != nil {
-			if tool.Job.Approve {
-				it.lines = append(it.lines, "approve: true")
-			}
-			it.href, it.in = w.open(t, tool.Job.Machine)
+		w.describe(&it, t, tool.Job)
+		if tool.Job != nil && tool.Job.Approve {
+			it.lines = append(it.lines, "approve: true")
 		}
 		g.tools, g.items[t] = append(g.tools, t), it
 	}
@@ -183,44 +186,49 @@ func groupsOf(agentName string, a *agent.Agent, run *Run, w *walker) []*partBox 
 }
 
 // paintGroup draws a column of what the model can call, and says whether a
-// tool in it is one the agent waits on.
-func (d *drawn) paintGroup(g *partBox, run *Run, waiting string) bool {
+// tool in it is one the agent waits on. asking says the ask going is the
+// part's.
+func (d *drawn) paintGroup(g *partBox, run *Run, asking bool) bool {
 	b := g.at
 	y := b.y
 	if g.part {
-		fmt.Fprintf(&d.holders, `<g class="state holder part"><rect x="%s" y="%s" width="%s" height="%s" rx="12"/><text class="name" x="%s" y="%s">%s</text></g>`,
+		fmt.Fprintf(&d.holders, `<g class="state holder part"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text></g>`,
 			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(g.name))
 		y += innerTop
 	}
 	d.reach(b)
 	now := false
 	for _, t := range g.tools {
-		mark := ""
-		if run != nil {
-			mark = "never"
-			if waiting == "tools" && asked(run.Asked, t) {
-				mark, now = "now", true
-			}
-		}
+		mark := jobMark(run, t, true)
+		now = now || mark == "now" || mark == "held"
 		at := g.items[t].size()
 		at.x, at.y = b.cx()-at.w/2, y
-		d.paint(g.items[t], at, strings.TrimSpace("state tool "+mark), 10, "")
+		d.paint(g.items[t], at, strings.TrimSpace("state tool "+mark), cardR, "")
 		y += at.h + 12
 	}
 	if g.ask != nil {
 		at := g.ask.size()
 		at.x, at.y = b.cx()-at.w/2, y
-		d.paint(*g.ask, at, "state ask", 10, "")
+		d.paint(*g.ask, at, strings.TrimSpace("state ask "+jobMark(run, "ask", asking)), cardR, "")
 	}
 	return now
 }
 
-// asked says whether a tool is among the jobs a step asked for: a job takes
-// its tool's name, with what tells its calls apart after it.
-func asked(jobs []string, tool string) bool {
-	return slices.ContainsFunc(jobs, func(job string) bool {
-		return job == tool || strings.HasPrefix(job, tool+"~") || strings.HasPrefix(job, tool+"#") || strings.HasPrefix(job, tool+".")
-	})
+// jobMark is how a tool or an ask of a run is marked: held for the ask,
+// going now, asked for at an earlier step, or never asked for. mine says a
+// job of the name going is this card's.
+func jobMark(run *Run, name string, mine bool) string {
+	switch {
+	case run == nil:
+		return ""
+	case slices.Contains(run.Held, name) && !run.Ended:
+		return "held"
+	case mine && slices.Contains(run.Going, name) && !run.Ended:
+		return "now"
+	case run.asked(name):
+		return "done"
+	}
+	return "never"
 }
 
 // spark is the mark of a model: a star of four points.
@@ -232,11 +240,4 @@ func spark(cx, cy, r float64) string {
 		num(cx+k), num(cy+k), num(cx+k), num(cy+k), num(cx), num(cy+r),
 		num(cx-k), num(cy+k), num(cx-k), num(cy+k), num(cx-r), num(cy),
 		num(cx-k), num(cy-k), num(cx-k), num(cy-k), num(cx), num(cy-r))
-}
-
-func (r *Run) shownOrNil() any {
-	if r == nil {
-		return nil
-	}
-	return r.Shown
 }

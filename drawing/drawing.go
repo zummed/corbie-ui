@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"math"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/zummed/corbie/agent"
@@ -19,24 +20,53 @@ import (
 // A Run is what a run shows of its state, to be marked on its machine's
 // drawing.
 type Run struct {
-	// Shown is what the machine's type shows a watcher at the latest step,
-	// and Before what it showed at the step before.
-	Shown, Before any
-	// Events are the names of the events the latest step took.
-	Events []string
-	// Entered are the states a statechart has been in, at any step.
-	Entered []string
-	// Asked are the jobs the latest step asked for, by name.
-	Asked []string
+	// Steps are the steps of its record, in order.
+	Steps []Step
+	// Going are the jobs going after the latest step, by name, and Held
+	// those of them held for the ask.
+	Going, Held []string
+	// Children are the runs its jobs started, by the job's name.
+	Children map[string]Child
 	// Ended says the run has ended: the states it ended in are no longer
 	// lit as current.
 	Ended bool
 }
 
+// A Step is one step of a run's record: what the machine's type showed of
+// its state after it, the events it took and the jobs it asked for, by
+// name.
+type Step struct {
+	Shown  any
+	Events []string
+	Asked  []string
+}
+
+// A Child is a run a job started: its ID, its machine and the machine's
+// type.
+type Child struct{ ID, Machine, Type string }
+
+// latest gives what the type showed at the latest step, and before gives
+// what it showed at the step before.
+func (r *Run) latest() any {
+	if r == nil || len(r.Steps) == 0 {
+		return nil
+	}
+	return r.Steps[len(r.Steps)-1].Shown
+}
+
+// asked says whether any step asked for a job.
+func (r *Run) asked(name string) bool {
+	return r != nil && slices.ContainsFunc(r.Steps, func(s Step) bool { return slices.Contains(s.Asked, name) })
+}
+
 // Draw gives the drawing of a definition, with a run's state marked on it
 // when run is not nil.
 func Draw(def *machine.Definition, run *Run) (template.HTML, error) {
-	d, err := drawOf(def, run, nil)
+	w := &walker{}
+	if run != nil {
+		w.children = run.Children
+	}
+	d, err := drawOf(def, run, w)
 	if err != nil {
 		return "", err
 	}
@@ -91,23 +121,22 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 	return drawn{}, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 }
 
-// A walker is one machine of a drawing whose boxes unfold: its draft, the
-// file it is in, or for one written in place the file that writes it, and the
-// path of the box it is drawn in. A drawing on a run's page has none.
+// A walker is what a drawing knows of the machines its jobs name. On the
+// Machines page it is a machine's draft, the file it is in, or for one
+// written in place the file that writes it, and the path of the card it is
+// drawn in. On a run's page it is the runs its jobs started.
 type walker struct {
-	unfold    Unfold
-	draft     *machine.Draft
-	dir, file string
-	path      string
+	unfold   Unfold
+	draft    *machine.Draft
+	children map[string]Child
+	file     string
+	path     string
 }
 
-// open gives the link of a box whose job names a machine, and the machine's
-// drawing when the box is unfolded.
-func (w *walker) open(name, job string) (string, *drawn) {
-	if w == nil || w.draft.Children[job] == nil {
-		return "", nil
-	}
-	at := strings.TrimPrefix(w.path+"/"+name, "/")
+// open gives the link of a card whose job names a machine in a draft, and
+// the machine's drawing when the card is unfolded.
+func (w *walker) open(at, job string) (string, *drawn) {
+	at = strings.TrimPrefix(w.path+"/"+at, "/")
 	href := w.unfold.Href(at)
 	if !w.unfold.Open[at] {
 		return href, nil
@@ -129,30 +158,41 @@ func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
 // part gives the file a part is included from.
 func (w *walker) part(name, part, does string) string {
-	if w == nil || w.file == "" || w.unfold.Part == nil {
+	if w.file == "" || w.unfold.Part == nil {
 		return ""
 	}
 	return w.unfold.Part(w.file, name, part, does)
 }
 
-// describe writes what a job is into an item: its icon and its line.
-func (w *walker) describe(it *item, job *machine.JobSpec) {
+// describe writes what a card's job is into it: its icon and its line, and
+// where the job names a machine, the link to it. A card's name is its job's
+// name, and at is its path on the Machines page. The machine is known by the
+// run the job started, or by its draft; one that is neither is known only by
+// how the definition names it.
+func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 	switch {
 	case job == nil:
-	case inPlace(job.Machine):
-		it.icon, it.lines = "flow", []string{"machine: written in place"}
-		if w != nil && w.draft.Children[job.Machine] != nil {
-			def := w.draft.Children[job.Machine].Definition
-			it.icon, it.lines = def.Type, []string{fit(def.Type + ": " + def.Name)}
-		}
-	case job.Machine != "":
-		it.icon, it.lines = "flow", []string{fit("machine: " + job.Machine)}
-		if w != nil && w.draft.Children[job.Machine] != nil {
-			it.icon = w.draft.Children[job.Machine].Definition.Type
-		}
+		return
 	case job.Script != "":
 		it.icon, it.lines = "script", []string{fit("script: " + job.Script)}
+		return
+	case job.Machine == "":
+		return
 	}
+	it.icon, it.lines = "file", []string{fit("machine: " + job.Machine)}
+	if inPlace(job.Machine) {
+		it.lines = []string{"machine: written in place"}
+	}
+	if c, ok := w.children[it.name]; ok {
+		it.icon, it.lines, it.href = c.Type, []string{fit(c.Type + ": " + c.Machine)}, "/run/"+c.ID
+		return
+	}
+	if w.draft == nil || w.draft.Children[job.Machine] == nil {
+		return
+	}
+	def := w.draft.Children[job.Machine].Definition
+	it.icon, it.lines = def.Type, []string{fit(def.Type + ": " + def.Name)}
+	it.href, it.in = w.open(at, job.Machine)
 }
 
 // The sizes a drawing is laid out by: every box is a card of one width,
@@ -167,6 +207,8 @@ const (
 	longest = 26
 	// longestChip fits between the mid points of two arrows side by side.
 	longestChip = 18
+	// cardR is how round the corners of every card are.
+	cardR = 10.0
 )
 
 // A note is what leaves a box with no arrow: a transition to an earlier
@@ -236,7 +278,6 @@ func (b box) bottom() float64 { return b.y + b.h }
 type drawn struct {
 	holders, edges, shapes strings.Builder
 	w, h, left             float64
-	backs                  int
 }
 
 func (d *drawn) reach(b box) {

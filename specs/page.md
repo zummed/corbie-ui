@@ -71,7 +71,6 @@ a bar that appears         it grows from nothing at now, in 0.8s
 time passing               the timeline moves left, and the bars of running runs grow to now
 a record entry             it slides in from below, in 0.35s
 the state a run is in      its outline pulses, every 2.6s
-a transition just taken    a dash moves along its arrow, three times
 a count that changes       it lifts and settles, in 0.5s
 another page               the pages cross-fade, in 0.18s
 ```
