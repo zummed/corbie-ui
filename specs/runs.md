@@ -4,28 +4,50 @@ The Runs page lists runs, and a run's page shows one. A run has Corbie's one sha
 
 ## The list
 
-The list holds every run whose status the UI may read. The UI lists as a viewer where the store lets a viewer read, as `corbie run ls --all` does with no client: every client's runs on a directory, and on a bucket with a viewer's key. Where the store does not, as on a served directory or a bucket with a client's key, it lists its client's own, as `corbie run ls --all` does for that client.
+The list reads every run whose status the UI may read. The UI lists as a viewer where the store lets a viewer read, as `corbie run ls --all` does with no client: every client's runs on a directory, and on a bucket with a viewer's key. Where the store does not, as on a served directory or a bucket with a client's key, it lists its client's own, as `corbie run ls --all` does for that client.
 
-Each run is one line, with its machine's type as an icon beside the machine's name:
+A root is a running run whose parent is not running. Each root is one line, in one of four sections:
 
 ```
-running  review   laptop-client/20261015T091204.118Z-3be1c07a2f   4   1 timer, ticket verdict   doc=q3-report   09:12
+Services   a root whose key begins file:, as corbie run submit of a directory starts it
+Busy       a root with a running child, a job on a runner or a ticket, or with status waiting
+Idle       any other root: one that waits only on timers
+Ended      a run with no parent that ended in the window, newest first
 ```
 
-A running child is listed under its running parent, and every other run on its own. Below the running runs are those that ended in the timeline's window, with when each ended and how long it took.
+The window is 1h, 6h, 24h or 7d, and 6h by default. A line of the first three sections reads:
 
-The page is narrowed by status and by label, as `--status` and `--label` narrow `corbie run ls`, and by client, the first part of a run's ID, which `corbie run ls` has no flag for. The counts, the timeline and the list show only the runs the narrowing leaves. Each status is offered with its count.
+```
+running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered.open due 10 Nov 20:29, events at key question:9de2a8913b  20:29  old version
+```
 
-## The timeline
+- The title is the root's key, or its machine's name where it has none.
+- The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
+- The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
+- Then come what the deepest run waits on and when the root started.
 
-Above the list, the timeline draws the runs of a window of time that ends now.
+A line unfolds to the root's running tree, one line for each run, indented under its parent, each with what it waits on. An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took, and unfolds to those runs.
 
-- Each machine with a run in the window has a lane, in the order of the machines' names. The lanes can instead be by client, or by the value of one label, such as `team=`, with the runs that lack the label in a last lane.
-- Each run is a bar in its lane, from when it started to when it ended, in its status's colour. The bar of a running run is drawn up to now, and runs that overlap in a lane are drawn one under another.
-- The window is 1h, 6h, 24h or 7d, and 6h by default. An ended run is kept for 7d by default.
-- Beside the timeline is the number of runs running, and of the jobs, timers and tickets they wait on.
+What a run waits on is written as:
 
-Pointing at a bar lights the run's line in the list, and pointing at a line lights its bar. A bar opens the run's page, as its line does. The address of the page holds the window, the lanes and the narrowing.
+```
+ticket <name>               a ticket
+timer <name> due <time>     a timer; a run another client started shows the number of timers
+job <name>                  a job on a runner; a run another client started shows the number of jobs
+held <name>                 a job held for the ask
+child <machine>             a running child
+events at key <key>         a statechart with a key
+```
+
+The names and times come from the latest step of a run the UI's client started, read once for each step.
+
+### Old versions
+
+`corbie run submit` of a directory labels each run `machine=<path>` and `hash=<hash>`, and the runs under it and those its sends start carry the same labels. The newest root keyed `file:<path>` has the current hash of that path, and a root whose `hash=` differs is marked `old version`.
+
+Where Idle holds roots on old versions that the UI's client started, its head offers one button, `Cancel the 14 idle runs on old versions`. It runs `corbie run cancel <id>` for each, and holding the pointer over it shows every command.
+
+The page is narrowed by label, as `--label` narrows `corbie run ls`, and by client, the first part of a run's ID, which `corbie run ls` has no flag for. The client is chosen only where the list holds more than one, or the address names one. A root or ended run the narrowing leaves is listed with every run under it.
 
 ## One run
 

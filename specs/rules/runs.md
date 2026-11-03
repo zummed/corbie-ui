@@ -4,13 +4,11 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## The list
 
-**R-runs-01** The list holds the running runs first, each running child under its running parent, then the runs that ended in the timeline's window, each with when it ended and how long it took. *Test:* `runs_list_running_then_ended_in_the_window`
+**R-runs-01** Each root, a running run whose parent is not running, is one line in Services, Busy or Idle by its key and its head, with the chain of running runs from it to the deepest through the newest running child at each level, and what the deepest waits on, by name from its latest step where the UI's client started it; below them, each run with no parent that ended in the window. *Test:* `runs_list_roots_by_section`, `runs_own_runs_wait_by_name`
 
-**R-runs-02** The page is narrowed by status, by label as `corbie run ls --label` reads it, and by client; the counts, the timeline and the list show only the runs the narrowing leaves, and each status is offered with its count. *Test:* `runs_narrowing_holds_for_the_whole_page`
+**R-runs-02** The page is narrowed by label as `corbie run ls --label` reads it, and by client; a root or ended run the narrowing leaves is listed with the runs under it. *Test:* `runs_narrowing_holds_for_the_whole_page`
 
-## The timeline
-
-**R-runs-03** The timeline has a lane for each machine, client or label value with a run in the window, in the order of their names, with the runs that lack the label last; each run is a bar from its start to its end or to now, and runs that overlap in a lane are drawn one under another. *Test:* `runs_timeline_lanes_and_bars`
+**R-runs-06** A root whose `hash=` label differs from that of the newest root keyed `file:` and its `machine=` label is marked as on an old version; Cancel on Idle runs `corbie run cancel` for each idle root on an old version the UI's client started, and for no other run. *Test:* `runs_cancel_idle_runs_on_old_versions`
 
 ## One run
 

@@ -158,54 +158,33 @@ table.list { width: 100%; border-collapse: collapse; font: 400 13px/1 var(--mono
 .btn.stop { color: var(--rowan); }
 
 /* runs */
-.band { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 210px; overflow: visible; }
-.tl { position: relative; display: flex; flex-direction: column; padding: 10px 26px 0 16px; }
-.tl-head { display: flex; align-items: center; gap: 10px; height: 26px; margin-bottom: 6px; }
-.tl-head h2 { margin: 0; }
-.tl-head #win { margin-left: auto; }
-.lane { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: start; height: 19px; transition: height .3s var(--ease); }
-.lane .who { display: flex; align-items: center; gap: 8px; height: 19px; overflow: hidden; font: 11.5px var(--mono); color: var(--ink2); white-space: nowrap; transition: color .2s; }
-.lane:hover .who, .lane.hot .who { color: var(--ink); }
-.track { position: relative; height: 100%; }
-.track::before { content: ""; position: absolute; left: 0; right: 0; top: 9.5px; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
-.runbar { position: absolute; top: 6.5px; height: 6px; min-width: 5px; border-radius: 999px; background: var(--c); opacity: var(--o, 1);
-  transition: left .6s var(--ease), width .6s var(--ease), top .3s var(--ease), background-color .9s, opacity .25s, box-shadow .25s; }
-.runbar.done { --c: var(--moss); --o: .7; } .runbar.failed { --c: var(--rowan); } .runbar.cancelled { --c: var(--ink2); --o: .45; }
-.runbar.running { --c: var(--petrol); background: linear-gradient(90deg, color-mix(in srgb, var(--petrol) 40%, transparent), var(--petrol) 96%); }
-.runbar.running.clipped { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--petrol) 40%, transparent) 140px, var(--petrol) 99%); }
-.runbar.running::after { content: ""; position: absolute; right: -4px; top: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--petrol); --ring: var(--petrol); animation: ring 2.4s infinite; }
-.runbar:hover, .runbar.hot { --o: 1; box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent); }
-.tracks:has(.runbar.hot, .runbar:hover) .runbar:not(.hot, :hover) { opacity: .22; }
-.runbar.new { animation: pop .8s var(--ease); }
-@keyframes pop { 0% { transform: scale(0, 0); } 60% { transform: scale(1, 1.8); } }
-.runbar.ended { animation: lit 1.4s var(--ease); }
-@keyframes lit { 0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 45%, transparent); } }
-.grid { position: absolute; left: 166px; right: 26px; top: 38px; bottom: 28px; pointer-events: none; }
-.grid i { position: absolute; top: 0; bottom: 0; border-left: 1px dashed color-mix(in srgb, var(--line) 80%, transparent); transition: left .6s var(--ease); }
-.grid::after { content: ""; position: absolute; right: -1px; top: -8px; bottom: -6px; width: 2px; border-radius: 1px; background: linear-gradient(var(--s1), var(--s2), var(--s3)); }
-.axis { position: relative; height: 28px; margin-left: 150px; font: 11.5px var(--mono); color: var(--ink2); }
-.axis span { position: absolute; top: 8px; transform: translateX(-50%); transition: left .6s var(--ease); }
-.axis .nowl { right: -1px; transform: translateX(50%); color: var(--ink); }
-.tip { position: absolute; z-index: 9; pointer-events: none; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--plate);
-  font: 11.5px/1.5 var(--mono); white-space: nowrap; transform: translate(-50%, calc(-100% - 10px)); opacity: 0; transition: opacity .12s; }
-.tip.on { opacity: 1; }
-.tip .dim { margin-left: 6px; }
-.now { display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 16px 24px 16px 16px; border-left: 1px solid var(--line); }
-.hero b { display: block; font: 500 32px/1 var(--mono); }
-.hero span { display: block; margin-top: 6px; font-size: 12.5px; color: var(--ink2); }
-.now h2 { margin: 0 0 -6px; }
-.waits { display: grid; grid-template-columns: max-content 1fr; gap: 5px 12px; font: 13px var(--mono); }
-.waits b { font-weight: 500; text-align: right; }
-.waits span { color: var(--ink2); }
-.tools { flex: none; display: flex; gap: 10px; align-items: center; }
-.tools select { margin-left: auto; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg a { padding: 5px 12px; font-size: 12.5px; color: var(--ink2); transition: background .15s, color .15s; }
-.seg a:hover { color: var(--ink); }
-.seg a + a { border-left: 1px solid var(--line); }
-.seg a[aria-current] { color: var(--ink); background: var(--plate); }
-.seg a b { display: inline-block; margin-left: 7px; font: 500 12px var(--mono); color: var(--ink2); }
-.seg a.failed b { color: var(--rowan); }
+.reqs { flex: none; }
+.reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
+.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 2.6fr) minmax(0, 1.5fr) 52px 100px; gap: 18px; align-items: center;
+  height: 31px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); white-space: nowrap; transition: background .15s; }
+.req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.req > summary > :first-child, .req .node > :first-child { overflow: visible; }
+.req > summary { cursor: pointer; list-style: none; }
+.req > summary::-webkit-details-marker { display: none; }
+.req > summary:hover, .req .node:hover { background: var(--hover); }
+.req[open] > summary { background: color-mix(in srgb, var(--hover) 60%, transparent); }
+.reqs > .req:last-child:not([open]) > summary, .reqs > .req:last-child .node:last-child { border-bottom: 0; }
+.req .tree { background: color-mix(in srgb, var(--paper) 55%, var(--plate)); }
+.req .node .name { grid-column: 2 / 4; padding-left: calc(var(--d) * 20px); }
+.req .chain a:hover, .req .node:hover .name { color: var(--accent); }
+.req .chain { display: flex; align-items: center; }
+.req .chain > a { flex: 0 1 auto; min-width: 26px; overflow: hidden; text-overflow: ellipsis; }
+.req .chain > a:first-child, .req .chain > a:last-of-type, .req .chain > .dim { flex: none; }
+.req .chain > .dim { margin-left: 7px; }
+.req .chain i { flex: none; margin: 0 5px; font-style: normal; color: var(--ink2); }
+.req svg.g { margin-right: 6px; vertical-align: -2px; }
+.req .waits { color: var(--ink2); }
+.req .old { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); }
+.req > summary.new { animation: arrive 1.6s var(--ease); }
+.req > summary.ended { animation: settle 1.4s var(--ease); }
+.req > summary.moved { animation: moved 1.2s var(--ease); }
+#idle [data-cmd]::after { white-space: pre; }
+main > .head form.narrow input { width: 220px; }
 table.runs { table-layout: fixed; }
 .runs col.status { width: 170px; } .runs col.machine { width: 240px; } .runs col.run { width: 450px; } .runs col.step { width: 70px; }
 .list .who, .list .tag { color: var(--ink2); }
