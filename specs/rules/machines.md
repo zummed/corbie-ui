@@ -4,40 +4,38 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## The directory
 
-**R-machines-01** The list starts at each machine no other machine names, outside directories whose names begin with a dot. Each machine has its type's icon, its first line, how many stages, states or tools it has, and the count of its problems; under the machine chosen and those above it are the machines it names, each followed once, then each other file it names with the field where the definition writes its path. *Test:* `machines_list_shows_what_each_item_is`
+**R-machines-10** The directory is read with Corbie's `client.ReadMachines` again only when a file in it changes, and the Machines and Parts pages share what was read. *Test:* `machines_directory_is_read_once_per_change`
 
-**R-machines-05** Choosing a machine shows its drawing, unfolded as the address says, and its problems. Text shows the file, read-only unless the UI acts as a client. *Test:* `machines_drawing_unfolds_as_the_address_says`
+**R-machines-11** A file in a directory whose name begins with a dot is reached only through a machine that names it: it is never listed on its own, its problems count only through the machines that read it, and it never starts an agent. *Test:* `machines_dotted_files_are_reached_through_what_names_them`
 
-**C-machines-01** Every path a request names is inside the directory once links are followed, and only `.yaml` files are read as machines. A request could otherwise read or write any file the UI's user can. *Test:* `machines_path_outside_the_directory_is_refused`
+**C-machines-01** Every path a request names is inside the directory once links are followed, and only `.yaml` files are read as machines. A request could otherwise read any file the UI's user can. *Test:* `machines_path_outside_the_directory_is_refused`
 
-**C-machines-05** A UI that does not act as a client has no address that saves, writes a new file, tests or starts, and shows no control for them. *Test:* `machines_read_only_writes_nothing`
+**C-machines-06** The Machines and Parts pages have no address that writes a file or runs a command, and show no form. A model edits the files, and a second way to edit them would be a second path. *Test:* `machines_pages_only_read`
 
-## Parts
+## The list
 
-**R-machines-06** The Parts page lists each part an agent in the directory opens, in its own file or written in place, and each file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot. A part shows each tool's `does:`, its job, whether the job has `approve: true`, and the `allow:` entries of the job and of the machines it runs. It shows each agent that opens it, and each machine above that agent that no other machine names, leaving out those in directories whose names begin with a dot. A machine with problems is listed apart, and stays above the machines its text names. *Test:* `machines_parts_show_what_opens_each`
+**R-machines-01** The list holds each machine outside directories whose names begin with a dot, by its directory, each with its type's icon, its file's name, its first line and the count of its problems. *Test:* `machines_list_shows_what_each_item_is`
 
-**R-machines-07** A directory with `.rook/` also shows, from its `rules.yaml`, the `for:` of each entry under `agents:` that names an agent or a machine above it, and the names under `approve:` for each part an agent opens, under the `part:` of its `ask:` input and by default its name, or that none is named where it needs approval. A `rules.yaml` that cannot be read is said on the page. A directory without `.rook/` shows neither, and its `rules.yaml` is not read. *Test:* `machines_parts_show_rules_only_in_a_rook_project`
+## Problems
 
-## Editing
+**R-machines-08** Above the list, each problem of the listed machines is given once, at the file Corbie names, with its place as that file writes it, its line, and the machines it breaks. *Test:* `machines_problems_are_listed_once_at_their_file`
 
-**C-machines-02** Save writes only if the file is as it was read. A model or another editor may have changed it since, and its change would be lost. *Test:* `machines_save_refuses_a_file_changed_on_disk`
+**R-machines-09** A machine with problems that reads without any from a directory below this one is listed under one problem for that directory, which is the top of its project, and its own problems are not listed. *Test:* `machines_directory_below_the_top_is_one_problem`
 
-**C-machines-03** New refuses a name that a file already has. *Test:* `machines_new_refuses_a_name_in_use`
+## The drawing and the text
 
-## Checking
+**R-machines-05** Choosing a machine shows its drawing, unfolded as the address says; a machine with problems shows its text. Text shows the file. *Test:* `machines_drawing_unfolds_as_the_address_says`
 
-**R-machines-02** A definition's text is checked with Corbie's own check as it is written: each problem is given at its place, with the line where the place is found; it is drawn when it has no problems, and not while it has any; and the fields that can be written at the cursor are given from its shapes, those written there marked. *Test:* `machines_check_gives_problems_drawing_and_fields`
+**R-machines-02** A file's text is read-only, with its lines numbered, under the problems found in it, and the lines they are found at are marked: for a machine, those Corbie gives for it; for any other file, those found in it by the machines that read it. A file with none shows no problems. *Test:* `machines_text_shows_the_problems_found_in_it`
 
 ## Secrets
 
-**R-machines-04** With each check, the page lists each secret that a `secret:NAME@…` entry in any `allow:` list of the text names, once, in the order written, an entry whose name holds `*` naming none. Acting as the controller, it reads which are set as the Controller page does, shows each as `set` or `not set`, and offers Set beside one that is not set, which is the Controller page's Set: `corbie controller secret set NAME -`, with the value on standard input. Acting as a client alone, it lists the names with no state, and offers no Set. *Test:* `machines_secrets_named_are_listed_and_set`
+**R-machines-04** The page lists each secret that a `secret:NAME@…` entry in any `allow:` list of a machine's text names, once, in the order written, an entry whose name holds `*` naming none. Acting as the controller, it shows each as `set` or `not set`, as the Controller page reads them; acting as a client alone, by name only. *Test:* `machines_secrets_named_are_listed`
 
-## Testing and starting
+## Parts
 
-**R-machines-03** Test runs `corbie test <file> --watch` and sends the page each line it prints, and Start runs `corbie run submit <file>` and answers with the run's page; both take the input as JSON and run secrets by name as `--secret-env`, and Start labels, permissions and a timeout. *Test:* `machines_test_and_start_run_their_commands`
-
-**C-machines-04** The input of Test and Start is JSON the UI has read, and goes to the command as `--input=` followed by it. Written as `@` and a path, the input would be read from a file on the disk. *Test:* `machines_input_is_json_and_never_a_file`
+**R-machines-06** The Parts page lists each part an agent opens, in its own file or written in place, and each file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, marked `not opened`. A part shows each tool's `does:`, its job, and whether the job has `approve: true`; each agent that opens it; and for each agent the machine it is written in, or the nearest machine above it on each path outside directories whose names begin with a dot, or `by hand`. *Test:* `machines_parts_show_what_opens_each`
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and the commands it runs (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Call`, `page.Command`), and Drawing to draw a definition (`drawing.Draw`).
+Machines uses Pages for the shell and the stream (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`), and Drawing to draw a definition (`drawing.Unfolded`).

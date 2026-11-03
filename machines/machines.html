@@ -1,67 +1,29 @@
-{{define "entry"}}<a href="/machines?file={{.Path}}" class="m{{if .Again}} again{{end}}" data-key="{{.Path}}"{{if .Here}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="{{.Type}}"><title>{{.Type}}</title><use href="#g-{{.Type}}"/></svg><span class="name" title="{{.Path}}">{{base .Path}}<i class="edited" hidden title="edited"></i></span>{{if .Problems}}<span class="bad" title="problems">{{.Problems}}</span>{{end}}<small>{{.First}}{{if .Size}} · {{.Size}}{{end}}</small></a>
-  {{- if and .Shown (or .Under .Files)}}<div class="under">{{range .Under}}{{template "entry" .}}{{end}}{{range .Files}}<a href="/machines?file={{.Path}}" class="f"{{if .Here}} aria-current="page"{{end}}><svg class="g" role="img" aria-label="{{.Icon}}"><use href="#g-{{.Icon}}"/></svg><span class="name" title="{{.Path}}">{{base .Path}}</span><small>{{.Field}}</small></a>{{end}}</div>{{end}}{{end}}
+{{define "problem"}}<div class="problem">{{if .Top}}<p><code>{{.File}}/</code> is the top of a project, and its machines read their paths from there: start the UI in <code>{{.File}}/</code>.</p>{{else}}<a class="at" href="/machines?file={{.File}}&amp;view=text" title="{{.File}}">{{.File}}{{if .Line}}:{{.Line}}{{end}}</a><p>{{if .Place}}<span class="place">{{.Place}}</span> {{end}}{{.Text}}</p>{{end}}{{if .Breaks}}<small title="{{join .Breaks}}">breaks {{plural (len .Breaks) "machine"}}</small>{{end}}</div>{{end}}
 
-{{define "files"}}<div class="filelist" id="files">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{range .Entries}}{{template "entry" .}}{{else}}<p class="dim">no machines here</p>{{end}}</div>{{end}}
+{{define "found"}}{{if .}}<section class="found"><h2>{{plural (len .) "problem"}}</h2>{{range .}}{{template "problem" .}}{{end}}</section>{{end}}{{end}}
+
+{{define "secrets"}}{{if .Secrets}}<section class="secrets"><h2>Secrets</h2><div class="named">{{range .Secrets}}<span>{{.Name}}</span><span class="dim">{{.State}}</span>{{end}}</div>{{if not .Controller}}<p class="dim">set on the controller's computer: <code>corbie controller secret set NAME</code></p>{{end}}</section>{{end}}{{end}}
+
+{{define "files"}}<div class="filelist" id="files">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{if .Problems}}<section class="problems"><h2>{{plural (len .Problems) "problem"}}</h2>{{range .Problems}}{{template "problem" .}}{{end}}</section>{{end}}{{range .Groups}}{{if ne .Dir "."}}<h2 class="group" title="{{.Dir}}">{{.Dir}}/</h2>{{end}}{{range .Entries}}<a href="/machines?file={{.Path}}" class="m"{{if eq .Path $.Open}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="{{or .Type "file"}}"><title>{{or .Type "file"}}</title><use href="#g-{{or .Type "file"}}"/></svg><span class="name" title="{{.Path}}">{{base .Path}}</span>{{if .Problems}}<span class="bad" title="{{plural .Problems "problem"}}">{{.Problems}}</span>{{end}}<small>{{.First}}</small></a>{{end}}{{else}}<p class="dim">no machines here</p>{{end}}</div>{{end}}
 
 {{define "disk"}}<span id="disk" data-base="{{.Base}}" hidden></span>{{end}}
 
-{{define "problems"}}<section id="problems">{{if .Problems}}<h2>{{len .Problems}} {{if eq (len .Problems) 1}}problem{{else}}problems{{end}}</h2>{{range .Problems}}<div class="problem"{{if .Line}} data-line="{{.Line}}"{{end}}><span class="place">{{.Place}}</span><span>{{.Text}}</span></div>{{end}}{{else}}<h2>No problems</h2>{{end}}</section>{{end}}
-
-{{define "secrets"}}<section id="secrets"{{if not .Secrets}} hidden{{end}}>{{if .Secrets}}<h2>Secrets</h2><div class="secrets">{{range .Secrets}}<span class="name">{{.Name}}</span><div class="state">{{.State}}{{if eq .State "not set"}}<form method="post" action="/machines/secret-set"><input type="hidden" name="name" value="{{.Name}}"><input name="value" type="password" placeholder="value" autocomplete="off" aria-label="Its value" required><button class="btn sm" data-cmd="corbie controller secret set {{.Name}} -">Set</button><span class="said"></span></form>{{end}}</div>{{end}}</div>{{if not .Controller}}<p class="dim">set on the controller's computer: <code>corbie controller secret set NAME</code></p>{{end}}{{end}}</section>{{end}}
-
-{{define "fields"}}<section id="fields">{{if .Fields}}<h2>Fields of {{.What}}</h2><div class="fields">{{range .Fields}}<span{{if .Here}} class="here"{{end}} title="{{.Does}}">{{.Name}}</span><span class="like" title="{{.Does}}">{{.Like}}</span>{{end}}</div>{{end}}</section>{{end}}
-
 {{define "machines"}}
-<div class="ide{{if not .ShowText}} walk{{end}}">
-  <nav class="panel files" aria-label="The machines in {{.Dir}}">
-    <p class="dir" title="{{.Dir}}">{{.Dir}}</p>
+<div class="ide">
+  <nav class="panel files" aria-label="The machines in {{.DirFull}}">
+    <div class="head"><span class="facts" title="{{.DirFull}}">{{.Dir}}</span></div>
     {{template "files" .}}
-    {{if .Edits}}<form class="new" method="post" action="/machines/new">
-      <select name="type" aria-label="The type of the new machine">{{range .Types}}<option>{{.}}</option>{{end}}</select>
-      <input name="name" placeholder="name" size="9" required aria-label="Its name">
-      <button class="btn">New</button>
-    </form>{{end}}
     {{template "disk" .}}
   </nav>
   {{if not .Open}}
-  <div class="panel editor"><p class="dim body">no machines in this directory{{if .Edits}}: New writes one{{end}}</p></div>
-  {{else if not .ShowText}}
-  <div class="panel view" data-file="{{.Open}}" data-base="{{.Base}}">
-    <div class="head"><svg class="g m" role="img" aria-label="{{.Kind}}"><use href="#g-{{.Kind}}"/></svg><span>{{.Open}}</span><span class="facts">{{.First}}</span><span class="acts"><a class="btn" href="/machines?file={{.Open}}&amp;view=text">Text</a></span></div>
-    {{if .Check.Problems}}{{template "problems" .Check}}{{end}}
-    <section class="drawn" id="drawing">{{.Drawing}}</section>
-  </div>
+  <div class="panel view"><p class="dim body">no machines in this directory</p></div>
   {{else}}
-  <div class="panel editor" data-file="{{.Open}}" data-base="{{.Base}}" data-kind="{{.Kind}}">
-    <div class="head">
-      <span>{{.Open}}</span><span class="facts" id="saved">{{if not .Edits}}read-only{{end}}</span>
-      <span class="acts">
-        <span class="said" id="said"></span>
-        {{if .Kind}}<a class="btn" href="/machines?file={{.Open}}">Drawing</a>{{end}}
-        {{if .Edits}}<button class="btn" id="save">Save</button>
-        {{if .Kind}}<button class="btn" id="test" data-cmd="corbie test {{.Open}} --watch">Test</button><button id="start" class="btn go" data-cmd="corbie run submit {{.Open}}">Start</button>{{end}}{{end}}
-      </span>
-    </div>
-    <div class="code-wrap"><pre class="code" id="lines" aria-hidden="true"></pre><textarea id="text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="{{.Open}}"{{if not .Edits}} readonly{{end}}>{{.Text}}</textarea></div>
-    <div class="conflict" id="conflict" hidden><div class="bar"><span>As it is on disk now</span><span class="acts"><button class="btn sm" id="take">Take it</button></span></div><pre></pre></div>
-    {{if and .Kind .Edits}}<form class="run" id="run">
-      <textarea name="input" rows="1" placeholder="input, as JSON" aria-label="The input, as JSON"></textarea>
-      <input name="secrets" placeholder="secrets by name" size="14" aria-label="Run secrets, by name, from the UI's environment">
-      <details><summary>Start with</summary><div class="more">
-        <input name="labels" placeholder="labels k=v" size="14" aria-label="Labels">
-        <input name="allow" placeholder="allow" size="12" aria-label="Allow">
-        <input name="deny" placeholder="deny" size="10" aria-label="Deny">
-        <input name="timeout" placeholder="timeout, 1h" size="9" aria-label="Timeout">
-      </div></details>
-    </form>
-    <ol class="record test" id="test-out" hidden></ol>{{end}}
+  <div class="panel view" data-file="{{.Open}}" data-base="{{.Base}}">
+    <div class="head"><svg class="g m" role="img" aria-label="{{or .Kind "file"}}"><use href="#g-{{or .Kind "file"}}"/></svg><span>{{.Open}}</span><span class="facts">{{.First}}</span><span class="acts">{{if not .ShowText}}<a class="btn" href="/machines?file={{.Open}}&amp;view=text">Text</a>{{else if .Drawable}}<a class="btn" href="/machines?file={{.Open}}">Drawing</a>{{end}}</span></div>
+    {{template "found" .Found}}
+    {{template "secrets" .}}
+    {{if .ShowText}}<pre class="code" aria-label="{{.Open}}">{{range .Text}}<span class="l{{if .Bad}} err{{end}}">{{range .Spans}}{{if .Class}}<span class="{{.Class}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</span>{{end}}</pre>{{else}}<section class="drawn" id="drawing">{{.Drawing}}</section>{{end}}
   </div>
-  <aside class="panel known" id="known">
-    <section class="drawn" id="drawing">{{.Check.Drawing}}</section>
-    {{template "problems" .Check}}
-    {{template "secrets" .Check}}
-    {{template "fields" .Check}}
-  </aside>
   {{end}}
 </div>
 {{end}}

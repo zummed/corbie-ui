@@ -3,18 +3,18 @@ package machines
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
@@ -51,7 +51,7 @@ output: ${stages.draft.output}
 `
 
 // machines writes a directory of machines, and gives the page on it, as
-// the config says: running its commands, and acting as its controller.
+// the config says: acting as its controller, or not.
 func machines(t *testing.T, c Config) (http.Handler, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -107,35 +107,6 @@ func do(h http.Handler, method, target string, form url.Values) *httptest.Respon
 	return w
 }
 
-func Test_machines_list_shows_what_each_item_is(t *testing.T) {
-	h, dir := machines(t, Config{Edits: true})
-	d, _ := newDir(dir)
-	list, _ := d.list("")
-	if len(list) != 1 || list[0].Path != "review.yaml" {
-		t.Fatalf("the list holds %+v", list)
-	}
-	r := list[0]
-	if r.First != "statechart: review" || r.Type != "statechart" || r.Size != "4 states" || r.Problems != 0 {
-		t.Errorf("review is listed as %+v", r)
-	}
-	if len(r.Under) != 1 || r.Under[0].Path != "writer.yaml" || len(r.Files) != 0 {
-		t.Fatalf("under review are %+v and %+v", r.Under, r.Files)
-	}
-	w := r.Under[0]
-	if w.Size != "1 stage" || len(w.Files) != 2 || w.Files[0] != (named{Path: "write.js", Field: "script:", Icon: "script"}) || w.Files[1] != (named{Path: "lib.js", Field: "files:", Icon: "file"}) {
-		t.Errorf("writer is listed as %+v", w)
-	}
-	body := do(h, "GET", "/machines?file=writer.yaml", nil).Body.String()
-	for _, want := range []string{`<use href="#g-statechart"/>`, "statechart: review · 4 states", "flow: writer · 1 stage", "<small>files:</small>"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the page does not show %s", want)
-		}
-	}
-	if body := do(h, "GET", "/machines?file=review.yaml", nil).Body.String(); strings.Contains(body, "<small>files:</small>") {
-		t.Errorf("what is under a machine below the one chosen is shown")
-	}
-}
-
 // project writes a directory laid out as a project of ready-made machines
 // is: a machine to keep running, machines in a directory whose name begins
 // with a dot, and an agent with a part from a file of its own.
@@ -181,116 +152,60 @@ states:
 	return dir
 }
 
-func must(data []byte, err error) []byte {
-	if err != nil {
-		panic(err)
-	}
-	return data
-}
+const shipper = `flow: shipper
+allow: [net:x, secret:A@net:x]
+stages:
+  ship:
+    job: { script: ./write.js, allow: [net:y, secret:B@net:y, net:z, "secret:*@net:z"] }
+`
 
-func paths(list []entry) string {
-	var names []string
-	for _, e := range list {
-		name := e.Path
-		if e.Again {
-			name += "*"
+// later writes its own allow: after its stages.
+const later = `flow: later
+stages:
+  ship:
+    job: { script: ./write.js, allow: [secret:B@net:y] }
+allow: [secret:A@net:x]
+`
+
+// listed gives the list as directory, file, first line and problem count.
+func listed(ix *index) []string {
+	var out []string
+	for _, g := range ix.Groups {
+		for _, e := range g.Entries {
+			out = append(out, fmt.Sprintf("%s %s %s %d", g.Dir, e.Path, e.First, e.Problems))
 		}
-		if len(e.Under) > 0 {
-			name += "(" + paths(e.Under) + ")"
-		}
-		names = append(names, name)
 	}
-	return strings.Join(names, " ")
+	return out
 }
 
-func Test_machines_list_follows_what_names_what(t *testing.T) {
+func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	dir := project(t)
+	write(t, dir, map[string]string{
+		"bridges/b.yaml": "flow: b\nstages:\n  a: { job: { machine: .kit/say.yaml } }\n",
+		"bad.yaml":       "flow: bad\nstages: {}\ncolour: blue\n",
+	})
 	d, _ := newDir(dir)
-	list, _ := d.list(".kit/chat.yaml")
-	want := "later.yaml(.kit/say.yaml) telegram.yaml(.kit/listen.yaml(.kit/chat.yaml(.kit/say.yaml* helper.yaml(.kit/say.yaml*))))"
-	if got := paths(list); got != want {
-		t.Errorf("the list is\n%s\nand not\n%s", got, want)
-	}
-	if p := d.check("helper.yaml", must(os.ReadFile(filepath.Join(dir, "helper.yaml")))).problems; len(p) > 0 {
-		t.Fatalf("the agent has problems: %+v", p)
-	}
-	listen := list[1].Under[0]
-	if listen.Problems != 0 {
-		t.Errorf("a path out of a machine's directory, inside the directory of machines, is a problem: %+v", listen)
-	}
-	chat := listen.Under[0]
-	if !chat.Here || listen.Here {
-		t.Errorf("the open file is not marked: %+v", chat)
-	}
-	helper := chat.Under[1]
-	if helper.Size != "1 tool" || len(helper.Files) != 1 || helper.Files[0].Path != "parts/part.yaml" || helper.Files[0].Field != "include:" {
-		t.Errorf("the agent is listed as %+v", helper)
-	}
-}
-
-func Test_machines_list_holds_what_a_machine_with_problems_names(t *testing.T) {
-	dir := project(t)
-	broken := "flow: bridge\nstagez: 1\nstages:\n  listen: { job: { machine: ./.kit/listen.yaml } }\n"
-	os.WriteFile(filepath.Join(dir, "telegram.yaml"), []byte(broken), 0o644)
-	d, _ := newDir(dir)
-	list, _ := d.list("")
-	if got := paths(list); !strings.Contains(got, ".kit/listen.yaml(.kit/chat.yaml(") || !strings.Contains(got, "helper.yaml(") {
-		t.Errorf("a problem in a machine hides what it names: %s", got)
-	}
-}
-
-func Test_machines_list_holds_machines_that_name_each_other(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("flow: a\nstages:\n  x: { job: { machine: ./b.yaml } }\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "b.yaml"), []byte("flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n"), 0o644)
-	d, _ := newDir(dir)
-	list, _ := d.list("")
-	if got := paths(list); got != "a.yaml(b.yaml(a.yaml*))" {
-		t.Errorf("the list is %q", got)
-	}
-}
-
-func Test_machines_list_keeps_what_is_not_read_as_a_machine(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("---\nflow: a\nstages:\n  x: { job: { machine: ./b.yml } }\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "b.yml"), []byte("flow: b\nstages:\n  x: { job: ./c.js }\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "c.js"), []byte("return 1"), 0o644)
-	d, _ := newDir(dir)
-	list, _ := d.list("a.yaml")
-	if len(list) != 1 || len(list[0].Files) != 1 || list[0].Files[0].Path != "b.yml" {
-		t.Errorf("the list holds %+v", list)
-	}
-}
-
-func Test_machines_list_marks_the_file_open_once(t *testing.T) {
-	dir := project(t)
-	d, _ := newDir(dir)
-	marked := func(list []entry) int {
-		n := 0
-		var walk func(list []entry)
-		walk = func(list []entry) {
-			for _, e := range list {
-				if e.Here {
-					n++
-				}
-				walk(e.Under)
-			}
-		}
-		walk(list)
-		return n
-	}
-	list, _ := d.list(".kit/say.yaml")
-	if n := marked(list); n != 1 {
-		t.Errorf("the machine open is marked %d times", n)
-	}
-	list, _ = d.list(".kit/hear.js")
-	listen := list[1].Under[0]
-	if !list[0].Shown || !listen.Shown || len(listen.Files) != 1 || !listen.Files[0].Here {
-		t.Errorf("a script open is not shown in the list: %+v", listen)
+	got := listed(d.index())
+	want := []string{". bad.yaml flow: bad 2", ". helper.yaml agent: helper 0", ". later.yaml flow: later 0", ". telegram.yaml flow: bridge 0", "bridges bridges/b.yaml flow: b 0"}
+	if !slices.Equal(got, want) {
+		t.Errorf("the list is\n%s\nand not\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if body := do(h, "GET", "/machines?file=./later.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
-		t.Errorf("a path written with ./ is not the file open")
+	body := do(h, "GET", "/machines?file=bridges/b.yaml", nil).Body.String()
+	_, list, _ := strings.Cut(body, `id="files"`)
+	list, _, _ = strings.Cut(list, "</nav>")
+	for _, want := range []string{`<h2 class="group" title="bridges">bridges/</h2>`, `<use href="#g-agent"/>`, "<small>agent: helper</small>", `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=bridges%2fb.yaml" class="m" aria-current="page"`} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the list does not show %s:\n%s", want, list)
+		}
+	}
+	for _, gone := range []string{".kit/", "people.yaml", "part.yaml"} {
+		if strings.Contains(list, gone) {
+			t.Errorf("the list holds %s:\n%s", gone, list)
+		}
+	}
+	if body := do(h, "GET", "/machines?file=./bridges/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
+		t.Errorf("a path written with ./ is not the file chosen")
 	}
 }
 
@@ -305,6 +220,114 @@ func Test_machines_list_says_what_it_could_not_read(t *testing.T) {
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, `class="unread"`) || !strings.Contains(body, "a-locked") {
 		t.Errorf("a directory that cannot be read is not reported:\n%s", body)
+	}
+}
+
+func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		"a.yaml":            "agent: a\n" + agentHead + "open:\n  messages: { include: ./parts/m/part.yaml }\n",
+		"b.yaml":            "agent: b\n" + agentHead + "open:\n  msgs: { include: ./parts/m/part.yaml }\n",
+		".kit/c.yaml":       "agent: c\n" + agentHead + "open:\n  messages: { include: parts/m/part.yaml }\n",
+		"parts/m/part.yaml": "does: messages\ntools:\n  tell:\n    description: tells\n    job: { script: ./tell.js }\n",
+		"parts/m/tell.js":   "return 1",
+		"z.yaml":            "flow: z\nstages:\n  a: { job: ./z.js }\ncolour: blue\n",
+		"z.js":              "return 1",
+	})
+	d, _ := newDir(dir)
+	ix := d.index()
+	var atPart int
+	for _, p := range ix.Problems {
+		switch p.File {
+		case "parts/m/part.yaml":
+			atPart++
+			if !slices.Equal(p.Breaks, []string{"a.yaml", "b.yaml"}) || !strings.HasPrefix(p.Place, "tools.tell") || p.Line == 0 {
+				t.Errorf("a problem in the part is %+v", p)
+			}
+		case "z.yaml":
+			if !slices.Equal(p.Breaks, []string{"z.yaml"}) || p.Place != "colour" || p.Line != 4 {
+				t.Errorf("a problem in a machine's own file is %+v", p)
+			}
+		default:
+			t.Errorf("a problem is at %+v", p)
+		}
+	}
+	if atPart == 0 || len(ix.Problems) != atPart+1 {
+		t.Errorf("the problems are %+v", ix.Problems)
+	}
+	if ix.Broken != 3 {
+		t.Errorf("%d machines of the project have problems", ix.Broken)
+	}
+	h, _ := New(Config{Dir: dir, Interval: time.Second})
+	body := do(h, "GET", "/machines?file=z.yaml", nil).Body.String()
+	if n := strings.Count(body, "breaks 2 machines"); n != atPart {
+		t.Errorf("the page shows the part's problems %d times, and not %d:\n%s", n, atPart, body)
+	}
+	if strings.Contains(body, ".kit/c.yaml") {
+		t.Errorf("a machine in a dotted directory is counted:\n%s", body)
+	}
+}
+
+func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		"proj/a.yaml":     "flow: a\nstages:\n  x: { job: { machine: b.yaml } }\n",
+		"proj/b.yaml":     "flow: b\nstages:\n  x: { job: ./r.js }\n",
+		"proj/r.js":       "return 1",
+		"proj/sub/c.yaml": "flow: c\nstages:\n  x: { job: { machine: b.yaml } }\n",
+		"z.yaml":          "flow: z\nstages: {}\ncolour: blue\n",
+	})
+	d, _ := newDir(dir)
+	ix := d.index()
+	if len(ix.Problems) == 0 {
+		t.Fatalf("no problems")
+	}
+	top := ix.Problems[0]
+	if !top.Top || top.File != "proj" || !slices.Equal(top.Breaks, []string{"proj/a.yaml", "proj/sub/c.yaml"}) {
+		t.Errorf("the first problem is %+v", top)
+	}
+	for _, p := range ix.Problems[1:] {
+		if p.File != "z.yaml" {
+			t.Errorf("a machine read from the wrong directory gave %+v", p)
+		}
+	}
+	h, _ := New(Config{Dir: dir, Interval: time.Second})
+	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, "<code>proj/</code> is the top of a project") || !strings.Contains(body, "breaks 2 machines") {
+		t.Errorf("the page does not say which directory is the top:\n%s", body)
+	}
+	if body := do(h, "GET", "/machines?file=proj/a.yaml", nil).Body.String(); strings.Count(body, "is the top of a project") != 2 || strings.Contains(body, "cannot be read") {
+		t.Errorf("a machine read from the wrong directory does not say so:\n%s", body)
+	}
+}
+
+func Test_machines_text_shows_the_problems_found_in_it(t *testing.T) {
+	dir := project(t)
+	write(t, dir, map[string]string{
+		"broken.yaml":  "# one stage\nflow: broken\nstages:\n  a: { job: ./missing.js }\n",
+		"a.yaml":       "agent: a\n" + agentHead + "open:\n  m: { include: ./parts/m.yaml }\n",
+		"parts/m.yaml": "does: m\ntools:\n  r:\n    does: r\n    job: { script: ./r.js }\n    colour: blue\n",
+		"parts/r.js":   "return 1",
+	})
+	h, _ := New(Config{Dir: dir, Interval: time.Second})
+	body := do(h, "GET", "/machines?file=broken.yaml", nil).Body.String()
+	if strings.Contains(body, `id="drawing"`) || !strings.Contains(body, "missing.js") || !strings.Contains(body, `<span class="l err"><span class="k">  a</span>`) && !strings.Contains(body, `<span class="l err">  <span class="k">a</span>`) {
+		t.Errorf("a machine with problems is not shown as text with its line marked:\n%s", body)
+	}
+	if !strings.Contains(body, `<span class="l"><span class="c"># one stage</span></span>`) {
+		t.Errorf("a comment is not set apart:\n%s", body)
+	}
+	part := do(h, "GET", "/machines?file=parts/m.yaml&view=text", nil).Body.String()
+	if !strings.Contains(part, "tools.r.colour") || !strings.Contains(part, "breaks 1 machine") || strings.Count(part, `class="l err"`) != 1 {
+		t.Errorf("a part's text does not show the problem found in it:\n%s", part)
+	}
+	if a := do(h, "GET", "/machines?file=a.yaml", nil).Body.String(); !strings.Contains(a, "tools.r.colour") || strings.Contains(a, `class="l err"`) {
+		t.Errorf("a machine marks its lines for a problem in a file it includes:\n%s", a)
+	}
+	for _, file := range []string{"people.yaml", "helper.yaml"} {
+		text := do(h, "GET", "/machines?view=text&file="+file, nil).Body.String()
+		if strings.Contains(text, `class="found"`) || strings.Contains(text, "No problems") || strings.Contains(text, "<textarea") || !strings.Contains(text, `<pre class="code"`) {
+			t.Errorf("%s is not shown as read-only text with no problems:\n%s", file, text)
+		}
 	}
 }
 
@@ -351,18 +374,12 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	if !strings.Contains(part, `href="/machines?file=helper.yaml&amp;view=text"`) {
 		t.Errorf("the drawing does not offer the text")
 	}
-	if text := do(h, "GET", "/machines?file=helper.yaml&view=text", nil).Body.String(); !strings.Contains(text, "agent: helper") || !strings.Contains(text, " readonly>") {
-		t.Errorf("the text is not shown read-only:\n%s", text)
+	text := do(h, "GET", "/machines?file=helper.yaml&view=text", nil).Body.String()
+	if !strings.Contains(text, `<span class="k">agent</span>: helper`) || !strings.Contains(text, `href="/machines?file=helper.yaml">Drawing</a>`) {
+		t.Errorf("the text is not shown:\n%s", text)
 	}
-	if text := do(h, "GET", "/machines?file=people.yaml", nil).Body.String(); !strings.Contains(text, "people: []") {
-		t.Errorf("a file that is not a machine does not show its text:\n%s", text)
-	}
-	bad, _ := newDir(project(t))
-	os.WriteFile(filepath.Join(bad.root, "broken.yaml"), []byte("flow: broken\nstages:\n  a: { job: ./missing.js }\n"), 0o644)
-	h, _ = New(Config{Dir: bad.root, Interval: time.Second})
-	w := do(h, "GET", "/machines?file=broken.yaml", nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "missing.js") {
-		t.Errorf("a machine with problems answered %d:\n%s", w.Code, w.Body.String())
+	if text := do(h, "GET", "/machines?file=people.yaml", nil).Body.String(); !strings.Contains(text, `<span class="k">people</span>: []`) || strings.Contains(text, ">Drawing<") {
+		t.Errorf("a file that is not a machine does not show its text alone:\n%s", text)
 	}
 }
 
@@ -383,269 +400,136 @@ func Test_machines_drawing_labels_a_part_of_an_agent_written_in_place(t *testing
 	}
 }
 
-func Test_machines_read_only_writes_nothing(t *testing.T) {
-	h, dir := machines(t, Config{})
-	body := do(h, "GET", "/machines?view=text", nil).Body.String()
-	for _, word := range []string{`id="save"`, `id="test"`, `id="start"`, `action="/machines/new"`, `id="run"`} {
-		if strings.Contains(body, word) {
-			t.Errorf("a UI that does not act as a client shows %s", word)
-		}
-	}
-	before, _ := os.ReadFile(filepath.Join(dir, "review.yaml"))
-	for _, path := range []string{"/machines/save", "/machines/new", "/machines/start"} {
-		w := do(h, "POST", path, url.Values{"file": {"review.yaml"}, "text": {"x"}, "base": {hash(before)}, "type": {"flow"}, "name": {"n"}})
-		if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
-			t.Errorf("%s answered %d", path, w.Code)
-		}
-	}
-	if w := do(h, "GET", "/machines/test?file=review.yaml", nil); w.Code != http.StatusNotFound {
-		t.Errorf("Test answered %d", w.Code)
-	}
-	after, _ := os.ReadFile(filepath.Join(dir, "review.yaml"))
-	if string(after) != string(before) {
-		t.Errorf("the file was written")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "n.yaml")); err == nil {
-		t.Errorf("a new file was written")
-	}
-}
-
-func Test_machines_check_gives_problems_drawing_and_fields(t *testing.T) {
-	h, _ := machines(t, Config{Edits: true})
-	check := func(text string, line int) map[string]any {
-		w := do(h, "POST", "/machines/check", url.Values{"file": {"review.yaml"}, "text": {text}, "line": {jsonOf(line)}})
-		var got map[string]any
-		json.Unmarshal(w.Body.Bytes(), &got)
-		return got
-	}
-	broken := strings.Replace(review, "gave_up: { end: failed }", "gave_up: { end: failed, colour: red }", 1)
-	got := check(broken, 9)
-	if got["count"] != 1.0 || !strings.Contains(got["problems"].(string), "states.gave_up.colour") || got["drawing"] != "" {
-		t.Errorf("a definition with a problem gave %v", got)
-	}
-	if lines, _ := got["lines"].([]any); len(lines) != 1 || lines[0] != 15.0 {
-		t.Errorf("the problem's line is given as %v", got["lines"])
-	}
-	if f := got["fields"].(string); !strings.Contains(f, "Fields of a state") || !strings.Contains(f, `>ticket</span>`) || strings.Count(f, `class="here"`) != 2 {
-		t.Errorf("at line 9 the fields are %v", got["fields"])
-	}
-	got = check(review, 1)
-	if got["count"] != 0.0 || !strings.Contains(got["drawing"].(string), "<svg") || !strings.Contains(got["fields"].(string), "Fields of a definition") {
-		t.Errorf("a definition with no problems gave %v", got)
-	}
-}
-
-func jsonOf(v any) string {
-	data, _ := json.Marshal(v)
-	return string(data)
-}
-
-// recorder runs no command, and keeps every call; its test prints lines.
-type recorder struct{ calls []page.Call }
-
-func (r *recorder) run(_ context.Context, c page.Call) page.Answer {
-	r.calls = append(r.calls, c)
-	if c.Lines != nil {
-		c.Lines.Write([]byte("12:00:00 0123456789  step 1  <- start {}\n12:00:00 0123456789  step 1  done\n"))
-		return page.Answer{}
-	}
-	return page.Answer{Out: `{"id":"lab-client/20261015T120000.000Z-0123456789"}`}
-}
-
-func Test_machines_test_and_start_run_their_commands(t *testing.T) {
-	r := &recorder{}
-	h, dir := machines(t, Config{Edits: true, Command: r.run})
-	w := do(h, "POST", "/machines/start", url.Values{"file": {"writer.yaml"}, "input": {`{ "document": "q4" }`}, "secrets": {"API_KEY"},
-		"labels": {"team=data doc=q4"}, "allow": {"net:example.com"}, "deny": {"exec"}, "timeout": {"1h"}})
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"/run/lab-client/20261015T120000.000Z-0123456789"`) {
-		t.Errorf("Start answered %d %s", w.Code, w.Body.String())
-	}
-	server := httptest.NewServer(h)
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/machines/test?file=writer.yaml&input=%7B%7D&secrets=API_KEY", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for {
-		_, data, err := conn.Read(ctx)
-		if err != nil {
-			break
-		}
-		got = append(got, string(data))
-	}
-	if len(got) != 2 || got[1] != "12:00:00 0123456789  step 1  done" {
-		t.Errorf("Test sent the page %q", got)
-	}
-	file := filepath.Join(dir, "writer.yaml")
-	want := []string{
-		"corbie run submit " + file + ` --input={"document":"q4"} --secret-env=API_KEY --label=team=data --label=doc=q4 --allow=net:example.com --deny=exec --timeout=1h`,
-		"corbie test " + file + " --input={} --secret-env=API_KEY --watch",
-	}
-	if len(r.calls) != 2 || r.calls[0].String() != want[0] || r.calls[1].String() != want[1] {
-		t.Errorf("Start and Test ran %v", r.calls)
-	}
-	for _, c := range r.calls {
-		if found, _ := cli.Find(c.Words); found == nil || found.Name != strings.Join(c.Words, " ") {
-			t.Errorf("%q is not one of Corbie's commands", strings.Join(c.Words, " "))
-		}
-	}
-}
-
 func Test_machines_path_outside_the_directory_is_refused(t *testing.T) {
-	h, dir := machines(t, Config{Edits: true})
+	h, dir := machines(t, Config{})
 	outside := filepath.Join(t.TempDir(), "elsewhere.yaml")
-	os.WriteFile(outside, []byte(review), 0o644)
+	os.WriteFile(outside, []byte("flow: kept-elsewhere\nstages: {}\n"), 0o644)
 	os.Symlink(outside, filepath.Join(dir, "link.yaml"))
+	os.WriteFile(filepath.Join(dir, "out.yaml"), []byte("flow: out\nstages:\n  a: { job: ../../../outside.js }\n"), 0o644)
 	for _, path := range []string{"../elsewhere.yaml", outside, "/etc/passwd", "link.yaml", "sub/../../x.yaml"} {
-		if w := do(h, "GET", "/machines/raw?file="+url.QueryEscape(path), nil); w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "leaves the directory") {
+		if w := do(h, "GET", "/machines?view=text&file="+url.QueryEscape(path), nil); w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "leaves the directory") {
 			t.Errorf("reading %s answered %d %s", path, w.Code, w.Body.String())
 		}
-		if w := do(h, "POST", "/machines/save", url.Values{"file": {path}, "text": {"x"}, "base": {""}}); w.Code != http.StatusForbidden {
-			t.Errorf("saving %s answered %d", path, w.Code)
-		}
 	}
-	d, _ := newDir(dir)
-	list, _ := d.list("")
-	if strings.Contains(paths(list), "link.yaml") {
-		t.Errorf("a link that leaves the directory is listed: %s", paths(list))
+	body := do(h, "GET", "/machines?file=out.yaml", nil).Body.String()
+	if strings.Contains(body, "kept-elsewhere") {
+		t.Errorf("a file a link outside the directory names is shown:\n%s", body)
 	}
-	if h, _ := machines(t, Config{Edits: true}); h != nil {
-		text := "flow: out\nstages:\n  a: { job: ../../../outside.js }\n"
-		w := do(h, "POST", "/machines/check", url.Values{"file": {"review.yaml"}, "text": {text}})
-		if !strings.Contains(w.Body.String(), "has no ../") {
-			t.Errorf("a script outside the directory of machines was read: %s", w.Body.String())
-		}
-	}
-	if w := do(h, "POST", "/machines/start", url.Values{"file": {"../elsewhere.yaml"}}); w.Code != http.StatusForbidden {
-		t.Errorf("starting a file outside the directory answered %d", w.Code)
+	if !strings.Contains(body, "has no ../") {
+		t.Errorf("a script outside the directory of machines was read:\n%s", body)
 	}
 }
 
-func Test_machines_save_refuses_a_file_changed_on_disk(t *testing.T) {
-	h, dir := machines(t, Config{Edits: true})
-	var read map[string]string
-	json.Unmarshal(do(h, "GET", "/machines/raw?file=writer.yaml", nil).Body.Bytes(), &read)
-	os.WriteFile(filepath.Join(dir, "writer.yaml"), []byte(writer+"# a model wrote this\n"), 0o644)
-	w := do(h, "POST", "/machines/save", url.Values{"file": {"writer.yaml"}, "text": {"flow: mine\n"}, "base": {read["base"]}})
-	var refused map[string]string
-	json.Unmarshal(w.Body.Bytes(), &refused)
-	if w.Code != http.StatusConflict || !strings.Contains(refused["text"], "# a model wrote this") {
-		t.Errorf("a save over a changed file answered %d %v", w.Code, refused)
-	}
-	if data, _ := os.ReadFile(filepath.Join(dir, "writer.yaml")); !strings.Contains(string(data), "# a model wrote this") {
-		t.Errorf("the change on disk was lost")
-	}
-	if w := do(h, "POST", "/machines/save", url.Values{"file": {"writer.yaml"}, "text": {"flow: mine\n"}, "base": {refused["base"]}}); w.Code != http.StatusOK {
-		t.Errorf("a save from the file as it is now answered %d", w.Code)
-	}
-}
-
-func Test_machines_new_refuses_a_name_in_use(t *testing.T) {
-	h, dir := machines(t, Config{Edits: true})
-	if w := do(h, "POST", "/machines/new", url.Values{"type": {"flow"}, "name": {"digest"}}); w.Code != http.StatusSeeOther {
-		t.Fatalf("New answered %d %s", w.Code, w.Body.String())
-	}
-	if data, _ := os.ReadFile(filepath.Join(dir, "digest.yaml")); string(data) != "flow: digest\n" {
-		t.Errorf("New wrote %q", data)
-	}
-	if w := do(h, "POST", "/machines/new", url.Values{"type": {"statechart"}, "name": {"review"}}); w.Code != http.StatusConflict {
-		t.Errorf("New over review.yaml answered %d", w.Code)
-	}
-	if data, _ := os.ReadFile(filepath.Join(dir, "review.yaml")); string(data) != review {
-		t.Errorf("New changed a file that was there")
-	}
-	if w := do(h, "POST", "/machines/new", url.Values{"type": {"flow"}, "name": {"../up"}}); w.Code != http.StatusConflict {
-		t.Errorf("New with a path for a name answered %d", w.Code)
-	}
-}
-
-const shipper = `flow: shipper
-allow: [net:x, secret:A@net:x]
-stages:
-  ship:
-    job: { script: ./write.js, allow: [net:y, secret:B@net:y, net:z, "secret:*@net:z"] }
-`
-
-// later writes its own allow: after its stages.
-const later = `flow: later
-stages:
-  ship:
-    job: { script: ./write.js, allow: [secret:B@net:y] }
-allow: [secret:A@net:x]
-`
-
-func Test_machines_secrets_named_are_listed_and_set(t *testing.T) {
-	section := regexp.MustCompile(`(?s)<section id="secrets".*?</section>`)
-	shown := func(h http.Handler, file string) (string, string) {
-		t.Helper()
-		w := do(h, "GET", "/machines?view=text&file="+file, nil)
-		if w.Code != http.StatusOK {
-			t.Fatalf("the page answered %d %s", w.Code, w.Body.String())
-		}
-		return w.Body.String(), section.FindString(w.Body.String())
-	}
-	r := &recorder{}
+func Test_machines_secrets_named_are_listed(t *testing.T) {
+	section := regexp.MustCompile(`(?s)<section class="secrets">.*?</section>`)
 	ctl, s := lab(t)
-	h, dir := machines(t, Config{Edits: true, Command: r.run, Controller: ctl, Store: s})
+	h, dir := machines(t, Config{Controller: ctl, Store: s})
 	os.WriteFile(filepath.Join(dir, "shipper.yaml"), []byte(shipper), 0o644)
-	body, got := shown(h, "shipper.yaml")
-	a, b := `<span class="name">A</span><div class="state">set</div>`, `<span class="name">B</span><div class="state">not set<form method="post" action="/machines/secret-set">`
-	if !strings.Contains(body, "<h2>No problems</h2>") || strings.Count(got, `class="name"`) != 2 || !strings.Contains(got, a) || strings.Index(got, b) < strings.Index(got, a) || strings.Contains(got, "controller's computer") {
+	os.WriteFile(filepath.Join(dir, "later.yaml"), []byte(later), 0o644)
+	got := section.FindString(do(h, "GET", "/machines?view=text&file=shipper.yaml", nil).Body.String())
+	a, b := `<span>A</span><span class="dim">set</span>`, `<span>B</span><span class="dim">not set</span>`
+	if strings.Count(got, "<span>") != 2 || !strings.Contains(got, a) || strings.Index(got, b) < strings.Index(got, a) || strings.Contains(got, "controller's computer") {
 		t.Errorf("as the controller, the secrets are shown as\n%s", got)
 	}
-	if !strings.Contains(got, `type="password"`) || !strings.Contains(got, `data-cmd="corbie controller secret set B -"`) {
-		t.Errorf("Set is not the Controller page's Set:\n%s", got)
+	if strings.Contains(got, "<form") || strings.Contains(got, "<button") || strings.Contains(got, "<input") {
+		t.Errorf("the secrets can be set from the Machines page:\n%s", got)
 	}
-	if _, got := shown(h, "review.yaml"); got != `<section id="secrets" hidden></section>` {
-		t.Errorf("a definition that names no secret shows\n%s", got)
+	if got := section.FindString(do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()); !strings.Contains(got, a) {
+		t.Errorf("the drawing does not list the secrets:\n%s", got)
 	}
-	var checked map[string]any
-	json.Unmarshal(do(h, "POST", "/machines/check", url.Values{"file": {"shipper.yaml"}, "text": {strings.Replace(shipper, "net:z,", "net:z, secret:C@net:z,", 1)}, "line": {"1"}}).Body.Bytes(), &checked)
-	if got, _ := checked["secrets"].(string); !strings.Contains(got, `<span class="name">C</span><div class="state">not set<form`) {
-		t.Errorf("the check of text naming another secret gave\n%s", got)
-	}
-	json.Unmarshal(do(h, "POST", "/machines/check", url.Values{"file": {"shipper.yaml"}, "text": {later}, "line": {"1"}}).Body.Bytes(), &checked)
-	if got, _ := checked["secrets"].(string); strings.Count(got, `class="name"`) != 2 || strings.Index(got, `<span class="name">B</span>`) > strings.Index(got, `<span class="name">A</span>`) {
-		t.Errorf("a definition whose own allow: follows its stages lists its secrets as\n%s", got)
+	if got := section.FindString(do(h, "GET", "/machines?file=later.yaml", nil).Body.String()); strings.Index(got, ">A<") < strings.Index(got, ">B<") {
+		t.Errorf("the secrets are not in the order written:\n%s", got)
 	}
 
-	w := do(h, "POST", "/machines/secret-set", url.Values{"name": {"B"}, "value": {"hunter2"}})
-	if w.Code != http.StatusOK || len(r.calls) != 1 {
-		t.Fatalf("Set answered %d %s and ran %v", w.Code, w.Body.String(), r.calls)
+	h, _ = machines(t, Config{})
+	got = section.FindString(do(h, "GET", "/machines?view=text&file=review.yaml", nil).Body.String())
+	if got != "" {
+		t.Errorf("a machine that names no secret shows %s", got)
 	}
-	if c := r.calls[0]; c.String() != "corbie controller secret set B -" || c.Stdin != "hunter2" {
-		t.Errorf("Set ran %q with %q on standard input", c.String(), c.Stdin)
-	}
-	body, _ = shown(h, "shipper.yaml")
-	if strings.Contains(w.Body.String(), "hunter2") || strings.Contains(body, "hunter2") || strings.Contains(body, "swordfish") {
-		t.Errorf("a secret's value was sent to the page")
-	}
-
-	r = &recorder{}
-	h, dir = machines(t, Config{Edits: true, Command: r.run})
+	h, dir = machines(t, Config{})
 	os.WriteFile(filepath.Join(dir, "shipper.yaml"), []byte(shipper), 0o644)
-	_, got = shown(h, "shipper.yaml")
-	if strings.Count(got, `class="name"`) != 2 || !strings.Contains(got, `<span class="name">A</span><div class="state"></div>`) || strings.Contains(got, "secret-set") ||
-		!strings.Contains(got, "set on the controller's computer: <code>corbie controller secret set NAME</code>") {
+	got = section.FindString(do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String())
+	if !strings.Contains(got, `<span>A</span><span class="dim"></span>`) || !strings.Contains(got, "corbie controller secret set NAME") {
 		t.Errorf("as a client alone, the secrets are shown as\n%s", got)
-	}
-	if w := do(h, "POST", "/machines/secret-set", url.Values{"name": {"B"}, "value": {"hunter2"}}); w.Code != http.StatusNotFound || len(r.calls) != 0 {
-		t.Errorf("Set without the controller answered %d and ran %v", w.Code, r.calls)
 	}
 }
 
-func Test_machines_input_is_json_and_never_a_file(t *testing.T) {
-	r := &recorder{}
-	h, _ := machines(t, Config{Edits: true, Command: r.run})
-	for _, input := range []string{"@/etc/passwd", "@writer.yaml", "not json"} {
-		if w := do(h, "POST", "/machines/start", url.Values{"file": {"writer.yaml"}, "input": {input}}); w.Code != http.StatusBadRequest {
-			t.Errorf("Start with the input %q answered %d", input, w.Code)
+func Test_machines_directory_is_read_once_per_change(t *testing.T) {
+	dir := project(t)
+	d, _ := newDir(dir)
+	c := &indexed{dir: d}
+	first := c.current()
+	if c.current() != first {
+		t.Errorf("the directory was read again with nothing changed")
+	}
+	write(t, dir, map[string]string{"new.yaml": "flow: new\nstages:\n  a: { job: .kit/hear.js }\n"})
+	next := c.current()
+	if next == first || !slices.Contains(listed(next), ". new.yaml flow: new 0") {
+		t.Errorf("a file written is not read: %v", listed(next))
+	}
+	write(t, dir, map[string]string{"parts/part.yaml": "does: changed\ntools: {}\n"})
+	if c.current() == next {
+		t.Errorf("a change to a file that is not a machine is not read")
+	}
+}
+
+func Test_machines_dotted_files_are_reached_through_what_names_them(t *testing.T) {
+	dir := project(t)
+	write(t, dir, map[string]string{
+		".kit/alone.yaml":   "agent: alone\n" + agentHead + "open:\n  hidden: { does: hidden, tools: { r: { does: r, job: { script: ./hear.js } } } }\n",
+		".kit/broken.yaml":  "flow: broken\nstages: {}\ncolour: blue\n",
+		".kit/reached.yaml": "agent: reached\n" + agentHead + "open:\n  seen: { does: seen, tools: { r: { does: r, job: { script: ./hear.js } } } }\n",
+		"uses.yaml":         "flow: uses\nstages:\n  a: { job: { machine: .kit/reached.yaml } }\n",
+	})
+	d, _ := newDir(dir)
+	ix := d.index()
+	for _, line := range listed(ix) {
+		if strings.Contains(line, ".kit/") {
+			t.Errorf("the list holds %s", line)
 		}
 	}
-	if len(r.calls) != 0 {
-		t.Errorf("a command ran with input that is not JSON: %v", r.calls)
+	if len(ix.Problems) != 0 || ix.Broken != 0 {
+		t.Errorf("a machine in a dotted directory that nothing names gives problems: %+v", ix.Problems)
+	}
+	v := ix.partsView("")
+	var does []string
+	for _, p := range v.Parts {
+		does = append(does, p.Does)
+	}
+	if slices.Contains(does, "hidden") || slices.Contains(does, "kept in a dotted directory") {
+		t.Errorf("a part only a dotted directory holds is listed: %v", does)
+	}
+	seen := byDoes(t, v, "seen")
+	if len(seen.Opened) != 1 || seen.Opened[0].File != ".kit/reached.yaml" || len(seen.Opened[0].Starts) != 1 || seen.Opened[0].Starts[0].File != "uses.yaml" {
+		t.Errorf("an agent in a dotted directory that a machine names is %+v", seen.Opened)
+	}
+}
+
+func Test_machines_pages_only_read(t *testing.T) {
+	ctl, s := lab(t)
+	h, dir := machines(t, Config{Controller: ctl, Store: s})
+	d, _ := newDir(dir)
+	before := d.stamp()
+	for _, path := range []string{"/machines", "/machines/save", "/machines/new", "/machines/start", "/machines/check", "/machines/secret-set", "/machines/raw", "/parts"} {
+		form := url.Values{"file": {"review.yaml"}, "text": {"flow: x\n"}, "type": {"flow"}, "name": {"x"}, "value": {"v"}}
+		if w := do(h, "POST", path, form); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST %s answered %d", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/machines/test?file=review.yaml", "/machines/raw?file=review.yaml"} {
+		if w := do(h, "GET", path, nil); w.Code != http.StatusNotFound {
+			t.Errorf("GET %s answered %d", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/machines?file=review.yaml", "/machines?file=review.yaml&view=text", "/parts"} {
+		body := do(h, "GET", path, nil).Body.String()
+		for _, control := range []string{"<form", "<textarea", "<input", "<button"} {
+			if strings.Contains(body, control) {
+				t.Errorf("%s shows %s:\n%s", path, control, body)
+			}
+		}
+	}
+	if d.stamp() != before {
+		t.Errorf("the directory changed")
 	}
 }
