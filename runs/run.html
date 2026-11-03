@@ -14,10 +14,10 @@
   <div class="head"><h2>Waiting on</h2></div>
   <div class="waitlist">
   {{if .Run.HasEnded}}<div class="wait dim">nothing: the run has ended</div>{{end}}
-  {{range .Tickets}}<div class="wait"><span>ticket {{.Name}}</span><code class="value" title="the ticket's value: whoever has it can answer">{{.Value}}</code>
-    <form data-act="reset" method="post" action="/run/{{$.Run.ID}}/reply"><input type="hidden" name="ticket" value="{{.Value}}"><input name="value" placeholder="answer, as JSON" size="16"><button class="btn sm" data-cmd="corbie run reply {{$.Run.ID}} {{.Value}} &lt;answer&gt;">Reply</button><span class="said"></span></form></div>{{end}}
-  {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}</div>{{end}}
-  {{if not (or .Run.HasEnded .Tickets .Waits)}}<div class="wait dim">nothing</div>{{end}}
+  {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}
+    {{- if .Value}}<code class="value" title="the ticket's value: whoever has it can answer">{{.Value}}</code>
+    <form data-act="reset" method="post" action="/run/{{$.Run.ID}}/reply"><input type="hidden" name="ticket" value="{{.Value}}"><input name="value" placeholder="answer, as JSON" size="16"><button class="btn sm" data-cmd="corbie run reply {{$.Run.ID}} {{.Value}} &lt;answer&gt;">Reply</button><span class="said"></span></form>{{end}}</div>{{end}}
+  {{if not (or .Run.HasEnded .Waits)}}<div class="wait dim">nothing</div>{{end}}
   </div>
   {{if .Reply}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/reply"><input name="ticket" placeholder="a ticket's value" size="20" required><input name="value" placeholder="answer, as JSON" size="16"><button class="btn" data-cmd="corbie run reply {{.Run.ID}} &lt;ticket&gt; &lt;answer&gt;">Reply</button><span class="said"></span></form>{{end}}
   {{if .Send}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/send"><input name="event" placeholder="event" size="12" required><input name="data" placeholder="data, as JSON" size="18"><button class="btn" data-cmd="corbie run send {{.Run.ID}} &lt;event&gt; &lt;data&gt;">Send</button><span class="said"></span></form>{{end}}

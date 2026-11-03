@@ -33,7 +33,6 @@ type runView struct {
 	Started, Ended, Took string
 	Path                 []link
 	Drawing              template.HTML
-	Tickets              []ticket
 	Waits                []wait
 	Labels               []label
 	Lines                []line
@@ -51,13 +50,29 @@ type link struct {
 	This              bool
 }
 
-type ticket struct{ Name, Value string }
-
-// A wait is one thing a run waits on, in words, and the run it is where it
-// is one.
+// A wait is one thing a run waits on, in words: a ticket with its name,
+// and its value where the UI's client started the run, or a running child
+// with its run.
 type wait struct {
-	Text string
-	Run  *link
+	Text, Ticket, Value string
+	Run                 *link
+}
+
+// String is a wait as one line of words.
+func (w wait) String() string {
+	if w.Run != nil {
+		return w.Text + " " + w.Run.Machine
+	}
+	return w.Text
+}
+
+// inWords gives waits as the Runs page writes them, in one line.
+func inWords(waits []wait) string {
+	var words []string
+	for _, w := range waits {
+		words = append(words, w.String())
+	}
+	return strings.Join(words, ", ")
 }
 
 type label struct{ Name, Value string }
@@ -157,14 +172,14 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	}
 	runs, _ := h.List.Runs()
 	byID := map[string]*client.Run{}
+	under := map[string][]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
+		under[r.Parent] = append(under[r.Parent], r)
 	}
-	v.Path = pathOf(run, runs, byID)
-	for _, r := range runs {
-		if r.Parent == id {
-			v.Children = append(v.Children, childOf(r, at))
-		}
+	v.Path = pathOf(run, byID, under)
+	for _, r := range under[id] {
+		v.Children = append(v.Children, childOf(r, at))
 	}
 	slices.SortFunc(v.Children, func(a, b child) int { return strings.Compare(a.ID, b.ID) })
 
@@ -172,12 +187,13 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	switch {
 	case !run.HasEnded() && v.Mine:
 		v.Send = sends(run)
-		v.Cancel = &page.Call{Words: []string{"run", "cancel"}, Args: []string{id}}
+		cancel := cancelOf(id)
+		v.Cancel = &cancel
 	case !run.HasEnded() && h.Controller:
 		v.Cancel = &page.Call{Words: []string{"controller", "cancel"}, Args: []string{id}}
 	}
 	if !v.Mine {
-		v.Waits = waitsOf(run, nil, runs, at)
+		v.Waits = waitsOf(run, nil, running(under[id]), at)
 		return v, nil
 	}
 
@@ -188,7 +204,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	if r.step != nil && !run.HasEnded() {
 		st = &r.step.State
 	}
-	v.Waits = waitsOf(run, st, runs, at)
+	v.Waits = waitsOf(run, st, running(under[id]), at)
 	if r.def != nil {
 		v.Drawing, err = drawing.Draw(r.def, marksOf(id, entries, run, st, byID))
 		if err != nil {
@@ -205,8 +221,10 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		if err != nil {
 			return v, err
 		}
-		for _, name := range slices.Sorted(maps.Keys(tickets)) {
-			v.Tickets = append(v.Tickets, ticket{Name: name, Value: tickets[name]})
+		for i, w := range v.Waits {
+			if w.Ticket != "" {
+				v.Waits[i].Value = tickets[w.Ticket]
+			}
 		}
 	}
 	if run.HasEnded() {
@@ -236,54 +254,61 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 func sends(run *client.Run) bool { return !run.HasEnded() && run.Type == "statechart" }
 
 // pathOf gives the runs from a run's root down to it, by parent, and on
-// from it to the deepest running run, by the newest running child at each
-// level.
-func pathOf(run *client.Run, runs []*client.Run, byID map[string]*client.Run) []link {
-	path := []link{{ID: run.ID, Machine: run.Machine, Type: run.Type, This: true}}
+// from it to the deepest running run.
+func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*client.Run) []link {
+	path := chainOf(run, under)
+	path[0].This = true
 	seen := map[string]bool{run.ID: true}
 	for up := byID[run.Parent]; up != nil && !seen[up.ID]; up = byID[up.Parent] {
 		seen[up.ID] = true
 		path = slices.Insert(path, 0, link{ID: up.ID, Machine: up.Machine, Type: up.Type})
 	}
-	for at := run.ID; ; {
-		var next *client.Run
-		for _, r := range runs {
-			if r.Parent == at && !r.HasEnded() && !seen[r.ID] && (next == nil || r.Started.After(next.Started)) {
-				next = r
-			}
-		}
-		if next == nil {
-			return path
-		}
-		seen[next.ID] = true
-		path = append(path, link{ID: next.ID, Machine: next.Machine, Type: next.Type})
-		at = next.ID
-	}
+	return path
 }
 
-// waitsOf gives what a running run waits on, but its tickets: each running
+// chainOf gives a run and the running runs below it down to the deepest,
+// by the newest running child at each level.
+func chainOf(r *client.Run, under map[string][]*client.Run) []link {
+	var chain []link
+	for r != nil {
+		chain = append(chain, link{ID: r.ID, Machine: r.Machine, Type: r.Type})
+		var next *client.Run
+		for _, k := range under[r.ID] {
+			if !k.HasEnded() && (next == nil || k.ID > next.ID) {
+				next = k
+			}
+		}
+		r = next
+	}
+	return chain
+}
+
+// running gives the runs among kids that have not ended.
+func running(kids []*client.Run) []*client.Run {
+	return slices.DeleteFunc(slices.Clone(kids), (*client.Run).HasEnded)
+}
+
+// waitsOf gives what a running run waits on: each ticket, each running
 // child, each job by its name, each timer with when it is due, and events
-// at its key. With no state, as for a run another client started, its jobs
-// and timers are only counted.
-func waitsOf(run *client.Run, st *instance.State, runs []*client.Run, at time.Time) []wait {
+// at its key where it is a statechart. With no state, as for a run another
+// client started, its jobs and timers are only counted.
+func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Time) []wait {
 	if run.HasEnded() {
 		return nil
 	}
 	var waits []wait
-	for _, r := range runs {
-		if r.Parent == run.ID && !r.HasEnded() {
-			waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: r.Machine, Type: r.Type}})
-		}
+	for _, t := range run.Tickets {
+		waits = append(waits, wait{Text: "ticket " + t, Ticket: t})
+	}
+	for _, r := range kids {
+		waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: r.Machine, Type: r.Type}})
 	}
 	if st == nil {
-		if len(run.Tickets) > 0 {
-			waits = append(waits, wait{Text: "ticket " + strings.Join(run.Tickets, ", ")})
-		}
 		if run.Jobs > 0 {
-			waits = append(waits, wait{Text: plural(run.Jobs, "job")})
+			waits = append(waits, wait{Text: counted(run.Jobs, "job")})
 		}
 		if run.Timers > 0 {
-			waits = append(waits, wait{Text: plural(run.Timers, "timer")})
+			waits = append(waits, wait{Text: counted(run.Timers, "timer")})
 		}
 	} else {
 		for _, name := range slices.Sorted(maps.Keys(st.Jobs)) {
@@ -298,10 +323,10 @@ func waitsOf(run *client.Run, st *instance.State, runs []*client.Run, at time.Ti
 			return cmp.Or(st.Timers[a].At.Compare(st.Timers[b].At), strings.Compare(a, b))
 		})
 		for _, name := range timers {
-			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + clock(st.Timers[name].At, at)})
+			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + due(st.Timers[name].At, at)})
 		}
 	}
-	if run.Key != "" {
+	if run.Type == "statechart" && run.Key != "" {
 		waits = append(waits, wait{Text: "events at key " + run.Key})
 	}
 	return waits

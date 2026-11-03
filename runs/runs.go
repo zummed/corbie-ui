@@ -273,7 +273,7 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 			call.Args = append(call.Args, data)
 		}
 	case "cancel":
-		call = page.Call{Words: []string{"run", "cancel"}, Args: []string{id}}
+		call = cancelOf(id)
 		if !mine {
 			call.Words = []string{"controller", "cancel"}
 		}

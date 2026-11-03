@@ -13,7 +13,7 @@ function mark(old, next) {
     const was = document.querySelector(`${el.tagName}[data-key="${CSS.escape(el.dataset.key)}"]`);
     if (!was) el.classList.add('new');
     else if (was.dataset.status !== el.dataset.status && el.dataset.ended === 'true') el.classList.add('ended');
-    else if (was.outerHTML !== el.outerHTML && !el.classList.contains('runbar')) el.classList.add('moved');
+    else if (was.outerHTML !== el.outerHTML) el.classList.add('moved');
   }
   const counts = new Map([...old.querySelectorAll('[data-count]')].map(el => [el.dataset.count, el.textContent]));
   for (const el of next.querySelectorAll('[data-count]')) {

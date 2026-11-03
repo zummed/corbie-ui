@@ -139,8 +139,6 @@ type rootLine struct {
 	Tree                                                  []node
 }
 
-type link struct{ ID, Machine, Type string }
-
 // A node is one run of a tree, indented by its depth under the root.
 type node struct {
 	ID, Status, Failure, Machine, Type, Shown, Waits, When string
@@ -180,9 +178,6 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 	for _, w := range windows {
 		v.Ended.Windows = append(v.Ended.Windows, choice{Name: w.Name, Href: n.with(func(m *narrowing) { m.Window = w.Name }), Current: n.Window == w.Name})
 	}
-	running := func(kids []*client.Run) []*client.Run {
-		return slices.DeleteFunc(slices.Clone(kids), (*client.Run).HasEnded)
-	}
 	old := func(r *client.Run) bool {
 		c := current[r.Labels[client.LabelMachine]]
 		return c != nil && r.Labels[client.LabelHash] != c.Labels[client.LabelHash]
@@ -205,17 +200,10 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 	for _, r := range roots {
 		l := lineOf(r, at)
 		l.Old = old(r)
-		deepest := r
-		for {
-			l.Chain = append(l.Chain, link{ID: deepest.ID, Machine: deepest.Machine, Type: deepest.Type})
-			kids := running(under[deepest.ID])
-			if len(kids) == 0 {
-				break
-			}
-			deepest = kids[len(kids)-1]
-		}
+		l.Chain = chainOf(r, under)
+		deepest := byID[l.Chain[len(l.Chain)-1].ID]
 		l.Shown = shownOf(steps[deepest.ID])
-		l.Waits = waitsOf(deepest, steps[deepest.ID], running(under[deepest.ID]), at)
+		l.Waits = inWords(waitsOf(deepest, stateOf(steps[deepest.ID]), running(under[deepest.ID]), at))
 		l.Tree = treeOf(r, under, running, steps, at)
 		switch {
 		case strings.HasPrefix(r.Key, client.KeyFile):
@@ -271,7 +259,7 @@ func treeOf(root *client.Run, under map[string][]*client.Run, kids func([]*clien
 		n := node{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type, Depth: depth}
 		if !r.HasEnded() {
 			n.Shown = shownOf(steps[r.ID])
-			n.Waits = waitsOf(r, steps[r.ID], kids(under[r.ID]), at)
+			n.Waits = inWords(waitsOf(r, stateOf(steps[r.ID]), running(under[r.ID]), at))
 		}
 		if !r.Started.IsZero() {
 			n.When = when(r.Started, at)
@@ -315,44 +303,12 @@ func shownOf(step *instance.Step) string {
 	return strings.Join(names, ", ")
 }
 
-// waitsOf gives what a running run waits on: its tickets, timers and jobs
-// from its head, by name and with due times from its latest step where
-// the UI's client started it, its running children, and events at its key.
-func waitsOf(r *client.Run, step *instance.Step, kids []*client.Run, at time.Time) string {
-	var waits []string
-	for _, t := range r.Tickets {
-		waits = append(waits, "ticket "+t)
+// stateOf gives the state of a step, where there is one.
+func stateOf(step *instance.Step) *instance.State {
+	if step == nil {
+		return nil
 	}
-	if step != nil {
-		timers := slices.SortedFunc(maps.Keys(step.State.Timers), func(a, b string) int {
-			return step.State.Timers[a].At.Compare(step.State.Timers[b].At)
-		})
-		for _, name := range timers {
-			waits = append(waits, "timer "+name+" due "+due(step.State.Timers[name].At, at))
-		}
-		for _, name := range slices.Sorted(maps.Keys(step.State.Jobs)) {
-			switch job := step.State.Jobs[name]; {
-			case job.Held:
-				waits = append(waits, "held "+job.Name)
-			case job.Runner != "":
-				waits = append(waits, "job "+job.Name)
-			}
-		}
-	} else {
-		if r.Timers > 0 {
-			waits = append(waits, counted(r.Timers, "timer"))
-		}
-		if r.Jobs > 0 {
-			waits = append(waits, counted(r.Jobs, "job"))
-		}
-	}
-	for _, k := range kids {
-		waits = append(waits, "child "+k.Machine)
-	}
-	if r.Type == "statechart" && r.Key != "" {
-		waits = append(waits, "events at key "+r.Key)
-	}
-	return strings.Join(waits, ", ")
+	return &step.State
 }
 
 // counted is a thing and how many of it there are, where there are more
@@ -454,48 +410,6 @@ func (s *steps) of(ctx context.Context, c *client.Client, runs []*client.Run) (m
 	}
 	s.read = kept
 	return out, nil
-}
-
-// row is a run as the Children of a run's page lists it.
-type row struct {
-	ID, Who, Stamp, Status, Failure, Machine, Type, Waits, Labels, When, Took, Href string
-	Step                                                                            int
-	Child, Ended                                                                    bool
-}
-
-func rowOf(r *client.Run, child bool, at time.Time) row {
-	who, stamp, _ := strings.Cut(r.ID, "/")
-	w := row{ID: r.ID, Who: who, Stamp: stamp, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type,
-		Step: r.Step, Child: child, Ended: r.HasEnded(), Waits: waitingOn(r), Labels: labelsOf(r), Href: "/run/" + r.ID}
-	if r.HasEnded() {
-		w.When, w.Took = when(r.Ended, at), took(r.Ended.Sub(r.Started))
-	} else {
-		w.When = when(r.Started, at)
-	}
-	return w
-}
-
-// waitingOn and labelsOf are a run's words as `corbie run ls` prints them.
-func waitingOn(r *client.Run) string {
-	var parts []string
-	if r.Jobs > 0 {
-		parts = append(parts, plural(r.Jobs, "job"))
-	}
-	if r.Timers > 0 {
-		parts = append(parts, plural(r.Timers, "timer"))
-	}
-	if len(r.Tickets) > 0 {
-		parts = append(parts, "ticket "+strings.Join(r.Tickets, ", "))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func labelsOf(r *client.Run) string {
-	var labels []string
-	for _, name := range slices.Sorted(maps.Keys(r.Labels)) {
-		labels = append(labels, strings.TrimSuffix(name+"="+r.Labels[name], "="))
-	}
-	return strings.Join(labels, " ")
 }
 
 func plural(n int, what string) string {
