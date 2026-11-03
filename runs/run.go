@@ -316,7 +316,7 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 			case j.Held:
 				waits = append(waits, wait{Text: "held " + jobOf(j.Name)})
 			case j.Runner != "":
-				waits = append(waits, wait{Text: "job " + j.Full()})
+				waits = append(waits, wait{Text: "job " + jobOf(j.Name)})
 			}
 		}
 		timers := slices.SortedFunc(maps.Keys(st.Timers), func(a, b string) int {
