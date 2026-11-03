@@ -16,15 +16,27 @@ Manual       Corbie's manual, as corbie manual web serves it, in Corbie's own lo
 
 ## The look
 
-The UI is a dashboard. It uses the whole window, with a 20px margin and no column of fixed width.
+The UI is a dashboard. It uses the whole window, with a 20px margin and no column of fixed width. The page fills the window under the header: the Machines and Parts pages and a run's page fit in it, and their panels scroll inside.
 
-- Data is set in IBM Plex Mono at 13px, and labels and buttons in IBM Plex Sans. Both are in the binary, and no page of the UI fetches anything from another site.
-- A list has one line for each thing, 31px high, with a thin rule between lines.
+- Data is set in IBM Plex Mono at 13px, secondary data at 11.5px, and labels and buttons in IBM Plex Sans. Both are in the binary, and no page of the UI fetches anything from another site.
 - A page carries labels and data. It has no sentences that explain it.
 - A status is a dot and a word, and a failure adds its kind in brackets: `failed (denied)`. The dot is petrol for running, moss for done and rowan for failed.
 - A machine's type is an icon beside its name, drawn as its drawing draws the type: stages for a flow, rounded states for a statechart, and the model's star for an agent.
-- Corbie's gradient, from petrol through blue to violet, colours the icons of the types and the timeline's edge at now. The status colours are used for status only.
+- The status colours are used for status only. A blue marks the field with the keyboard, links, and the keys of a machine's text.
+- Corbie's gradient, from petrol through blue to violet, colours the icons of the types and the timeline's edge at now. No panel has a gradient or a shadow.
 - A page follows the computer's light or dark setting, with the manual's colours.
+
+Each page is built from these:
+
+```
+title line   one line, 46px, at the top of a page or a panel: icon, name, dim facts cut short with "…", buttons at the right
+panel        the plate colour with a thin border, corners of 10px
+list         one line for each thing, 31px high, with a thin rule between lines, cut short with "…"
+tabs         an underlined bar of names, to choose a view
+pills        a small group of choices, such as a time window
+button       30px high, corners of 6px; one that starts or adds something is filled in ink, one that cancels or removes has rowan text
+label        a section's name, in small capitals
+```
 
 ## Commands
 
@@ -52,13 +64,13 @@ Motion shows a change, and nothing else moves.
 
 ```
 a run that is running      its dot pulses, every 2.4s
-a line that appears        it fades in, lit in petrol that fades over 1.6s
+a line that appears        it fades in, lit in blue that fades over 1.6s
 a line that changes        it is lit for 1.2s
 a run that ends            its line is lit in its status's colour, and moves to the ended runs; its bar takes that colour
 a bar that appears         it grows from nothing at now, in 0.8s
 time passing               the timeline moves left, and the bars of running runs grow to now
 a record entry             it slides in from below, in 0.35s
-the state a run is in      its outline glows, every 2.6s
+the state a run is in      its outline pulses, every 2.6s
 a transition just taken    a dash moves along its arrow, three times
 a count that changes       it lifts and settles, in 0.5s
 another page               the pages cross-fade, in 0.18s

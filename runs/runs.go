@@ -43,7 +43,7 @@ type Config struct {
 
 type handler struct{ Config }
 
-//go:embed runs.html runs.js
+//go:embed list.html run.html runs.js
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
@@ -51,7 +51,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"pct":  func(f float64) template.CSS { return template.CSS(strings.TrimRight(strings.TrimRight(strconvF(f), "0"), ".") + "%") },
 	"px":   func(f float64) template.CSS { return template.CSS(strconvF(f) + "px") },
 	"word": func(n int, one string) string { return pluralWord(n, one) },
-}).ParseFS(files, "runs.html"))
+}).ParseFS(files, "list.html", "run.html"))
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {

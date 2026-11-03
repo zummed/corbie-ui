@@ -55,7 +55,6 @@ type handler struct {
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"last": func(i, n int) bool { return i == n-1 },
 	"base": path.Base,
 }).ParseFS(files, "machines.html", "parts.html"))
 
