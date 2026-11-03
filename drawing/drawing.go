@@ -272,7 +272,7 @@ func (d *drawn) paint(it item, b box, class string, rx float64, behind string) {
 	if it.icon == "" {
 		tx, anchor = b.cx(), "middle"
 	}
-	fmt.Fprintf(&d.shapes, `<g class="%s">%s<rect x="%s" y="%s" width="%s" height="%s" rx="%s"/><text class="title" x="%s" y="%s" text-anchor="%s">%s</text>`,
+	fmt.Fprintf(&d.shapes, `<g class="%s">%s<rect class="box" x="%s" y="%s" width="%s" height="%s" rx="%s"/><text class="title" x="%s" y="%s" text-anchor="%s">%s</text>`,
 		class, behind, num(b.x), num(b.y), num(b.w), num(b.h), num(rx), num(tx), num(ty), anchor, esc(clip(it.name, it.fits())))
 	y := ty
 	for _, l := range it.lines {
