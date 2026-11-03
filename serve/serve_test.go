@@ -360,13 +360,8 @@ func Test_serve_directory_alone_needs_no_store(t *testing.T) {
 	if w := ask(h, "GET", "/", cookie...); w.Header().Get("Location") != "/machines" {
 		t.Errorf("/ goes to %q", w.Header().Get("Location"))
 	}
-	for _, path := range []string{"/runs", "/metrics", "/controller", "/machines/test?file=a.yaml"} {
+	for _, path := range []string{"/runs", "/metrics", "/controller"} {
 		if w := ask(h, "GET", path, cookie...); w.Code != http.StatusNotFound {
-			t.Errorf("%s answered %d", path, w.Code)
-		}
-	}
-	for _, path := range []string{"/machines/save", "/machines/new", "/machines/start"} {
-		if w := ask(h, "POST", path, cookie...); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("%s answered %d", path, w.Code)
 		}
 	}

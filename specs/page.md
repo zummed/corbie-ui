@@ -46,8 +46,6 @@ Every button that changes the store runs one of Corbie's commands. Holding the p
 Cancel    $ corbie run cancel laptop-client/20261015T091204.118Z-3be1c07a2f
 ```
 
-Save and New on the Machines page write files in the directory, and run no command.
-
 ## Following the store
 
 A page that shows something that changes follows it.

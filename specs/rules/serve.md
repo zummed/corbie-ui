@@ -8,7 +8,7 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 **R-serve-03** With nothing named, a store that cannot be opened leaves the directory alone: the UI prints why, and offers Machines and Parts to read. A party or `none` named needs the store, and the UI refuses to start without it. *Test:* `serve_directory_alone_needs_no_store`
 
-**C-serve-01** A UI refuses to listen on any address but this computer's, unless `none` is named. With a client, the token runs scripts here through Test, and the UI has no TLS, so on another address the token, a secret's value and every definition in the directory would cross the network in clear text. *Test:* `serve_party_listens_on_this_computer_only`
+**C-serve-01** A UI refuses to listen on any address but this computer's, unless `none` is named. The UI has no TLS, so on another address the token, a secret's value and every definition in the directory would cross the network in clear text. *Test:* `serve_party_listens_on_this_computer_only`
 
 **C-serve-02** With both parties, the client must trust the config's controller, or the UI refuses to start. A client may trust another controller, and the list and the Controller page would then act on two stores. *Test:* `serve_client_must_trust_the_configs_controller`
 
@@ -16,7 +16,7 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 ## What each party opens
 
-**R-serve-02** Every UI but `none` opens Machines and Parts to read; no party opens Runs and /metrics where there is a store; a client edits, tests and starts on Machines, and the controller opens the Controller page; a page the UI may not offer answers that there is no such page. *Test:* `serve_each_party_opens_its_pages`
+**R-serve-02** Every UI but `none` opens Machines and Parts to read; no party opens Runs and /metrics where there is a store; the controller opens the Controller page; a page the UI may not offer answers that there is no such page. *Test:* `serve_each_party_opens_its_pages`
 
 **C-serve-04** A value from a page that begins with `-` is refused before any command runs. Corbie's command line reads flags anywhere among a command's arguments, so a value such as `--config=/tmp/other` would run the command as another config's party. *Test:* `serve_page_value_cannot_become_a_flag`
 
@@ -34,4 +34,4 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 ## Interfaces
 
-Serving uses every other area: it gives Runs, Machines, Controller and Metrics the list of runs, the parties, the directory and the way a command runs, and serves the assets of Pages.
+Serving uses every other area: it gives Runs and Metrics the list of runs, Runs, Machines and Controller the parties, Runs and Controller the way a command runs, Machines the directory, and serves the assets of Pages.
