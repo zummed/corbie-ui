@@ -1,75 +1,54 @@
 {{define "summary"}}<div class="head" id="summary">
   {{template "icon" .Run.Type}}<span>{{.Run.Machine}}</span><span class="dim">{{.Run.Type}}</span>
   {{template "status" .Run}}
-  <span class="facts"><span title="{{.Run.ID}}">{{.Row.Who}}/{{.Row.Stamp}}</span>
-  <span>step {{.Run.Step}}</span>
-  <span>started {{.Started}}{{if .Ended}}, ended {{.Ended}}{{end}}</span>
-  {{if .Labels}}<span title="{{.Labels}}">{{.Labels}}</span>{{end}}
-  {{if .Run.Parent}}<a href="/run/{{.Run.Parent}}" title="{{.Run.Parent}}">under {{.Run.Parent}}</a>{{end}}</span>
+  {{if .Run.Key}}<span class="key" title="{{.Run.Key}}">{{.Run.Key}}</span>{{end}}
+  <span class="facts"><span title="{{.Run.ID}}">{{.Run.ID}}</span><span>started {{.Started}}</span>{{if .Ended}}<span>ended {{.Ended}}</span><span>took {{.Took}}</span>{{end}}</span>
   <span class="acts">{{if .Cancel}}<form data-act method="post" action="/run/{{.Run.ID}}/cancel"><span class="said"></span><button class="btn stop" data-cmd="{{cmd .Cancel}}">Cancel</button></form>{{end}}</span>
 </div>{{end}}
+
+{{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}<span class="dim">›</span>{{end}}<a href="/run/{{.ID}}" title="{{.ID}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
 
 {{define "drawing"}}<div class="panel drawn" id="drawing">{{if .Drawing}}{{.Drawing}}{{else}}<p class="dim">{{if .Mine}}no drawing{{else}}a run another client started: only its status can be read{{end}}</p>{{end}}</div>{{end}}
 
 {{define "waits"}}<div class="panel" id="waits">
-  {{if .Run.HasEnded}}
-    <div class="head"><h2>Ended</h2></div>
-    <div class="wait">{{template "status" .Run}}{{if .Run.Error}}<span class="what">{{.Run.Error}}</span>{{end}}</div>
-  {{else}}
-    <div class="head"><h2>Waiting on</h2></div>
-    {{range .Tickets}}<div class="wait"><span>ticket {{.Name}}</span><code class="value" title="the ticket's value: whoever has it can answer">{{.Value}}</code>
-      <form data-act="reset" method="post" action="/run/{{$.Run.ID}}/reply"><input type="hidden" name="ticket" value="{{.Value}}"><input name="value" placeholder="answer, as JSON" size="16"><button class="btn sm" data-cmd="corbie run reply {{$.Run.ID}} {{.Value}} &lt;answer&gt;">Reply</button><span class="said"></span></form></div>{{end}}
-    {{range .Timers}}<div class="wait"><span>timer {{.}}</span></div>{{end}}
-    {{if .Run.Jobs}}<div class="wait"><span>{{.Run.Jobs}} {{word .Run.Jobs "job"}} on runners</span></div>{{end}}
-    {{if not (or .Tickets .Timers .Run.Jobs)}}<div class="wait"><span class="dim">{{if .Run.Tickets}}ticket {{range .Run.Tickets}}{{.}} {{end}}{{else}}nothing{{end}}</span></div>{{end}}
-    {{if .Reply}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/reply"><input name="ticket" placeholder="a ticket's value" size="20" required><input name="value" placeholder="answer, as JSON" size="16"><button class="btn" data-cmd="corbie run reply {{.Run.ID}} &lt;ticket&gt; &lt;answer&gt;">Reply</button><span class="said"></span></form>{{end}}
-    {{if .Act}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/send"><input name="event" placeholder="event" size="12" required><input name="data" placeholder="data, as JSON" size="18"><button class="btn" data-cmd="corbie run send {{.Run.ID}} &lt;event&gt; &lt;data&gt;">Send</button><span class="said"></span></form>{{end}}
-  {{end}}
+  <div class="head"><h2>Waiting on</h2></div>
+  <div class="waitlist">
+  {{if .Run.HasEnded}}<div class="wait dim">nothing: the run has ended</div>{{end}}
+  {{range .Tickets}}<div class="wait"><span>ticket {{.Name}}</span><code class="value" title="the ticket's value: whoever has it can answer">{{.Value}}</code>
+    <form data-act="reset" method="post" action="/run/{{$.Run.ID}}/reply"><input type="hidden" name="ticket" value="{{.Value}}"><input name="value" placeholder="answer, as JSON" size="16"><button class="btn sm" data-cmd="corbie run reply {{$.Run.ID}} {{.Value}} &lt;answer&gt;">Reply</button><span class="said"></span></form></div>{{end}}
+  {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}</div>{{end}}
+  {{if not (or .Run.HasEnded .Tickets .Waits)}}<div class="wait dim">nothing</div>{{end}}
+  </div>
+  {{if .Reply}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/reply"><input name="ticket" placeholder="a ticket's value" size="20" required><input name="value" placeholder="answer, as JSON" size="16"><button class="btn" data-cmd="corbie run reply {{.Run.ID}} &lt;ticket&gt; &lt;answer&gt;">Reply</button><span class="said"></span></form>{{end}}
+  {{if .Send}}<form class="send" data-act="reset" method="post" action="/run/{{.Run.ID}}/send"><input name="event" placeholder="event" size="12" required><input name="data" placeholder="data, as JSON" size="18"><button class="btn" data-cmd="corbie run send {{.Run.ID}} &lt;event&gt; &lt;data&gt;">Send</button><span class="said"></span></form>{{end}}
+  {{if .Labels}}<dl class="labels">{{range .Labels}}<dt>{{.Name}}</dt><dd title="{{.Value}}">{{.Value}}</dd>{{end}}</dl>{{end}}
 </div>{{end}}
 
-{{define "record"}}<ol class="record" id="record">{{range .Lines}}<li data-key="{{.Key}}"><span class="t">{{.Time}}</span><span class="i">{{.Short}}</span><span class="n">{{if .Step}}{{.Step}}{{end}}</span><span class="w{{if .End}} end{{end}}">{{if eq .Way "in"}}<b>&lt;-</b> {{else if eq .Way "out"}}<b>-&gt;</b> {{end}}{{.Text}}</span></li>{{else}}<li class="dim"><span></span><span></span><span></span><span>{{if .Mine}}nothing yet{{else}}only the client that started a run can read its record{{end}}</span></li>{{end}}</ol>{{end}}
+{{define "record"}}<ol class="record" id="record">{{range .Lines}}<li data-key="{{.Key}}"><span class="t">{{.Time}}</span><span class="i" title="{{.Machine}}">{{.Machine}}</span><span class="n">{{if .Step}}{{.Step}}{{end}}</span><span class="w{{if .End}} end {{.End}}{{end}}">{{if eq .Way "in"}}<b>&lt;-</b> {{else if eq .Way "out"}}<b>-&gt;</b> {{end}}{{.Text}}</span></li>{{else}}<li class="dim"><span></span><span></span><span></span><span>{{if .Mine}}nothing yet{{else}}only the client that started a run can read its record{{end}}</span></li>{{end}}</ol>{{end}}
 
 {{define "output"}}<div class="out" id="output">
   {{if .Run.Refused}}<dl class="refusal"><dt>refused</dt><dd>{{.Run.Refused}}</dd><dt>by</dt><dd>{{.Run.Layer}}</dd><dt>fix</dt><dd>{{.Run.Fix}}</dd></dl>
   {{else if .Run.Error}}<dl class="refusal"><dt>error</dt><dd>{{.Run.Error}}</dd></dl>{{end}}
   {{if .Output}}<pre class="json">{{.Output}}</pre>{{else if not .Run.Error}}<p class="dim">{{if .Run.HasEnded}}no output{{else}}no output yet{{end}}</p>{{end}}
   {{if .Used}}<p class="dim">used: {{.Used}}</p>{{end}}
+  {{if .Files}}<table class="list files"><thead><tr><th>Files</th><th></th><th></th></tr></thead><tbody>{{range .Files}}<tr><td><a href="{{.Href}}" download>{{.Path}}</a></td><td class="dim">{{.Type}}</td><td class="dim num">{{.Size}}</td></tr>{{end}}</tbody></table>{{end}}
 </div>{{end}}
 
-{{define "shape"}}<pre class="json" id="shape">{{.Shape}}</pre>{{end}}
-
-{{define "files"}}<table class="list" id="files"><tbody>{{range .Files}}<tr><td><a href="{{.Href}}" download>{{.Path}}</a></td><td class="dim">{{.Type}}</td><td class="dim num">{{.Size}}</td></tr>{{else}}<tr><td class="dim">{{if .Run.HasEnded}}no files{{else}}its files are listed when it ends{{end}}</td></tr>{{end}}</tbody></table>{{end}}
-
-{{define "child"}}<tr data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="{{.Href}}"{{if .Child}} class="child"{{end}}>
-<td>{{template "status" .}}</td><td class="m">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</td><td class="run"><span class="who">{{.Who}}/</span>{{.Stamp}}</td><td class="num">{{.Step}}</td>
-{{- if .Ended}}<td class="dim">{{.When}}</td><td class="dim">{{.Took}}</td><td></td>
-{{- else}}<td>{{if .Waits}}{{.Waits}}{{else}}<span class="dim">—</span>{{end}}</td><td class="tag">{{.Labels}}</td><td class="dim">{{.When}}</td>{{end}}</tr>{{end}}
-
-{{define "now"}}{{with .Now}}<div class="now" id="now">
-  <div class="hero"><b data-count="running">{{.Running}}</b><span>running</span></div>
-  <h2>Waiting on</h2>
-  <div class="waits">
-    <b data-count="jobs">{{.Jobs}}</b><span>{{word .Jobs "job"}}</span>
-    <b data-count="timers">{{.Timers}}</b><span>{{word .Timers "timer"}}</span>
-    <b data-count="tickets">{{.Tickets}}</b><span>{{word .Tickets "ticket"}}</span>
-  </div>
-</div>{{end}}{{end}}
-
-{{define "children"}}<table class="list runs" id="children"><colgroup><col class="status"><col class="machine"><col class="run"><col class="step"></colgroup><tbody>{{range .Children}}{{template "child" .}}{{else}}<tr><td class="dim" colspan="4">no children</td></tr>{{end}}</tbody></table>{{end}}
+{{define "children"}}<table class="list kids" id="children"><tbody>{{range .Children}}<tr data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="/run/{{.ID}}">
+<td>{{template "status" .}}</td><td title="{{.ID}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</td><td class="dim num">{{.When}}</td><td class="dim num">{{.Took}}</td></tr>{{else}}<tr><td class="dim">no children</td></tr>{{end}}</tbody></table>{{end}}
 
 {{define "run"}}
 {{template "summary" .}}
+{{template "path" .}}
 <div class="split">
   <div class="stack">
     {{template "drawing" .}}
     {{template "waits" .}}
   </div>
   <div class="panel tabbed">
-    <nav class="tabs"><a href="#record" aria-current="true">Record</a><a href="#output">Output</a><a href="#definition">Definition</a><a href="#files">Files</a><a href="#children">Children</a></nav>
+    <nav class="tabs"><a href="#record" aria-current="true">Record</a><a href="#output">Output</a><a href="#children">Children</a></nav>
     <div class="scroll pane" data-pane="record">{{template "record" .}}</div>
     <div class="scroll pane" data-pane="output" hidden>{{template "output" .}}</div>
-    <div class="scroll pane" data-pane="definition" hidden>{{template "shape" .}}</div>
-    <div class="scroll pane" data-pane="files" hidden>{{template "files" .}}</div>
     <div class="scroll pane" data-pane="children" hidden>{{template "children" .}}</div>
   </div>
 </div>

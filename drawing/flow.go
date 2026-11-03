@@ -79,10 +79,7 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 	for _, n := range names {
 		s := f.Stages[n]
 		it := item{name: n}
-		w.describe(&it, s.Job)
-		if s.Job != nil {
-			it.href, it.in = w.open(n, s.Job.Machine)
-		}
+		w.describe(&it, n, s.Job)
 		if s.When != "" {
 			it.title = "when: " + s.When
 		}
@@ -125,7 +122,7 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 	}
 	stages := map[string]string{}
 	if run != nil {
-		if m, ok := shown(run.Shown, "stages").(map[string]any); ok {
+		if m, ok := shown(run.latest(), "stages").(map[string]any); ok {
 			for n, s := range m {
 				stages[n], _ = s.(string)
 			}
@@ -143,10 +140,10 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 		behind := ""
 		if s.Each != nil || s.Emits != "" || s.Blob != nil {
 			for _, off := range []float64{8, 4} {
-				behind += fmt.Sprintf(`<rect class="behind" x="%s" y="%s" width="%s" height="%s" rx="4"/>`, num(b.x+off), num(b.y-off), num(b.w), num(b.h))
+				behind += fmt.Sprintf(`<rect class="behind" x="%s" y="%s" width="%s" height="%s" rx="%s"/>`, num(b.x+off), num(b.y-off), num(b.w), num(b.h), num(cardR))
 			}
 		}
-		d.paint(items[n], b, class, 4, behind)
+		d.paint(items[n], b, class, cardR, behind)
 		d.reach(box{x: b.x, y: b.y, w: b.w + 8, h: b.h})
 	}
 	return d

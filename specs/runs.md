@@ -29,17 +29,32 @@ Pointing at a bar lights the run's line in the list, and pointing at a line ligh
 
 ## One run
 
-A run's page opens from its line in the list. The line at its top is the run: its machine and type, status, ID, step, when it started or ended, and its labels.
+A run's page opens from its line in the list. Its top line is the run: its machine, type, status and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
+
+```
+chat › message › answer › helper › approval › ask › question
+```
+
+The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. The run itself is in bold.
 
 - The drawing of its machine shows the state it is in (see Drawing).
-- What it waits on is listed: each ticket with its value, to hand to whoever should answer; each timer by its name and its time, as the definition writes it; and the number of jobs on runners.
-- Record lists every entry as it is written, its children's included, in the words `corbie run show --record` prints.
-- Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix.
-- Definition shows the definition it was started from, in full form.
-- Files lists the files of its result. Each is given as a download, as `corbie run show --save` fetches it, and is never shown in a page.
-- Children lists the runs it started, as lines of the list.
+- What it waits on is listed, and its labels below that.
+- Record lists every entry as it is written, its children's included, in the words `corbie run show --record` prints. Each entry is named by its run's machine, and the line a run ends with is in its status's colour.
+- Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
+- Children lists the runs it started, with each one's status and when it started or ended.
 
-A run that another client started shows its status, step, what it waits on and its children, and nothing from its record.
+A running run waits on these:
+
+```
+ticket verdict                      a ticket, with its value to hand to whoever should answer
+child question                      a running child, linked
+job find                            a script on a runner
+held tell                           a tool held for the ask
+timer unanswered due 10 Nov 20:29   a timer, by when it is due
+events at key question:9de2a8913b   events sent to its key
+```
+
+A run that another client started shows its status, its path, its children and its labels, and nothing from its record. Its jobs and timers are counted and its tickets named.
 
 ## Acting on a run
 
@@ -48,6 +63,8 @@ Reply    answers a ticket, by its value, with an answer   corbie run reply <id> 
 Send     sends the run an event, with data                corbie run send <id> <event> <data>
 Cancel   cancels the run                                  corbie run cancel <id>
 ```
+
+Send is on the page of a running statechart the UI's client started, and of no other run.
 
 On a run the UI's client started, each ticket's value is filled in. On any other running run, Reply takes a ticket's value typed in, as a client that was handed one answers it. An answer and an event's data are typed as JSON.
 

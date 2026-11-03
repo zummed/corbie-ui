@@ -11,35 +11,41 @@ import (
 )
 
 // A line is one line of a run's record, in the words `corbie run show
-// --record` prints: when, which instance, the step, which way it went, and
-// what.
+// --record` prints: when, which run by its machine, the step, which way it
+// went, and what. The line a run ends with has its status.
 type line struct {
-	Key   string
-	Time  string
-	Short string
-	Step  int
-	Way   string // "in" for what arrived, "out" for what the step asked
-	Text  string
-	End   bool
+	Key     string
+	Time    string
+	Machine string
+	Step    int
+	Way     string // "in" for what arrived, "out" for what the step asked
+	Text    string
+	End     string
 }
 
 // lines gives an entry of a record as Corbie's command line prints it,
-// which it keeps to itself.
-func lines(e client.Entry) []line {
+// which it keeps to itself, with the run named by its machine where names
+// gives it.
+func lines(e client.Entry, names map[string]string) []line {
 	at := e.Time.Local().Format("15:04:05")
-	short := e.ID[strings.LastIndexByte(e.ID, '-')+1:]
-	key := func(i int) string { return e.ID + "/" + strconv.Itoa(e.Step) + "/" + e.Job + "/" + e.Name + "/" + strconv.Itoa(i) }
+	short := names[e.ID]
+	if short == "" {
+		short = e.ID[strings.LastIndexByte(e.ID, '-')+1:]
+	}
+	key := func(i int) string {
+		return e.ID + "/" + strconv.Itoa(e.Step) + "/" + e.Job + "/" + e.Name + "/" + strconv.Itoa(i)
+	}
 	if e.Step == 0 {
 		data, _ := json.Marshal(e.Data, json.Deterministic(true))
 		text := string(data)
 		if s, ok := e.Data.(string); ok {
 			text = s
 		}
-		return []line{{Key: key(0), Time: at, Short: short, Text: fmt.Sprintf("%s %s: %s", e.Job, e.Name, text)}}
+		return []line{{Key: key(0), Time: at, Machine: short, Text: fmt.Sprintf("%s %s: %s", e.Job, e.Name, text)}}
 	}
 	var out []line
 	add := func(way, text string) {
-		out = append(out, line{Key: key(len(out)), Time: at, Short: short, Step: e.Step, Way: way, Text: text})
+		out = append(out, line{Key: key(len(out)), Time: at, Machine: short, Step: e.Step, Way: way, Text: text})
 	}
 	for _, event := range e.Events {
 		text := event.Name
@@ -88,7 +94,7 @@ func lines(e client.Entry) []line {
 	}
 	if e.Status != instance.Running {
 		add("", e.Status)
-		out[len(out)-1].End = true
+		out[len(out)-1].End = e.Status
 	}
 	return out
 }

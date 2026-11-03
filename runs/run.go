@@ -1,13 +1,14 @@
 package runs
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"html/template"
 	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,38 +17,59 @@ import (
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
-	"github.com/zummed/corbie/statechart"
 	"github.com/zummed/corbie/store"
 )
 
+// runParts are the parts of a run's page that follow the run.
+var runParts = []string{"summary", "path", "drawing", "waits", "record", "output", "children"}
+
 // runView is a run's page as it is drawn.
 type runView struct {
-	Row      row
-	Run      *client.Run
-	Mine     bool
-	Labels   string
-	Started  string
-	Ended    string
-	Drawing  template.HTML
-	Tickets  []ticket
-	Timers   []string
-	Lines    []line
-	Output   string
-	Used     string
-	Shape    string
-	Files    []file
-	Children []row
-	Cancel   *page.Call
-	Act      bool
-	Reply    bool
+	Run                  *client.Run
+	Mine                 bool
+	Started, Ended, Took string
+	Path                 []link
+	Drawing              template.HTML
+	Tickets              []ticket
+	Waits                []wait
+	Labels               []label
+	Lines                []line
+	Output               string
+	Used                 string
+	Files                []file
+	Children             []child
+	Cancel               *page.Call
+	Send, Reply          bool
+}
+
+// A link is a run named by its machine, as the path and the waits show it.
+type link struct {
+	ID, Machine, Type string
+	This              bool
 }
 
 type ticket struct{ Name, Value string }
 
+// A wait is one thing a run waits on, in words, and the run it is where it
+// is one.
+type wait struct {
+	Text string
+	Run  *link
+}
+
+type label struct{ Name, Value string }
+
 type file struct {
 	Path, Type, Size, Href string
+}
+
+// A child is a run another started, as its parent's page lists it.
+type child struct {
+	ID, Status, Failure, Machine, Type, When, Took string
+	Ended                                          bool
 }
 
 // record is what a run's page has read of its record, as it is read.
@@ -79,14 +101,42 @@ func (r *record) Changed() <-chan struct{} {
 	return r.changed
 }
 
+// reading is what a run's page has read of a run the UI's client started,
+// kept while the page is open: its latest step, read again when the run
+// takes another, and its definition, which never changes.
+type reading struct {
+	step *instance.Step
+	def  *machine.Definition
+}
+
+// read reads a run's latest step, and its definition once. A run with no
+// step yet, or one sealed to a key the client no longer has, has neither.
+func (h *handler) read(ctx context.Context, id string, number int, r *reading) error {
+	if r.step != nil && r.step.Number >= number {
+		return nil
+	}
+	step, err := instance.Latest(ctx, h.Client.Store, h.Client.Controller, h.Client.ID, id, number)
+	if errors.Is(err, identity.ErrNotForUs) {
+		return nil
+	}
+	if err != nil || step == nil {
+		return err
+	}
+	r.step = step
+	if r.def == nil {
+		r.def, err = machine.Load(ctx, h.Client.Store, step.State.Definition)
+	}
+	return err
+}
+
 // mine says whether the UI's client started a run, and so may read it all.
 func (h *handler) mine(id string) bool {
 	return h.Client != nil && store.InstanceClient(id) == h.Client.ID.Name
 }
 
 // runOf reads what a run's page shows: everything for a run the UI's
-// client started, and its status for any other.
-func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry) (runView, error) {
+// client started, and what the list says of any other.
+func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, r *reading) (runView, error) {
 	at := time.Now()
 	v := runView{Mine: h.mine(id)}
 	c := h.Lister
@@ -97,105 +147,228 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry) 
 	if err != nil {
 		return v, err
 	}
-	v.Run, v.Row = run, rowOf(run, false, at)
-	v.Labels = labelsOf(run)
-	v.Started = run.Started.Local().Format("15:04:05")
+	v.Run = run
+	v.Started = clock(run.Started, at)
 	if run.HasEnded() {
-		v.Ended = run.Ended.Local().Format("15:04:05")
+		v.Ended, v.Took = clock(run.Ended, at), took(run.Ended.Sub(run.Started))
+	}
+	for _, name := range slices.Sorted(maps.Keys(run.Labels)) {
+		v.Labels = append(v.Labels, label{Name: name, Value: run.Labels[name]})
 	}
 	runs, _ := h.List.Runs()
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	v.Path = pathOf(run, runs, byID)
 	for _, r := range runs {
 		if r.Parent == id {
-			v.Children = append(v.Children, rowOf(r, false, at))
+			v.Children = append(v.Children, childOf(r, at))
 		}
 	}
-	slices.SortFunc(v.Children, func(a, b row) int { return strings.Compare(a.Stamp, b.Stamp) })
+	slices.SortFunc(v.Children, func(a, b child) int { return strings.Compare(a.ID, b.ID) })
 
 	v.Reply = h.Client != nil && !run.HasEnded() && !v.Mine
 	switch {
 	case !run.HasEnded() && v.Mine:
-		v.Act = true
+		v.Send = sends(run)
 		v.Cancel = &page.Call{Words: []string{"run", "cancel"}, Args: []string{id}}
 	case !run.HasEnded() && h.Controller:
 		v.Cancel = &page.Call{Words: []string{"controller", "cancel"}, Args: []string{id}}
 	}
 	if !v.Mine {
+		v.Waits = waitsOf(run, nil, runs, at)
 		return v, nil
 	}
 
+	if err := h.read(ctx, id, run.Step, r); err != nil {
+		return v, err
+	}
+	var st *instance.State
+	if r.step != nil && !run.HasEnded() {
+		st = &r.step.State
+	}
+	v.Waits = waitsOf(run, st, runs, at)
+	if r.def != nil {
+		v.Drawing, err = drawing.Draw(r.def, marksOf(id, entries, run, st, byID))
+		if err != nil {
+			return v, err
+		}
+	}
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))
 		v.Output = indent(data)
 	}
 	v.Used = strings.Join(run.Used, " ")
-	def, err := h.Client.Definition(ctx, id)
-	if err == nil {
-		data, _ := json.Marshal(def, json.Deterministic(true))
-		v.Shape = indent(data)
-		v.Drawing, _ = drawing.Draw(def, marksOf(id, entries, run))
-		v.Timers = timersOf(def, entries, id, run)
-	}
 	if !run.HasEnded() && len(run.Tickets) > 0 {
 		tickets, err := h.Client.Tickets(ctx, id)
-		if err == nil {
-			for _, name := range slices.Sorted(maps.Keys(tickets)) {
-				v.Tickets = append(v.Tickets, ticket{Name: name, Value: tickets[name]})
-			}
+		if err != nil {
+			return v, err
+		}
+		for _, name := range slices.Sorted(maps.Keys(tickets)) {
+			v.Tickets = append(v.Tickets, ticket{Name: name, Value: tickets[name]})
 		}
 	}
 	if run.HasEnded() {
 		files, err := h.Client.Files(ctx, id)
-		if err == nil {
-			paths := slices.Sorted(maps.Keys(files))
-			for _, p := range paths {
-				f := files[p]
-				v.Files = append(v.Files, file{Path: p, Type: f.Type, Size: size(f.Size), Href: "/run/" + id + "/file?path=" + template.URLQueryEscaper(p)})
-			}
+		if err != nil {
+			return v, err
+		}
+		for _, p := range slices.Sorted(maps.Keys(files)) {
+			f := files[p]
+			v.Files = append(v.Files, file{Path: p, Type: f.Type, Size: size(f.Size), Href: "/run/" + id + "/file?path=" + template.URLQueryEscaper(p)})
+		}
+	}
+	names := map[string]string{}
+	for _, e := range entries {
+		if r := byID[e.ID]; r != nil {
+			names[e.ID] = r.Machine
 		}
 	}
 	for _, e := range entries {
-		v.Lines = append(v.Lines, lines(e)...)
+		v.Lines = append(v.Lines, lines(e, names)...)
 	}
 	return v, nil
 }
 
-// marksOf gives what a run shows of its state, from the steps of its own
-// record, for its drawing.
-func marksOf(id string, entries []client.Entry, run *client.Run) *drawing.Run {
-	var steps []client.Entry
-	for _, e := range entries {
-		if e.ID == id && e.Step > 0 {
-			steps = append(steps, e)
-		}
+// sends says whether a run of the UI's client is offered Send: only a
+// running statechart is.
+func sends(run *client.Run) bool { return !run.HasEnded() && run.Type == "statechart" }
+
+// pathOf gives the runs from a run's root down to it, by parent, and on
+// from it to the deepest running run, by the newest running child at each
+// level.
+func pathOf(run *client.Run, runs []*client.Run, byID map[string]*client.Run) []link {
+	path := []link{{ID: run.ID, Machine: run.Machine, Type: run.Type, This: true}}
+	seen := map[string]bool{run.ID: true}
+	for up := byID[run.Parent]; up != nil && !seen[up.ID]; up = byID[up.Parent] {
+		seen[up.ID] = true
+		path = slices.Insert(path, 0, link{ID: up.ID, Machine: up.Machine, Type: up.Type})
 	}
-	if len(steps) == 0 {
+	for at := run.ID; ; {
+		var next *client.Run
+		for _, r := range runs {
+			if r.Parent == at && !r.HasEnded() && !seen[r.ID] && (next == nil || r.Started.After(next.Started)) {
+				next = r
+			}
+		}
+		if next == nil {
+			return path
+		}
+		seen[next.ID] = true
+		path = append(path, link{ID: next.ID, Machine: next.Machine, Type: next.Type})
+		at = next.ID
+	}
+}
+
+// waitsOf gives what a running run waits on, but its tickets: each running
+// child, each job by its name, each timer with when it is due, and events
+// at its key. With no state, as for a run another client started, its jobs
+// and timers are only counted.
+func waitsOf(run *client.Run, st *instance.State, runs []*client.Run, at time.Time) []wait {
+	if run.HasEnded() {
 		return nil
 	}
-	m := &drawing.Run{Ended: run.HasEnded()}
-	latest := steps[len(steps)-1]
-	m.Shown = plain(latest.Shown)
-	if len(steps) > 1 {
-		m.Before = plain(steps[len(steps)-2].Shown)
-	}
-	for _, e := range latest.Events {
-		m.Events = append(m.Events, e.Name)
-	}
-	for _, a := range latest.Asks {
-		if a.Kind == instance.AskScript || a.Kind == instance.AskChild {
-			m.Asked = append(m.Asked, a.Name)
+	var waits []wait
+	for _, r := range runs {
+		if r.Parent == run.ID && !r.HasEnded() {
+			waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: r.Machine, Type: r.Type}})
 		}
 	}
-	for _, s := range steps {
-		if shown, ok := plain(s.Shown).(map[string]any); ok {
-			names, _ := shown["states"].([]any)
-			for _, n := range names {
-				if name, ok := n.(string); ok && !slices.Contains(m.Entered, name) {
-					m.Entered = append(m.Entered, name)
-				}
+	if st == nil {
+		if len(run.Tickets) > 0 {
+			waits = append(waits, wait{Text: "ticket " + strings.Join(run.Tickets, ", ")})
+		}
+		if run.Jobs > 0 {
+			waits = append(waits, wait{Text: plural(run.Jobs, "job")})
+		}
+		if run.Timers > 0 {
+			waits = append(waits, wait{Text: plural(run.Timers, "timer")})
+		}
+	} else {
+		for _, name := range slices.Sorted(maps.Keys(st.Jobs)) {
+			switch j := st.Jobs[name]; {
+			case j.Held:
+				waits = append(waits, wait{Text: "held " + jobOf(j.Name)})
+			case j.Runner != "":
+				waits = append(waits, wait{Text: "job " + j.Full()})
+			}
+		}
+		timers := slices.SortedFunc(maps.Keys(st.Timers), func(a, b string) int {
+			return cmp.Or(st.Timers[a].At.Compare(st.Timers[b].At), strings.Compare(a, b))
+		})
+		for _, name := range timers {
+			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + clock(st.Timers[name].At, at)})
+		}
+	}
+	if run.Key != "" {
+		waits = append(waits, wait{Text: "events at key " + run.Key})
+	}
+	return waits
+}
+
+// marksOf gives what a run shows of its state, from the steps of its own
+// record and the jobs going, for its drawing.
+func marksOf(id string, entries []client.Entry, run *client.Run, st *instance.State, byID map[string]*client.Run) *drawing.Run {
+	m := &drawing.Run{Ended: run.HasEnded(), Children: map[string]drawing.Child{}}
+	for _, e := range entries {
+		if e.ID != id || e.Step == 0 {
+			continue
+		}
+		s := drawing.Step{Shown: plain(e.Shown)}
+		for _, event := range e.Events {
+			s.Events = append(s.Events, event.Name)
+		}
+		for _, a := range e.Asks {
+			if a.Kind != instance.AskScript && a.Kind != instance.AskChild {
+				continue
+			}
+			s.Asked = append(s.Asked, jobOf(a.Name))
+			if r := byID[a.Child]; r != nil {
+				m.Children[jobOf(a.Name)] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
+			}
+		}
+		m.Steps = append(m.Steps, s)
+	}
+	if st != nil {
+		for _, name := range slices.Sorted(maps.Keys(st.Jobs)) {
+			j := st.Jobs[name]
+			m.Going = append(m.Going, jobOf(j.Name))
+			if j.Held {
+				m.Held = append(m.Held, jobOf(j.Name))
 			}
 		}
 	}
 	return m
+}
+
+// jobOf gives the name of what asked for a job or set a timer, as the
+// definition writes it: without what tells its calls, attempts, items and
+// states apart.
+func jobOf(name string) string {
+	if i := strings.IndexAny(name, "#@~[."); i > 0 {
+		return name[:i]
+	}
+	return name
+}
+
+func childOf(r *client.Run, at time.Time) child {
+	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
+	c.When = when(r.Started, at)
+	if r.HasEnded() {
+		c.When, c.Took = when(r.Ended, at), took(r.Ended.Sub(r.Started))
+	}
+	return c
+}
+
+// clock is a time as a run's page shows it: the time of day near now, and
+// the date and the time further off.
+func clock(t, at time.Time) string {
+	t = t.Local()
+	if d := at.Sub(t); d < 20*time.Hour && d > -20*time.Hour {
+		return t.Format("15:04:05")
+	}
+	return t.Format("2 Jan 15:04")
 }
 
 // plain gives what a type shows as JSON reads it: the drawing reads lists,
@@ -209,48 +382,6 @@ func plain(v any) any {
 	var out any
 	json.Unmarshal(data, &out)
 	return out
-}
-
-// timersOf gives the timers a statechart run waits on, each with its time
-// as the definition writes it: those of the states it is in.
-func timersOf(def *machine.Definition, entries []client.Entry, id string, run *client.Run) []string {
-	if def.Type != "statechart" || run.Timers == 0 {
-		return nil
-	}
-	m := marksOf(id, entries, run)
-	if m == nil {
-		return nil
-	}
-	var chart statechart.Chart
-	if json.Unmarshal(def.Body, &chart) != nil {
-		return nil
-	}
-	states := map[string]*statechart.State{}
-	var walk func(map[string]*statechart.State)
-	walk = func(in map[string]*statechart.State) {
-		for name, s := range in {
-			states[name] = s
-			if s != nil {
-				walk(s.States)
-			}
-		}
-	}
-	walk(chart.States)
-	shown, _ := m.Shown.(map[string]any)
-	active, _ := shown["states"].([]any)
-	var timers []string
-	for _, a := range active {
-		name, _ := a.(string)
-		s := states[name]
-		if s == nil {
-			continue
-		}
-		for _, t := range slices.Sorted(maps.Keys(s.Timers)) {
-			timers = append(timers, t+", "+s.Timers[t])
-		}
-	}
-	sort.Strings(timers)
-	return timers
 }
 
 func indent(data []byte) string {

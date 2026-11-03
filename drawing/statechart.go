@@ -2,6 +2,7 @@ package drawing
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"path"
 	"slices"
@@ -68,7 +69,7 @@ func drawChart(c *statechart.Chart, run *Run, w *walker) drawn {
 			if r.send {
 				classes = append(classes, "send")
 			}
-			if marks.taken(r) && !slices.Contains(classes, "taken") {
+			if marks.taken[r] && !slices.Contains(classes, "taken") {
 				classes = append(classes, "taken")
 			}
 		}
@@ -145,7 +146,7 @@ func (ch *chart) write(marks chartMarks) {
 			text = b.label() + " ↩ " + b.to
 		}
 		it := ch.items[b.from]
-		it.notes = append(it.notes, note{text: clip(text, longest+6), taken: slices.ContainsFunc(b.rules, marks.taken)})
+		it.notes = append(it.notes, note{text: clip(text, longest+6), taken: slices.ContainsFunc(b.rules, func(r rule) bool { return marks.taken[r] })})
 		ch.items[b.from] = it
 	}
 }
@@ -221,11 +222,11 @@ func (ch *chart) sent(holder, name, event string, sends []statechart.Send) {
 		ch.states[key] = &statechart.State{Job: &machine.JobSpec{Machine: send.Machine}}
 		ch.parent[key] = holder
 		ch.kids[holder] = append(ch.kids[holder], key)
-		it := item{name: path.Base(send.Machine), icon: "flow", lines: []string{"send " + send.Event}}
-		if ch.walker != nil && ch.walker.draft.Children[send.Machine] != nil {
-			it.icon = ch.walker.draft.Children[send.Machine].Definition.Type
+		it := item{name: path.Base(send.Machine), icon: "file", lines: []string{"send " + send.Event}}
+		if w := ch.walker; w.draft != nil && w.draft.Children[send.Machine] != nil {
+			it.icon = w.draft.Children[send.Machine].Definition.Type
+			it.href, it.in = w.open(key, send.Machine)
 		}
-		it.href, it.in = ch.walker.open(key, send.Machine)
 		ch.items[key] = it
 		ch.sends = append(ch.sends, rule{from: name, event: event, to: key, send: true})
 	}
@@ -238,18 +239,12 @@ func (ch *chart) itemOf(name string, s *statechart.State) item {
 		return it
 	}
 	it.narrow = final(s)
-	if !final(s) {
-		it.icon = "statechart"
-	}
-	ch.walker.describe(&it, s.Job)
+	ch.walker.describe(&it, name, s.Job)
 	if len(s.Jobs) > 0 {
 		it.icon = "script"
 		it.lines = append(it.lines, fit("jobs: "+strings.Join(sortedKeys(s.Jobs), ", ")))
 	}
 	it.lines = append(it.lines, tags(s)...)
-	if s.Job != nil {
-		it.href, it.in = ch.walker.open(name, s.Job.Machine)
-	}
 	return it
 }
 
@@ -266,9 +261,6 @@ func (ch *chart) member(level, name string) string {
 	}
 	return ""
 }
-
-// rules gives every rule of the chart.
-func (ch *chart) rules() []rule { return ch.all }
 
 func (ch *chart) ruleList() []rule {
 	var rules []rule
@@ -336,7 +328,7 @@ func (ch *chart) lay(level string) (float64, float64) {
 		}
 	}
 	next := map[string][]string{}
-	for _, r := range ch.rules() {
+	for _, r := range ch.all {
 		a, b := ch.member(level, r.from), ch.member(level, r.to)
 		if a != "" && b != "" && a != b && !slices.Contains(next[a], b) && !ch.noted[r] {
 			next[a] = append(next[a], b)
@@ -385,7 +377,7 @@ func (ch *chart) lay(level string) (float64, float64) {
 	// The gaps within a row are wide enough for the labels between its
 	// states.
 	sides := map[string]float64{}
-	for _, r := range ch.rules() {
+	for _, r := range ch.all {
 		a, b := ch.member(level, r.from), ch.member(level, r.to)
 		if a != "" && b != "" && a != b && row[b] == row[a] && !ch.noted[r] {
 			sides[a] = math.Max(sides[a], labelWidth(r.label())+44)
@@ -464,10 +456,10 @@ func (ch *chart) paint(d *drawn, level string, marks chartMarks) {
 			}
 		case final(s):
 			inside := box{x: b.x + 4, y: b.y + 4, w: b.w - 8, h: b.h - 8}
-			outer := fmt.Sprintf(`<rect class="outer" x="%s" y="%s" width="%s" height="%s" rx="%s"/>`, num(b.x), num(b.y), num(b.w), num(b.h), num(rounded(b)))
-			d.paint(ch.items[n], inside, class, rounded(inside), outer)
+			outer := fmt.Sprintf(`<rect class="outer" x="%s" y="%s" width="%s" height="%s" rx="%s"/>`, num(b.x), num(b.y), num(b.w), num(b.h), num(cardR))
+			d.paint(ch.items[n], inside, class, cardR-4, outer)
 		default:
-			d.paint(ch.items[n], b, class, rounded(b), "")
+			d.paint(ch.items[n], b, class, cardR, "")
 		}
 		if ch.start[level] == n {
 			fmt.Fprintf(&d.shapes, `<circle class="start" cx="%s" cy="%s" r="4"/><path class="edge" d="M%s %s V%s" marker-end="url(#ah)"/>`,
@@ -476,9 +468,6 @@ func (ch *chart) paint(d *drawn, level string, marks chartMarks) {
 		ch.paint(d, n, marks)
 	}
 }
-
-// rounded gives how round a state's corners are.
-func rounded(box) float64 { return 12 }
 
 // tags are what a state waits on, written in it: its ticket and its timers.
 func tags(s *statechart.State) []string {
@@ -497,27 +486,80 @@ func tags(s *statechart.State) []string {
 
 // chartMarks are a run's states, as the drawing marks them.
 type chartMarks struct {
-	run            *Run
-	now, was, then map[string]bool // in now, in at any step, in at the step before
+	run      *Run
+	now, was map[string]bool // in now, and in at any step
+	taken    map[rule]bool   // the rules the latest step took
 }
 
+// marks follows a run through its steps: from the states it was in before
+// each step, by the events the step took, to the states it was in after.
+// A state passed through within one step is one it was in.
 func (ch *chart) marks(run *Run) chartMarks {
-	m := chartMarks{run: run, now: map[string]bool{}, was: map[string]bool{}, then: map[string]bool{}}
-	if run == nil {
+	m := chartMarks{run: run, now: map[string]bool{}, was: map[string]bool{}, taken: map[rule]bool{}}
+	if run == nil || len(run.Steps) == 0 {
 		return m
 	}
-	with := func(into map[string]bool, names []string) {
-		for _, n := range names {
-			for ; n != ""; n = ch.parent[n] {
-				into[n] = true
+	in := ch.with(ch.entering(ch.start[""])...)
+	maps.Copy(m.was, in)
+	for _, step := range run.Steps {
+		after := ch.with(listed(shown(step.Shown, "states"))...)
+		m.taken = map[rule]bool{}
+		for _, r := range ch.took(in, step.Events, after) {
+			m.taken[r] = true
+			maps.Copy(m.was, ch.with(ch.entering(r.to)...))
+		}
+		maps.Copy(m.was, after)
+		in = after
+	}
+	m.now = in
+	return m
+}
+
+// took gives the rules a step took, an event at a time, from the states the
+// run was in before it. Where an event has rules to several states, the one
+// to a state the run is in after the step is the one taken; a rule with a
+// condition that leads to none of those is not known to be taken.
+func (ch *chart) took(in map[string]bool, events []string, after map[string]bool) []rule {
+	var taken []rule
+	for _, e := range events {
+		var found []rule
+		for _, r := range ch.all {
+			if !r.send && r.event == e && in[r.from] {
+				found = append(found, r)
 			}
 		}
+		i := slices.IndexFunc(found, func(r rule) bool { return after[r.to] })
+		if i < 0 && len(found) == 1 && found[0].when == "" {
+			i = 0
+		}
+		if i < 0 {
+			continue
+		}
+		taken = append(taken, found[i])
+		in = ch.with(ch.entering(found[i].to)...)
 	}
-	with(m.now, listed(shown(run.Shown, "states")))
-	with(m.then, listed(shown(run.Before, "states")))
-	with(m.was, run.Entered)
-	with(m.was, listed(shown(run.Shown, "states")))
-	return m
+	return taken
+}
+
+// with gives states with every state that holds them.
+func (ch *chart) with(names ...string) map[string]bool {
+	in := map[string]bool{}
+	for _, n := range names {
+		for ; n != "" && !in[n]; n = ch.parent[n] {
+			in[n] = true
+		}
+	}
+	return in
+}
+
+// entering gives a state with the state it starts in, and the state that
+// one starts in, down to a state that holds none.
+func (ch *chart) entering(name string) []string {
+	var names []string
+	for ; name != "" && !slices.Contains(names, name); name = ch.start[name] {
+		names = append(names, name)
+	}
+	return names
 }
 
 func (m chartMarks) of(name string) string {
@@ -530,12 +572,6 @@ func (m chartMarks) of(name string) string {
 		return "done"
 	}
 	return "never"
-}
-
-// taken says whether a rule is the transition the latest step took: on an
-// event it took, from a state the run was in, to one it is in now.
-func (m chartMarks) taken(r rule) bool {
-	return m.run != nil && slices.Contains(m.run.Events, r.event) && m.then[r.from] && m.now[r.to] && (r.to == r.from || !m.then[r.to])
 }
 
 // listed reads a list of names from what a type shows.
