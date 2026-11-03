@@ -123,7 +123,7 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	if h.mine(id) {
 		h.Client.Record(r.Context(), id, func(e client.Entry) { entries = append(entries, e) })
 	}
-	v, err := h.runOf(r.Context(), id, entries)
+	v, err := h.runOf(r.Context(), id, entries, &reading{})
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, client.ErrNoRun) {
@@ -156,13 +156,14 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 		go h.Client.Follow(ctx, id, h.Interval, rec.add)
 	}
 	changed := func() <-chan struct{} { return either(ctx, h.List.Changed(), rec.Changed()) }
+	read := &reading{}
 	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) ([]page.Part, error) {
-		v, err := h.runOf(ctx, id, rec.all())
+		v, err := h.runOf(ctx, id, rec.all(), read)
 		if err != nil {
 			return nil, err
 		}
 		var parts []page.Part
-		for _, id := range []string{"summary", "drawing", "waits", "record", "output", "shape", "files", "children"} {
+		for _, id := range runParts {
 			html, err := render(id, v)
 			if err != nil {
 				return nil, err

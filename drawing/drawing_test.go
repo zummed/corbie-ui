@@ -45,6 +45,15 @@ func centre(t *testing.T, svg template.HTML, name string) (float64, float64) {
 	return x, y
 }
 
+// states gives what a statechart shows at a step: the states it is in.
+func states(names ...string) map[string]any {
+	var list []any
+	for _, n := range names {
+		list = append(list, n)
+	}
+	return map[string]any{"states": list}
+}
+
 // group gives the class of the shape that holds a name.
 func group(t *testing.T, svg string, name string) string {
 	t.Helper()
@@ -133,6 +142,9 @@ func Test_drawing_statechart_arrows_name_event_condition_and_timer(t *testing.T)
 	}
 	if c := group(t, svg, "gave_up"); c != "state final failed" {
 		t.Errorf("gave_up ends failed and is drawn as %q", c)
+	}
+	if strings.Count(svg, `class="tile`) != 1 {
+		t.Errorf("a state with no job has an icon: only drafting, whose job is a script, has one:\n%s", svg)
 	}
 }
 
@@ -244,19 +256,19 @@ func Test_drawing_of_a_big_machine_is_quick(t *testing.T) {
 
 func Test_drawing_run_is_marked_on_the_drawing(t *testing.T) {
 	chart := definition(t, review, map[string]string{"write.js": script})
-	svg := draw(t, chart, &Run{Shown: map[string]any{"states": []any{"waiting"}}, Entered: []string{"drafting"}})
+	svg := draw(t, chart, &Run{Steps: []Step{{Shown: states("drafting")}, {Shown: states("waiting"), Events: []string{"done"}}}})
 	for name, want := range map[string]string{"waiting": "state now", "drafting": "state done", "approved": "state never final"} {
 		if got := group(t, svg, name); got != want {
 			t.Errorf("%s is drawn as %q, not %q", name, got, want)
 		}
 	}
-	ended := draw(t, chart, &Run{Shown: map[string]any{"states": []any{"approved"}}, Entered: []string{"drafting", "waiting"}, Ended: true})
+	ended := draw(t, chart, &Run{Steps: []Step{{Shown: states("drafting")}, {Shown: states("waiting")}, {Shown: states("approved")}}, Ended: true})
 	if got := group(t, ended, "approved"); got != "state done final" {
 		t.Errorf("the state a run ended in is drawn as %q", got)
 	}
 
 	flow := definition(t, "flow: two\nstages:\n  a: { job: ./w.js }\n  b: { job: ./w.js, follows: [a] }\n  c: { job: ./w.js, follows: [b] }\n", map[string]string{"w.js": script})
-	svg = draw(t, flow, &Run{Shown: map[string]any{"stages": map[string]any{"a": "done", "b": "running", "c": "waiting"}}})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"a": "done", "b": "running", "c": "waiting"}}}}})
 	for name, want := range map[string]string{"a": "state stage done", "b": "state stage now", "c": "state stage never"} {
 		if got := group(t, svg, name); got != want {
 			t.Errorf("stage %s is drawn as %q, not %q", name, got, want)
@@ -270,7 +282,7 @@ tools:
   shelf: { does: a shelf, args: { shelf: string }, job: ./w.js }
   helper: { does: a helper, args: { topic: string }, job: { machine: ./two.yaml } }
 `, map[string]string{"w.js": script, "two.yaml": "flow: two\nstages:\n  a: { job: ./w.js }\n"})
-	svg = draw(t, librarian, &Run{Shown: map[string]any{"turn": 2.0, "waiting": "tools"}, Asked: []string{"shelf~1"}})
+	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: map[string]any{"turn": 2.0, "waiting": "tools"}, Asked: []string{"shelf"}}}, Going: []string{"shelf"}})
 	if got := group(t, svg, "shelf"); got != "state tool now" {
 		t.Errorf("the tool the agent waits on is drawn as %q", got)
 	}
@@ -283,15 +295,43 @@ tools:
 	if !strings.Contains(svg, ">machine: ./two.yaml<") {
 		t.Errorf("the tool whose job is a machine does not say which")
 	}
+
+	// A state passed through within one step was entered: the run started
+	// in drafting and left it in its first step.
+	svg = draw(t, chart, &Run{Steps: []Step{{Shown: states("waiting"), Events: []string{"start", "done"}}}})
+	if got := group(t, svg, "drafting"); got != "state done" {
+		t.Errorf("the state the run started in and left in its first step is drawn as %q", got)
+	}
+
+	// An agent waiting on the ask: the ask is going, the tool it holds is
+	// held, and a tool used at an earlier step is done.
+	helper := definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+tools:
+  look: { does: looks, job: ./w.js }
+  idle: { does: idles, job: ./w.js }
+open:
+  messages:
+    does: messages
+    ask: { machine: ./approval.yaml }
+    tools:
+      tell: { does: tells someone, job: { script: ./w.js, approve: true } }
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+	svg = draw(t, helper, &Run{
+		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"ask"}}},
+		Going: []string{"tell", "ask"}, Held: []string{"tell"},
+	})
+	for name, want := range map[string]string{"ask": "state ask now", "tell": "state tool held", "look": "state tool done", "idle": "state tool never"} {
+		if got := group(t, svg, name); got != want {
+			t.Errorf("%s is drawn as %q, not %q", name, got, want)
+		}
+	}
 }
 
 func Test_drawing_transition_just_taken_is_marked(t *testing.T) {
 	chart := definition(t, review, map[string]string{"write.js": script})
-	svg := draw(t, chart, &Run{
-		Shown:  map[string]any{"states": []any{"waiting"}},
-		Before: map[string]any{"states": []any{"drafting"}},
-		Events: []string{"done"},
-	})
+	svg := draw(t, chart, &Run{Steps: []Step{{Shown: states("drafting")}, {Shown: states("waiting"), Events: []string{"done"}}}})
 	taken := regexp.MustCompile(`class="edge taken"`).FindAllString(svg, -1)
 	if len(taken) != 1 {
 		t.Fatalf("%d arrows are marked as taken, not one", len(taken))
@@ -303,11 +343,7 @@ func Test_drawing_transition_just_taken_is_marked(t *testing.T) {
 
 func Test_drawing_transition_back_is_marked_in_its_card(t *testing.T) {
 	chart := definition(t, review, map[string]string{"write.js": script})
-	svg := draw(t, chart, &Run{
-		Shown:  map[string]any{"states": []any{"drafting"}},
-		Before: map[string]any{"states": []any{"waiting"}},
-		Events: []string{"verdict"},
-	})
+	svg := draw(t, chart, &Run{Steps: []Step{{Shown: states("waiting")}, {Shown: states("drafting"), Events: []string{"verdict"}}}})
 	if !strings.Contains(svg, `class="note taken"`) || strings.Contains(svg, `class="edge taken"`) {
 		t.Errorf("the transition back is not marked in its card alone:\n%s", svg)
 	}
@@ -381,12 +417,11 @@ open:
 	if n := strings.Count(text, `class="edge`); n != 2 {
 		t.Errorf("%d arrows, and an agent has one from its model to its tools and one to its reply:\n%s", n, text)
 	}
-	if strings.Contains(text, "blob_read") {
-		t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
-	}
-	running, _ := Draw(def, &Run{Shown: map[string]any{"waiting": "tools"}, Asked: []string{"blob_read~1"}})
-	if !strings.Contains(string(running), "blob_read") {
-		t.Errorf("a tool of Corbie's own that a run uses is not drawn on its page")
+	running, _ := Draw(def, &Run{Steps: []Step{{Shown: map[string]any{"waiting": "tools"}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
+	for _, svg := range []string{text, string(running)} {
+		if strings.Contains(svg, "blob_read") || strings.Contains(svg, ">open<") {
+			t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
+		}
 	}
 }
 
@@ -463,4 +498,24 @@ stages:
 	if size(one) <= size(folded) {
 		t.Errorf("an unfolded box does not make room for what it holds: %v and %v", size(one), size(folded))
 	}
+	if !strings.Contains(folded, ">flow: b<") {
+		t.Errorf("a box whose job names a machine does not say its type and name:\n%s", folded)
+	}
+
+	// On a run's page, a card links to the run its job started, and says
+	// what that run is, as on the Machines page.
+	run := string(must(Draw(draft.Definition, &Run{Children: map[string]Child{"outer": {ID: "a-client/1", Machine: "b", Type: "flow"}}})))
+	if !strings.Contains(run, `<a href="/run/a-client/1">`) || !strings.Contains(run, ">flow: b<") {
+		t.Errorf("a card whose job started a run does not link to it:\n%s", run)
+	}
+	if strings.Contains(run, "/go?to=") || strings.Count(run, "<a href") != 1 {
+		t.Errorf("a card whose job started no run has a link on a run's page:\n%s", run)
+	}
+}
+
+func must(svg template.HTML, err error) template.HTML {
+	if err != nil {
+		panic(err)
+	}
+	return svg
 }
