@@ -50,7 +50,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Pages](page.md).** What every page shares: the header, the look, motion, and how a page follows the store.
 
-**[Runs](runs.md).** The list of runs and their timeline, and one run: its record, its drawing, what it waits on, and what can be sent to it.
+**[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its record, its drawing, what it waits on, and what can be sent to it.
 
 **[Machines](machines.md).** The definitions in a directory: the list of what names what, each machine's drawing, its text and its check, the secrets it names, testing it in memory and starting it. The parts in the directory, and what opens each.
 

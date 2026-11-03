@@ -23,7 +23,7 @@ The UI is a dashboard. It uses the whole window, with a 20px margin and no colum
 - A status is a dot and a word, and a failure adds its kind in brackets: `failed (denied)`. The dot is petrol for running, moss for done and rowan for failed.
 - A machine's type is an icon beside its name, drawn as its drawing draws the type: stages for a flow, rounded states for a statechart, and the model's star for an agent.
 - The status colours are used for status only. A blue marks the field with the keyboard, links, and the keys of a machine's text.
-- Corbie's gradient, from petrol through blue to violet, colours the icons of the types and the timeline's edge at now. No panel has a gradient or a shadow.
+- Corbie's gradient, from petrol through blue to violet, colours the icons of the types. No panel has a gradient or a shadow.
 - A page follows the computer's light or dark setting, with the manual's colours.
 
 Each page is built from these:
@@ -66,9 +66,7 @@ Motion shows a change, and nothing else moves.
 a run that is running      its dot pulses, every 2.4s
 a line that appears        it fades in, lit in blue that fades over 1.6s
 a line that changes        it is lit for 1.2s
-a run that ends            its line is lit in its status's colour, and moves to the ended runs; its bar takes that colour
-a bar that appears         it grows from nothing at now, in 0.8s
-time passing               the timeline moves left, and the bars of running runs grow to now
+a run that ends            its line is lit in its status's colour, and moves to the ended runs
 a record entry             it slides in from below, in 0.35s
 the state a run is in      its outline pulses, every 2.6s
 a transition just taken    a dash moves along its arrow, three times

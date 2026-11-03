@@ -1,5 +1,5 @@
-// Package runs is the Runs page, which lists runs and draws their
-// timeline, and a run's page, which shows one run and acts on it.
+// Package runs is the Runs page, which lists the runs in progress by the
+// root each is under, and a run's page, which shows one run and acts on it.
 package runs
 
 import (
@@ -41,24 +41,26 @@ type Config struct {
 	Shell      page.Shell
 }
 
-type handler struct{ Config }
+type handler struct {
+	Config
+	steps *steps
+}
 
 //go:embed list.html run.html runs.js
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"cmd":  func(c *page.Call) string { return c.String() },
-	"pct":  func(f float64) template.CSS { return template.CSS(strings.TrimRight(strings.TrimRight(strconvF(f), "0"), ".") + "%") },
-	"px":   func(f float64) template.CSS { return template.CSS(strconvF(f) + "px") },
-	"word": func(n int, one string) string { return pluralWord(n, one) },
+	"word": pluralWord,
 }).ParseFS(files, "list.html", "run.html"))
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
-	h := &handler{c}
+	h := &handler{Config: c, steps: &steps{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
+	mux.HandleFunc("POST /runs/cancel", h.cancel)
 	mux.HandleFunc("GET /runs/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		data, _ := files.ReadFile("runs.js")
@@ -71,29 +73,43 @@ func New(c Config) http.Handler {
 	return mux
 }
 
-func (h *handler) listParts(n narrowing) ([]page.Part, error) {
+// listOf reads the Runs page: the runs, and the latest step of each
+// running run the UI's client started.
+func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	runs, err := h.List.Runs()
 	if runs == nil && err != nil {
+		return listView{}, err
+	}
+	steps, stepErr := h.steps.of(ctx, h.Client, runs)
+	mine := ""
+	if h.Client != nil && h.Client.ID != nil {
+		mine = h.Client.ID.Name
+	}
+	return listOf(runs, steps, n, time.Now(), mine), errors.Join(err, stepErr)
+}
+
+func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, error) {
+	v, err := h.listOf(ctx, n)
+	if err != nil {
 		return nil, err
 	}
-	v := listOf(runs, n, time.Now())
 	var parts []page.Part
 	// The ended runs are sent before the running ones, so that a run that
 	// ended is found running on the page as its new line arrives.
-	for _, id := range []string{"now", "statuses", "timeline", "ended", "running"} {
+	for _, id := range []string{"ended", "busy", "idle", "services"} {
 		html, err := render(id, v)
 		if err != nil {
 			return nil, err
 		}
 		parts = append(parts, page.Part{ID: id, HTML: html})
 	}
-	return parts, err
+	return parts, nil
 }
 
 func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
-	runs, _ := h.List.Runs()
-	main, err := render("list", listOf(runs, n, time.Now()))
+	v, _ := h.listOf(r.Context(), n)
+	main, err := render("list", v)
 	if err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -105,7 +121,7 @@ func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) listStream(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
-	page.Stream(w, r, h.Interval, h.List.Changed, func(context.Context) ([]page.Part, error) { return h.listParts(n) })
+	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) ([]page.Part, error) { return h.listParts(ctx, n) })
 }
 
 func idOf(r *http.Request) (string, error) {

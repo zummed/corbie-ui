@@ -1,28 +1,16 @@
-// The Runs pages: pointing at a run lights it in the timeline and the list
-// both, a line opens its run, and a run's page shows one tab at a time.
-const tip = document.getElementById('tip');
+// The Runs pages: a line stays unfolded as the store changes, a row opens
+// its run, and a run's page shows one tab at a time.
+const unfolded = new Set();
 
-function hot(key, on) {
-  for (const el of document.querySelectorAll(`[data-key="${CSS.escape(key)}"]`)) el.classList.toggle('hot', on);
-}
+document.addEventListener('toggle', e => {
+  const key = e.target.matches?.('details.req') && e.target.querySelector(':scope > summary')?.dataset.key;
+  if (key) e.target.open ? unfolded.add(key) : unfolded.delete(key);
+}, true);
 
-document.addEventListener('mouseover', e => {
-  const el = e.target.closest('[data-key]');
-  if (!el) return;
-  hot(el.dataset.key, true);
-  if (tip && el.classList.contains('runbar')) {
-    tip.textContent = el.dataset.tip;
-    const box = tip.parentElement.getBoundingClientRect(), bar = el.getBoundingClientRect();
-    tip.style.left = `${Math.min(Math.max(e.clientX - box.left, 200), box.width - 200)}px`;
-    tip.style.top = `${bar.top - box.top}px`;
-    tip.classList.add('on');
+document.addEventListener('part', e => {
+  for (const line of e.detail.querySelectorAll('details.req')) {
+    if (unfolded.has(line.querySelector(':scope > summary').dataset.key)) line.open = true;
   }
-});
-document.addEventListener('mouseout', e => {
-  const el = e.target.closest('[data-key]');
-  if (!el) return;
-  hot(el.dataset.key, false);
-  if (tip) tip.classList.remove('on');
 });
 
 document.addEventListener('click', e => {
