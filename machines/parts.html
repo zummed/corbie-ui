@@ -1,33 +1,27 @@
-{{define "startof"}}<a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="{{.Type}}"><use href="#g-{{.Type}}"/></svg>{{.Name}}</a>{{if .Timer}}<small title="{{.Timers}}">{{.Timer}}</small>{{end}}{{end}}
-
-{{define "partlist"}}<div class="filelist" id="partlist">{{range .Unread}}<p class="unread">{{.}}</p>{{end}}{{range .Parts}}<a href="/parts?part={{.ID}}" class="m" data-key="{{.ID}}"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if not .Opened}}<span class="bad" title="no agent opens it">0</span>{{end}}<small>{{len .Tools}} {{if eq (len .Tools) 1}}tool{{else}}tools{{end}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}{{if .Problem}}<p class="unread">These machines have problems, so what they open is not listed.</p>{{range .Problem}}<a href="/machines?file={{.}}" class="f"><svg class="g" role="img" aria-label="file"><use href="#g-file"/></svg><span class="name" title="{{.}}">{{.}}</span></a>{{end}}{{end}}</div>{{end}}
+{{define "partlist"}}<div class="filelist" id="partlist">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{if .Broken}}<p class="unread"><a href="/machines">{{plural .Broken "machine"}} with problems</a>: what {{if eq .Broken 1}}it opens is{{else}}they open is{{end}} not listed.</p>{{end}}{{range .Parts}}<a href="/parts?part={{.ID}}" class="m"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if not .Opened}}<span class="chip">not opened</span>{{end}}<small>{{plural (len .Tools) "tool"}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}</div>{{end}}
 
 {{define "partview"}}<div class="panel view part" id="partview">{{with .Open}}
-  <div class="head"><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span>{{.Name}}</span><span class="facts">{{.File}}</span>{{if .File}}<span class="acts"><a class="btn" href="/machines?file={{.File}}&amp;view=text">Text</a></span>{{end}}</div>
+  <div class="head"><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span>{{.Name}}</span><span class="facts">{{.File}}</span>{{if .Opening}}<span class="held">opening it needs approval</span>{{end}}{{if .File}}<span class="acts"><a class="btn" href="/machines?file={{.File}}&amp;view=text">Text</a></span>{{end}}</div>
+  {{template "found" $.Problems}}
   <div class="body">
     <p class="does">{{.Does}}</p>
-    {{if .Opened}}<table class="list opened"><thead><tr><th>Opened by</th><th>Started by</th>{{if $.Rook}}<th>For</th>{{end}}</tr></thead><tbody>{{range .Opened}}<tr>
-      <td><a href="/machines?file={{.File}}" title="{{.File}}">{{.Name}}</a></td>
-      <td class="wrap">{{range .Starts}}<div>{{template "startof" .}}</div>{{else}}<span class="dim">{{if .Unclear}}a machine with problems{{else}}only by hand{{end}}</span>{{end}}</td>
-      {{if $.Rook}}<td>{{range .For}}<code>{{.}}</code> {{else}}<span class="dim">–</span>{{end}}</td>{{end}}
-    </tr>{{end}}</tbody></table>{{else if $.Problem}}<p class="unread">No agent that can be read opens it.</p>{{else}}<p class="unread">No agent opens it: list it under <code>open:</code> in an agent's file.</p>{{end}}
-    {{if .Approvers}}<p class="who">Approved by {{range .Approvers}}<code>{{.}}</code> {{end}}</p>{{else if .Unnamed}}<p class="unread">It needs approval, and <code>rules.yaml</code> names no one under <code>approve:</code> for it.</p>{{end}}
-    {{if .Ask}}<p class="who">Ask <a href="/machines?file={{.Ask}}" title="{{.Ask}}"><code>{{base .Ask}}</code></a></p>{{end}}
-    {{if .Opening}}<p class="who">Opening it needs approval.</p>{{end}}
+    {{if .Opened}}<table class="list opened"><thead><tr><th>Opened by</th><th>Started by</th></tr></thead><tbody>{{range .Opened}}<tr>
+      <td><a href="/machines?file={{.File}}" title="{{.File}}">{{.Name}}</a> <small>{{.File}}</small></td>
+      <td class="wrap">{{range .Starts}}<a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="{{.Type}}"><use href="#g-{{.Type}}"/></svg>{{.Name}}</a>{{else}}<span class="dim">by hand</span>{{end}}</td>
+    </tr>{{end}}</tbody></table>{{else}}<p class="dim">No agent opens it.</p>{{end}}
     <h2>Tools</h2>
     <div class="toolcards">{{range .Tools}}<section class="tool">
       <div class="bar"><span class="tname">{{.Name}}</span>{{if .Held}}<span class="held">needs approval</span>{{end}}</div>
       <p title="{{.Does}}">{{.Does}}</p>
       <p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>
-      {{if .Allow}}<details><summary>{{len .Allow}} allow</summary><ul class="allow">{{range .Allow}}<li><code>{{.}}</code></li>{{end}}</ul></details>{{end}}
     </section>{{end}}</div>
   </div>{{else}}<div class="body"><p class="dim">no part chosen</p></div>{{end}}
 </div>{{end}}
 
 {{define "parts"}}
-<div class="ide walk">
+<div class="ide">
   <nav class="panel files" aria-label="The parts in {{.Dir}}">
-    <p class="dir" title="{{.Dir}}">{{.Dir}}</p>
+    <div class="head"><span class="facts" title="{{.Dir}}">{{short .Dir}}</span></div>
     {{template "partlist" .}}
   </nav>
   {{template "partview" .}}

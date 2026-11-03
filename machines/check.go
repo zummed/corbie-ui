@@ -3,6 +3,7 @@ package machines
 import (
 	"errors"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,85 +13,115 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// checked is a definition as Corbie's check reads it: its problems, the
-// files it asked for, and its draft when it has no problems.
-type checked struct {
-	problems []problem
-	asked    []string
-	draft    *machine.Draft
-}
-
-// A problem is one of Corbie's, with the line of its place where the place
-// is found in the text.
+// A problem is one of Corbie's, at the file it names: the file, the place in
+// it and its line where the text writes the place, what is wrong, and the
+// machines of the project it breaks. Top says the file is a directory below
+// the one the UI reads that is the top of a project.
 type problem struct {
-	Place, Text string
-	Line        int
+	File, Place, Text string
+	Line              int
+	Breaks            []string
+	Top               bool
 }
 
-// check checks a definition's text with Corbie's own check, reading the
-// files it names as `corbie run submit` reads them: the directory of machines
-// is the context, and a path may name any file inside it and none outside it.
-func (d *dir) check(rel string, src []byte) checked {
-	var c checked
-	load := func(name string) ([]byte, error) {
-		c.asked = append(c.asked, name)
-		data, _, err := d.read(name)
-		return data, err
+// problemsOf gives the problems Corbie found reading the machine in a file,
+// each at the file it names, with its place as that file writes it and its
+// paths from the directory.
+func (d *dir) problemsOf(file string, err error) []problem {
+	from := strings.NewReplacer(d.real+string(filepath.Separator), "", d.root+string(filepath.Separator), "")
+	var found machine.Problems
+	if !errors.As(err, &found) {
+		return []problem{{File: file, Text: from.Replace(err.Error())}}
 	}
-	draft, err := machine.ParseIn(path.Dir(rel), src, load)
-	var problems machine.Problems
-	switch {
-	case errors.As(err, &problems):
-		for _, p := range problems {
-			c.problems = append(c.problems, problem{Place: p.Place, Text: p.Text, Line: lineOf(src, p.Place)})
+	var out []problem
+	for _, p := range found {
+		at := file
+		if p.File != "" {
+			at = path.Clean(strings.TrimPrefix(p.File, "./"))
 		}
-	case err != nil:
-		c.problems = append(c.problems, problem{Text: err.Error()})
-	default:
-		c.draft = draft
+		pr := problem{File: at, Place: p.Place, Text: from.Replace(p.Text)}
+		if src, _, err := d.read(at); err == nil {
+			pr.Place, pr.Line = placeIn(src, p.Place)
+		}
+		out = append(out, pr)
 	}
-	return c
+	return out
 }
 
 var placeParts = regexp.MustCompile(`([^.\[\]]+)|\[(\d+)\]`)
 
-// lineOf gives the line where a place of a definition is written, as far
-// as the text writes it, or 0 when it does not, as for a place in a file
-// the definition names.
-func lineOf(src []byte, place string) int {
-	if place == "" || strings.Contains(place, ": ") {
-		return 0
-	}
+// placeIn gives a place as a file writes it, and the line where it does, or 0
+// where the text does not write it. A place in a file that is included is
+// given from the machine that includes it, so its first fields are left off
+// until the rest is found in the text.
+func placeIn(src []byte, place string) (string, int) {
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 {
-		return 0
+	if place == "" || strings.Contains(place, ": ") || yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 {
+		return place, 0
 	}
-	n, line := doc.Content[0], 0
-	for _, m := range placeParts.FindAllStringSubmatch(place, -1) {
+	parts := placeParts.FindAllStringSubmatch(place, -1)
+	best, line, at := 0, 0, 0
+	for from := range parts {
+		found, l := walk(doc.Content[0], parts[from:])
+		if found > best {
+			best, line, at = found, l, from
+		}
+		if found == len(parts)-from {
+			break
+		}
+	}
+	if at == 0 {
+		return place, line
+	}
+	return strings.TrimPrefix(place[len(joined(parts[:at])):], "."), line
+}
+
+// joined writes parts of a place as the place writes them.
+func joined(parts [][]string) string {
+	var b strings.Builder
+	for i, p := range parts {
+		if p[2] != "" {
+			b.WriteString("[" + p[2] + "]")
+			continue
+		}
+		if i > 0 {
+			b.WriteString(".")
+		}
+		b.WriteString(p[1])
+	}
+	return b.String()
+}
+
+// walk follows the parts of a place down a YAML node, and gives how many it
+// found and the line of the last.
+func walk(n *yaml.Node, parts [][]string) (int, int) {
+	found, line := 0, 0
+	for _, m := range parts {
 		if m[2] != "" {
 			i, _ := strconv.Atoi(m[2])
 			if n.Kind != yaml.SequenceNode || i >= len(n.Content) {
-				return line
+				return found, line
 			}
 			n = n.Content[i]
-			line = n.Line
+			found, line = found+1, n.Line
 			continue
 		}
 		if n.Kind != yaml.MappingNode {
-			return line
+			return found, line
 		}
-		found := false
+		next := (*yaml.Node)(nil)
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			if n.Content[i].Value == m[1] {
-				line, n, found = n.Content[i].Line, n.Content[i+1], true
+				line, next = n.Content[i].Line, n.Content[i+1]
 				break
 			}
 		}
-		if !found {
-			return line
+		if next == nil {
+			return found, line
 		}
+		n, found = next, found+1
 	}
-	return line
+	return found, line
 }
 
 // secretsNamed gives the secrets a definition's text names: each NAME of a
@@ -124,111 +155,4 @@ func secretsNamed(src []byte) []string {
 	}
 	walk(&doc)
 	return secret.Named(allow)
-}
-
-// A fieldView is a field that can be written where the cursor is: its
-// name, an example of how it is written, what it is for, and whether it is
-// written there already.
-type fieldView struct {
-	Name, Like, Does string
-	Here             bool
-}
-
-// fieldsAt gives what is written at a line of a definition, as its type's
-// shapes say: the shape's name and its fields.
-func fieldsAt(src []byte, kind string, line int) (string, []fieldView) {
-	desc, ok := machine.Describe(kind)
-	if !ok {
-		return "", nil
-	}
-	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return "", nil
-	}
-	n := doc.Content[0]
-	fields := append(append([]machine.Field{}, desc.Shapes["definition"].Fields...), desc.Shapes[kind].Fields...)
-	what := "a definition"
-	named := false // the next key names a thing, and is not a field
-	for {
-		key, value := under(n, line)
-		if value == nil {
-			break
-		}
-		if named {
-			named, n = false, value
-			continue
-		}
-		var f *machine.Field
-		for i := range fields {
-			if fields[i].Name == key {
-				f = &fields[i]
-			}
-		}
-		shape := (*machine.Shape)(nil)
-		if f != nil {
-			shape = f.Holds()
-		}
-		if shape == nil {
-			break
-		}
-		for value.Kind == yaml.SequenceNode {
-			at := value
-			value = nil
-			for _, item := range at.Content {
-				if item.Line <= line {
-					value = item
-				}
-			}
-			if value == nil {
-				return what, viewsOf(fields, n)
-			}
-		}
-		if value.Kind != yaml.MappingNode {
-			break
-		}
-		n, fields, what = value, shape.Fields, shape.What
-		named = f.Kind == machine.KindNamed
-	}
-	if named {
-		return what, nil
-	}
-	return what, viewsOf(fields, n)
-}
-
-// under gives the key of a mapping whose value holds a line after the
-// key's own, and that value.
-func under(n *yaml.Node, line int) (string, *yaml.Node) {
-	if n.Kind != yaml.MappingNode {
-		return "", nil
-	}
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		k, v := n.Content[i], n.Content[i+1]
-		end := lastLine(v)
-		if (v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode) && line >= v.Line && line <= end && !(line == k.Line && v.Line != k.Line) {
-			return k.Value, v
-		}
-	}
-	return "", nil
-}
-
-func lastLine(n *yaml.Node) int {
-	last := n.Line
-	for _, c := range n.Content {
-		last = max(last, lastLine(c))
-	}
-	return last
-}
-
-func viewsOf(fields []machine.Field, n *yaml.Node) []fieldView {
-	written := map[string]bool{}
-	if n.Kind == yaml.MappingNode {
-		for i := 0; i < len(n.Content); i += 2 {
-			written[n.Content[i].Value] = true
-		}
-	}
-	var out []fieldView
-	for _, f := range fields {
-		out = append(out, fieldView{Name: f.Name, Like: f.Like, Does: f.Does, Here: written[f.Name]})
-	}
-	return out
 }
