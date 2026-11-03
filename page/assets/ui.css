@@ -128,7 +128,7 @@ table.list { width: 100%; border-collapse: collapse; font: 400 13px/1 var(--mono
 .list td.wrap { white-space: normal; line-height: 1.4; padding-block: 7px; }
 .list .num { text-align: right; }
 .list tr { transition: background .15s; }
-.list tbody tr:hover, .list tr.hot { background: var(--hover); }
+.list tbody tr:hover { background: var(--hover); }
 .list tr[data-href] { cursor: pointer; }
 .list tr.new td { animation: arrive 1.6s var(--ease); }
 .list tr.ended td { animation: settle 1.4s var(--ease); }
@@ -185,11 +185,6 @@ table.list { width: 100%; border-collapse: collapse; font: 400 13px/1 var(--mono
 .req > summary.moved { animation: moved 1.2s var(--ease); }
 #idle [data-cmd]::after { white-space: pre; }
 main > .head form.narrow input { width: 220px; }
-table.runs { table-layout: fixed; }
-.runs col.status { width: 170px; } .runs col.machine { width: 240px; } .runs col.run { width: 450px; } .runs col.step { width: 70px; }
-.list .who, .list .tag { color: var(--ink2); }
-.list tr.child td.run::before { content: "└ "; color: var(--ink2); }
-.list td.m svg.g { margin-right: 8px; }
 
 /* run */
 .head > .key { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }

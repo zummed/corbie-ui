@@ -18,7 +18,7 @@ Ended      a run with no parent that ended in the window, newest first
 The window is 1h, 6h, 24h or 7d, and 6h by default. A line of the first three sections reads:
 
 ```
-running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered.open due 10 Nov 20:29, events at key question:9de2a8913b  20:29  old version
+running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29, events at key question:9de2a8913b  20:29  old version
 ```
 
 - The title is the root's key, or its machine's name where it has none.
@@ -60,21 +60,10 @@ chat › message › answer › helper › approval › ask › question
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. The run itself is in bold.
 
 - The drawing of its machine shows the state it is in (see Drawing).
-- What it waits on is listed, and its labels below that.
+- What it waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below that.
 - Record lists every entry as it is written, its children's included, in the words `corbie run show --record` prints. Each entry is named by its run's machine, and the line a run ends with is in its status's colour.
 - Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
 - Children lists the runs it started, with each one's status and when it started or ended.
-
-A running run waits on these:
-
-```
-ticket verdict                      a ticket, with its value to hand to whoever should answer
-child question                      a running child, linked
-job find                            a script on a runner
-held tell                           a tool held for the ask
-timer unanswered due 10 Nov 20:29   a timer, by when it is due
-events at key question:9de2a8913b   events sent to its key
-```
 
 A run that another client started shows its status, its path, its children and its labels, and nothing from its record. Its jobs and timers are counted and its tickets named.
 

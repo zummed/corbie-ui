@@ -111,7 +111,7 @@ func Test_runs_own_runs_wait_by_name(t *testing.T) {
 	l, viewer, _ := local(t)
 	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
 	body := get(t, h, "/runs")
-	for _, want := range []string{`review</a><span class="dim">[waiting]</span>`, "ticket verdict, timer too_long.waiting due "} {
+	for _, want := range []string{`review</a><span class="dim">[waiting]</span>`, "ticket verdict, timer too_long due "} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the line of the client's own run does not show %s:\n%s", want, body)
 		}
