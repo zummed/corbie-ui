@@ -14,7 +14,9 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## One run
 
-**R-runs-04** A run the UI's client started is shown in full: its drawing with its state marked, what it waits on with each ticket's value and each timer's due time from its latest step, and its record in the words `corbie run show --record` prints, each entry named by its run's machine. *Test:* `runs_own_run_shown_in_full`
+**R-runs-04** A run the UI's client started is shown in full: what it waits on with each ticket's value and each timer's due time from its latest step, leaving out events at its own key, and Steps, one row for each thing that happened in it and in the runs under it, read from its record, each child's rows under the row that started it, with an ended child folded and a running one open. *Test:* `runs_own_run_shown_in_full`
+
+**R-runs-08** The drawing beside Steps shows the selected row's run as of the row's step, from its record up to that step and the state that step left, and the row's details give the entries of that step in the words `corbie run show --record` prints. A send to a key is linked to the run that held the key, and the path begins with the run whose send started the root. *Test:* `runs_a_step_shows_its_run_as_it_was`
 
 **C-runs-01** A file of a run's result is sent as a download, with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. A result can hold HTML or SVG a script fetched from anywhere, and shown in a page it would run with the UI's cookie. *Test:* `runs_result_file_is_a_download`
 

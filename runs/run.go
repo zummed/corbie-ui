@@ -23,31 +23,49 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// runParts are the parts of a run's page that follow the run.
-var runParts = []string{"summary", "path", "drawing", "waits", "record", "output", "children"}
+// runParts are the parts of a run's page that follow the run. The drawing
+// and the details follow the row selected, which the page asks for.
+var runParts = []string{"summary", "path", "steps", "waits", "output", "children"}
 
 // runView is a run's page as it is drawn.
 type runView struct {
 	Run                  *client.Run
+	Name                 string
 	Mine                 bool
 	Started, Ended, Took string
 	Path                 []link
-	Drawing              template.HTML
 	Waits                []wait
 	Labels               []label
-	Lines                []line
+	Rows                 []stepRow
+	Count                int
+	Dated                bool
 	Output               string
 	Used                 string
 	Files                []file
 	Children             []child
 	Cancel               *page.Call
 	Send, Reply          bool
+	Shown                shown
 }
 
-// A link is a run named by its machine, as the path and the waits show it.
+// A link is a run named by its name, as the path, the waits and the steps
+// show it. Sent says a send of the run before it in a path started it.
 type link struct {
 	ID, Machine, Type string
-	This              bool
+	This, Sent        bool
+}
+
+// shown is a run as of one row of Steps: its drawing as it was at the
+// row's step, and the row's details, with the entry of the record it is
+// from.
+type shown struct {
+	Row           *stepRow
+	Page          string
+	Type          string
+	Time          string
+	Drawing       template.HTML
+	Lines         []line
+	Input, Output string
 }
 
 // A wait is one thing a run waits on, in words: a ticket with its name,
@@ -118,17 +136,13 @@ func (r *record) Changed() <-chan struct{} {
 
 // reading is what a run's page has read of a run the UI's client started,
 // kept while the page is open: its latest step, read again when the run
-// takes another, and its definition and the machines it names, which never
-// change.
+// takes another.
 type reading struct {
-	step     *instance.Step
-	def      *machine.Definition
-	machines map[string]drawing.Machine
+	step *instance.Step
 }
 
-// read reads a run's latest step, and its definition and the machines it
-// names once. A run with no step yet, or one sealed to a key the client no
-// longer has, has neither.
+// read reads a run's latest step. A run with no step yet, or one sealed to
+// a key the client no longer has, has none.
 func (h *handler) read(ctx context.Context, id string, number int, r *reading) error {
 	if r.step != nil && r.step.Number >= number {
 		return nil
@@ -141,23 +155,177 @@ func (h *handler) read(ctx context.Context, id string, number int, r *reading) e
 		return err
 	}
 	r.step = step
-	if r.def != nil {
-		return nil
-	}
-	def, err := machine.Load(ctx, h.Client.Store, step.State.Definition)
-	if err != nil {
-		return err
-	}
-	machines := map[string]drawing.Machine{}
-	for name, ref := range def.Machines {
-		child, err := machine.Load(ctx, h.Client.Store, step.State.Definition.Beside(ref))
-		if err != nil {
-			return err
-		}
-		machines[name] = drawing.Machine{Type: child.Type, Name: child.Name}
-	}
-	r.def, r.machines = def, machines
 	return nil
+}
+
+// kept is what the run pages have read that never changes: each step of a
+// run, and the machine a run was started from with the machines it names.
+// It is read again from the store when it grows past a few hundred.
+type kept struct {
+	mu       sync.Mutex
+	steps    map[string]*instance.Step
+	machines map[string]*definition
+}
+
+// A definition is the machine a run was started from, and the machines it
+// names, by the name its jobs give them.
+type definition struct {
+	def      *machine.Definition
+	machines map[string]drawing.Machine
+}
+
+// step reads step number of a run, once. A step sealed to a key the
+// client no longer has is none.
+func (h *handler) step(ctx context.Context, id string, number int) (*instance.Step, error) {
+	key := id + "/" + strconv.Itoa(number)
+	h.kept.mu.Lock()
+	step := h.kept.steps[key]
+	h.kept.mu.Unlock()
+	if step != nil {
+		return step, nil
+	}
+	step, err := instance.ReadStep(ctx, h.Client.Store, h.Client.Controller, h.Client.ID, id, number)
+	if errors.Is(err, identity.ErrNotForUs) {
+		return nil, nil
+	}
+	if err != nil || step == nil {
+		return nil, err
+	}
+	h.kept.mu.Lock()
+	defer h.kept.mu.Unlock()
+	if h.kept.steps == nil || len(h.kept.steps) > 500 {
+		h.kept.steps = map[string]*instance.Step{}
+	}
+	h.kept.steps[key] = step
+	return step, nil
+}
+
+// definitionOf reads the machine a run was started from, and the machines
+// it names, once.
+func (h *handler) definitionOf(ctx context.Context, id string, step *instance.Step) (*definition, error) {
+	h.kept.mu.Lock()
+	d := h.kept.machines[id]
+	h.kept.mu.Unlock()
+	if d != nil {
+		return d, nil
+	}
+	ref := step.State.Definition
+	def, err := machine.Load(ctx, h.Client.Store, ref)
+	if err != nil {
+		return nil, err
+	}
+	d = &definition{def: def, machines: map[string]drawing.Machine{}}
+	for name, at := range def.Machines {
+		child, err := machine.Load(ctx, h.Client.Store, ref.Beside(at))
+		if err != nil {
+			return nil, err
+		}
+		d.machines[name] = drawing.Machine{Type: child.Type, Name: child.Name}
+	}
+	h.kept.mu.Lock()
+	defer h.kept.mu.Unlock()
+	if h.kept.machines == nil || len(h.kept.machines) > 200 {
+		h.kept.machines = map[string]*definition{}
+	}
+	h.kept.machines[id] = d
+	return d, nil
+}
+
+// shownAt gives a run as of one of its rows: its drawing, from its record
+// cut at the row's step and the state that step left, and the row's
+// details.
+func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, at time.Time) (shown, error) {
+	s := shown{Row: r, Page: page, Type: r.Run.Type, Time: r.Time, Input: indentOf(r.In), Output: indentOf(r.Out)}
+	names := map[string]string{}
+	var cut []client.Entry
+	for _, e := range entries {
+		if b := byID[e.ID]; b != nil {
+			names[e.ID] = runName(b)
+		}
+		if e.ID == r.Run.ID && e.Step > 0 && e.Step <= r.Step {
+			cut = append(cut, e)
+		}
+	}
+	for _, e := range cut {
+		if e.Step == r.Step {
+			s.Lines = append(s.Lines, lines(e, names, at)...)
+		}
+	}
+	step, err := h.step(ctx, r.Run.ID, r.Step)
+	if err != nil || step == nil {
+		return s, err
+	}
+	d, err := h.definitionOf(ctx, r.Run.ID, step)
+	if err != nil {
+		return s, err
+	}
+	s.Type = d.def.Type
+	var st *instance.State
+	if step.State.Status == instance.Running {
+		st = &step.State
+	}
+	marks := marksOf(r.Run.ID, cut, step.State.Status, st, byID)
+	marks.Machines = d.machines
+	s.Drawing, err = drawing.Draw(d.def, marks)
+	return s, err
+}
+
+// newest gives the row that happened last, the latest of those at one
+// time in the order rows are listed.
+func newest(rows []stepRow) *stepRow {
+	var last *stepRow
+	for i := range rows {
+		r := &rows[i]
+		if last == nil || !r.At.Before(last.At) {
+			last = r
+		}
+		if r.Group != nil {
+			if n := newest(r.Group.Rows); n != nil && !n.At.Before(last.At) {
+				last = n
+			}
+		}
+	}
+	return last
+}
+
+// rowAt finds a row by its key.
+func rowAt(rows []stepRow, key string) *stepRow {
+	for i := range rows {
+		if rows[i].Key == key {
+			return &rows[i]
+		}
+		if g := rows[i].Group; g != nil {
+			if r := rowAt(g.Rows, key); r != nil {
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// dated says whether any row happened on another day than now, and so
+// shows its date.
+func dated(rows []stepRow, now time.Time) bool {
+	for _, r := range rows {
+		if page.When(r.At, now) != r.At.Local().Format("15:04") {
+			return true
+		}
+		if r.Group != nil && dated(r.Group.Rows, now) {
+			return true
+		}
+	}
+	return false
+}
+
+// countRows gives how many rows there are, at every depth.
+func countRows(rows []stepRow) int {
+	n := len(rows)
+	for _, r := range rows {
+		if r.Group != nil {
+			n += countRows(r.Group.Rows)
+		}
+	}
+	return n
 }
 
 // mine says whether the UI's client started a run, and so may read it all.
@@ -178,10 +346,10 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	if err != nil {
 		return v, err
 	}
-	v.Run = run
-	v.Started = clock(run.Started, at)
+	v.Run, v.Name = run, runName(run)
+	v.Started = page.When(run.Started, at)
 	if run.HasEnded() {
-		v.Ended, v.Took = clock(run.Ended, at), took(run.Ended.Sub(run.Started))
+		v.Ended, v.Took = page.When(run.Ended, at), took(run.Ended.Sub(run.Started))
 	}
 	for _, name := range slices.Sorted(maps.Keys(run.Labels)) {
 		v.Labels = append(v.Labels, label{Name: name, Value: run.Labels[name]})
@@ -209,7 +377,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		v.Cancel = &page.Call{Words: []string{"controller", "cancel"}, Args: []string{id}}
 	}
 	if !v.Mine {
-		v.Waits = waitsOf(run, nil, running(under[id]), at)
+		v.Waits = listed(waitsOf(run, nil, running(under[id]), at), run.Key)
 		return v, nil
 	}
 
@@ -220,15 +388,9 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	if r.step != nil && !run.HasEnded() {
 		st = &r.step.State
 	}
-	v.Waits = waitsOf(run, st, running(under[id]), at)
-	if r.def != nil {
-		marks := marksOf(id, entries, run, st, byID)
-		marks.Machines = r.machines
-		v.Drawing, err = drawing.Draw(r.def, marks)
-		if err != nil {
-			return v, err
-		}
-	}
+	v.Waits = listed(waitsOf(run, st, running(under[id]), at), run.Key)
+	v.Rows = rowsOf(id, entries, byID, at)
+	v.Count, v.Dated = countRows(v.Rows), dated(v.Rows, at)
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))
 		v.Output = indent(data)
@@ -255,15 +417,6 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 			v.Files = append(v.Files, file{Path: p, Type: f.Type, Size: size(f.Size), Href: "/run/" + id + "/file?path=" + template.URLQueryEscaper(p)})
 		}
 	}
-	names := map[string]string{}
-	for _, e := range entries {
-		if r := byID[e.ID]; r != nil {
-			names[e.ID] = r.Machine
-		}
-	}
-	for _, e := range entries {
-		v.Lines = append(v.Lines, lines(e, names)...)
-	}
 	return v, nil
 }
 
@@ -272,14 +425,21 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 func sends(run *client.Run) bool { return !run.HasEnded() && run.Type == "statechart" }
 
 // pathOf gives the runs from a run's root down to it, by parent, and on
-// from it to the deepest running run.
+// from it to the deepest running run; before the root, the run whose send
+// started it.
 func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*client.Run) []link {
 	path := chainOf(run, under)
 	path[0].This = true
 	seen := map[string]bool{run.ID: true}
+	root := run
 	for up := byID[run.Parent]; up != nil && !seen[up.ID]; up = byID[up.Parent] {
 		seen[up.ID] = true
-		path = slices.Insert(path, 0, link{ID: up.ID, Machine: up.Machine, Type: up.Type})
+		root = up
+		path = slices.Insert(path, 0, link{ID: up.ID, Machine: runName(up), Type: up.Type})
+	}
+	if by := byID[root.StartedBy]; by != nil && !seen[by.ID] {
+		path[0].Sent = true
+		path = slices.Insert(path, 0, link{ID: by.ID, Machine: runName(by), Type: by.Type})
 	}
 	return path
 }
@@ -308,7 +468,7 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 		waits = append(waits, wait{Text: "ticket " + t, Ticket: t})
 	}
 	for _, r := range kids {
-		waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: r.Machine, Type: r.Type}})
+		waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: runName(r), Type: r.Type}})
 	}
 	if st == nil {
 		if run.Jobs > 0 {
@@ -330,7 +490,7 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 			return cmp.Or(st.Timers[a].At.Compare(st.Timers[b].At), strings.Compare(a, b))
 		})
 		for _, name := range timers {
-			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + due(st.Timers[name].At, at)})
+			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + page.When(st.Timers[name].At, at)})
 		}
 	}
 	if run.Type == "statechart" && run.Key != "" {
@@ -339,10 +499,11 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 	return waits
 }
 
-// marksOf gives what a run shows of its state, from the steps of its own
-// record and the jobs going, for its drawing.
-func marksOf(id string, entries []client.Entry, run *client.Run, st *instance.State, byID map[string]*client.Run) *drawing.Run {
-	m := &drawing.Run{Ended: run.HasEnded(), Failed: run.Status == instance.Failed, Children: map[string]drawing.Child{}}
+// marksOf gives what a run shows of its state, for its drawing: from the
+// steps of its own record up to one step, the status that step left, and
+// the jobs going after it.
+func marksOf(id string, entries []client.Entry, status string, st *instance.State, byID map[string]*client.Run) *drawing.Run {
+	m := &drawing.Run{Ended: status != instance.Running && status != instance.Waiting, Failed: status == instance.Failed, Children: map[string]drawing.Child{}}
 	for _, e := range entries {
 		if e.ID != id || e.Step == 0 {
 			continue
@@ -365,7 +526,7 @@ func marksOf(id string, entries []client.Entry, run *client.Run, st *instance.St
 			}
 			s.Asked = append(s.Asked, name)
 			if r := byID[a.Child]; r != nil {
-				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
+				m.Children[name] = drawing.Child{ID: r.ID, Machine: runName(r), Type: r.Type}
 			}
 		}
 		m.Steps = append(m.Steps, s)
@@ -430,22 +591,12 @@ func jobOf(name string) string {
 }
 
 func childOf(r *client.Run, at time.Time) child {
-	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
-	c.When = when(r.Started, at)
+	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: runName(r), Type: r.Type, Ended: r.HasEnded()}
+	c.When = page.When(r.Started, at)
 	if r.HasEnded() {
-		c.When, c.Took = when(r.Ended, at), took(r.Ended.Sub(r.Started))
+		c.When, c.Took = page.When(r.Ended, at), took(r.Ended.Sub(r.Started))
 	}
 	return c
-}
-
-// clock is a time as a run's page shows it: the time of day near now, and
-// the date and the time further off.
-func clock(t, at time.Time) string {
-	t = t.Local()
-	if d := at.Sub(t); d < 20*time.Hour && d > -20*time.Hour {
-		return t.Format("15:04:05")
-	}
-	return t.Format("2 Jan 15:04")
 }
 
 // plain gives what a type shows as JSON reads it: the drawing reads lists,
@@ -459,6 +610,15 @@ func plain(v any) any {
 	var out any
 	json.Unmarshal(data, &out)
 	return out
+}
+
+// indentOf gives a value as indented JSON, or nothing for none.
+func indentOf(v any) string {
+	if v == nil {
+		return ""
+	}
+	data, _ := json.Marshal(v, json.Deterministic(true))
+	return indent(data)
 }
 
 func indent(data []byte) string {

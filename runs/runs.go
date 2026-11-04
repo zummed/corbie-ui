@@ -43,6 +43,7 @@ type Config struct {
 type handler struct {
 	Config
 	steps *steps
+	kept  *kept
 }
 
 //go:embed list.html run.html runs.js
@@ -56,7 +57,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
-	h := &handler{Config: c, steps: &steps{}}
+	h := &handler{Config: c, steps: &steps{}, kept: &kept{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
@@ -68,6 +69,7 @@ func New(c Config) http.Handler {
 	})
 	mux.HandleFunc("GET /run/{who}/{stamp}", h.runPage)
 	mux.HandleFunc("GET /run/{who}/{stamp}/stream", h.runStream)
+	mux.HandleFunc("GET /run/{who}/{stamp}/at", h.at)
 	mux.HandleFunc("GET /run/{who}/{stamp}/file", h.file)
 	mux.HandleFunc("POST /run/{who}/{stamp}/{act}", h.act)
 	return mux
@@ -141,6 +143,11 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		h.Client.Record(r.Context(), id, func(e client.Entry) { entries = append(entries, e) })
 	}
 	v, err := h.runOf(r.Context(), id, entries, &reading{})
+	if err == nil && v.Mine {
+		if last := newest(v.Rows); last != nil {
+			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(), time.Now())
+		}
+	}
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, client.ErrNoRun) {
@@ -155,7 +162,7 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = v.Run.Machine, "Runs", "/run/"+id+"/stream", "/runs/script.js", main
+	s.Title, s.Current, s.Stream, s.Script, s.Main = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js", main
 	page.Write(w, s)
 }
 
@@ -181,6 +188,9 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 		}
 		var parts []page.Part
 		for _, id := range runParts {
+			if id == "steps" && !v.Mine {
+				continue
+			}
 			html, err := render(id, v)
 			if err != nil {
 				return nil, err
@@ -189,6 +199,54 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 		}
 		return parts, nil
 	})
+}
+
+// at answers a run's page with its drawing and details as of one row of
+// Steps, the row named by its key, from the record of the row's run.
+func (h *handler) at(w http.ResponseWriter, r *http.Request) {
+	id, err := idOf(r)
+	if err != nil || !h.mine(id) {
+		page.Error(w, http.StatusNotFound, "only the client that started a run can read its record")
+		return
+	}
+	ctx := r.Context()
+	var entries []client.Entry
+	if _, err := h.Client.Record(ctx, id, func(e client.Entry) { entries = append(entries, e) }); err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	at, byID := time.Now(), h.byID()
+	row := rowAt(rowsOf(id, entries, byID, at), r.URL.Query().Get("row"))
+	if row == nil || row.Run.ID != id {
+		page.Error(w, http.StatusNotFound, "the run has no such row")
+		return
+	}
+	s, err := h.shownAt(ctx, r.URL.Query().Get("page"), row, entries, byID, at)
+	if err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var parts []map[string]string
+	for _, id := range []string{"view", "details"} {
+		html, err := render(id, s)
+		if err != nil {
+			page.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		parts = append(parts, map[string]string{"id": id, "html": string(html)})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.MarshalWrite(w, parts)
+}
+
+// byID gives the runs of the list by their IDs.
+func (h *handler) byID() map[string]*client.Run {
+	runs, _ := h.List.Runs()
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	return byID
 }
 
 // either gives a channel closed when either of two is, or the context ends.
