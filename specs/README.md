@@ -31,7 +31,7 @@ A page shows what changes as it changes: the UI sends each page the parts that c
 
 This repository builds the program `corbie-ui`. `corbie ui` runs it from PATH, and `corbie start controller runner ui` starts it beside the roles, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
 
-The program links Corbie's packages. Its `main` runs a job's own process when it is given `run-one-job`, and carries the machine types and the plugins, as Corbie's does.
+The program links Corbie's packages, and carries the machine types and the plugins, as Corbie's does.
 
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 
