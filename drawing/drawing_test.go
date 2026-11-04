@@ -304,10 +304,13 @@ tools:
 	}
 
 	// An agent waiting on the ask: the ask is going, the tool it holds is
-	// held, and a tool used at an earlier step is done.
+	// held, and a tool used at an earlier step is done. Each ask is named by
+	// where it is written: the part's ask is going, and the agent's never
+	// ran.
 	helper := definition(t, `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
+ask: { machine: ./own.yaml }
 tools:
   look: { does: looks, job: ./w.js }
   idle: { does: idles, job: ./w.js }
@@ -317,15 +320,38 @@ open:
     ask: { machine: ./approval.yaml }
     tools:
       tell: { does: tells someone, job: { script: ./w.js, approve: true } }
-`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n", "own.yaml": "flow: own\nstages:\n  a: { job: ./w.js }\n"})
 	svg = draw(t, helper, &Run{
-		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"ask"}}},
-		Going: []string{"tell", "ask"}, Held: []string{"tell"},
+		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"open.messages.ask"}}},
+		Going: []string{"tell", "open.messages.ask"}, Held: []string{"tell"},
+		Children: map[string]Child{"open.messages.ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
 	})
-	for name, want := range map[string]string{"ask": "state ask now", "tell": "state tool held", "look": "state tool done", "idle": "state tool never"} {
+	for name, want := range map[string]string{"tell": "state tool held", "look": "state tool done", "idle": "state tool never"} {
 		if got := group(t, svg, name); got != want {
 			t.Errorf("%s is drawn as %q, not %q", name, got, want)
 		}
+	}
+	asks := regexp.MustCompile(`<g class="([^"]*)">(?:<rect[^>]*/>)+<text[^>]*>ask</text><text class="sub"[^>]*>([^<]*)</text>`).FindAllStringSubmatch(svg, -1)
+	var got []string
+	for _, a := range asks {
+		got = append(got, a[1]+": "+a[2])
+	}
+	if strings.Join(got, "; ") != "state ask now: flow: approval; state ask never: machine: ./own.yaml" {
+		t.Errorf("the part's ask and the agent's are drawn as %q", got)
+	}
+	if strings.Count(svg, `href="/run/a-client/2"`) != 1 {
+		t.Errorf("the run the part's ask started is linked from another card:\n%s", svg)
+	}
+
+	// A run that ended: a flow's stage still running is marked by how the run
+	// ended, and an agent whose turn failed has its model marked failed.
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"a": "done", "b": "running", "c": "waiting"}}}}, Ended: true})
+	if got := group(t, svg, "b"); got != "state stage cancelled" {
+		t.Errorf("the stage running when its run was cancelled is drawn as %q", got)
+	}
+	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: map[string]any{"turn": 1.0, "waiting": ""}, Failed: []string{"turn"}}}, Ended: true, Failed: true})
+	if got := group(t, svg, "claude-sonnet-5-5"); got != "state model failed" {
+		t.Errorf("the model of an agent whose turn failed is drawn as %q", got)
 	}
 }
 
@@ -349,7 +375,7 @@ func Test_drawing_transition_back_is_marked_in_its_card(t *testing.T) {
 	}
 }
 
-func Test_drawing_statechart_send_is_a_box(t *testing.T) {
+func Test_drawing_statechart_send_is_a_card(t *testing.T) {
 	chart := definition(t, `statechart: listen
 initial: hearing
 states:
@@ -425,7 +451,7 @@ open:
 	}
 }
 
-func Test_drawing_machine_unfolds_in_its_box(t *testing.T) {
+func Test_drawing_machine_unfolds_in_its_card(t *testing.T) {
 	files := map[string]string{
 		"w.js":       script,
 		"sub/c.yaml": "flow: c\nstages:\n  deep: { job: w.js }\n",
@@ -510,6 +536,12 @@ stages:
 	}
 	if strings.Contains(run, "/go?to=") || strings.Count(run, "<a href") != 1 {
 		t.Errorf("a card whose job started no run has a link on a run's page:\n%s", run)
+	}
+	// A job that started no run yet says what its machine is, from the
+	// definition the run was started from.
+	run = string(must(Draw(draft.Definition, &Run{Machines: map[string]Machine{"./b.yaml": {Type: "flow", Name: "b"}}})))
+	if !strings.Contains(run, ">flow: b<") || strings.Contains(run, "<a href") {
+		t.Errorf("a card whose job started no run does not say its machine's type and name:\n%s", run)
 	}
 }
 

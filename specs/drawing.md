@@ -2,9 +2,9 @@
 
 A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart and an agent, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs: a page makes it smaller to fit, and never larger. The same drawing is on a run's page and on the Machines page.
 
-Every box is a card of one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `flow: who`. A card's tooltip gives its `when:` and a tool's `does:`.
+Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `flow: who`. A card's tooltip gives its `when:` and a tool's `does:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its parts.
 
-A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the run the job started. A job whose machine is known by neither is written as the definition names it, `machine: ./who.yaml`.
+A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./who.yaml`.
 
 An arrow goes straight down. Arrows from one card, or into one row, run along a rail above the row, so a branch is one line that divides. A drawing has as few arrows as say what it does.
 
@@ -19,7 +19,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 
 ## A statechart
 
-- A state is a card, and a state that holds states is drawn around them. A state with no job has no icon.
+- A state is a card, and a state that holds states is a holder drawn around them. A state with no job has no icon.
 - States are placed top to bottom by how many transitions each is from the state its level starts in.
 - The state each level starts in has a short arrow into it.
 - A final state is a narrow card with a double border, drawn in rowan for `end: failed`.
@@ -33,7 +33,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one box. Each part is a box inside it, holding its name, its tools and its ask, and on the Machines page the file it is included from. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the box gives how many turns the agent has.
+2. Its tools are in one holder. Each part is a holder inside it, with its name, its tools and its ask, and on the Machines page its tooltip gives the file it is included from. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
 A tool with `approve: true` says so in its card. Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.
@@ -56,8 +56,10 @@ statechart   the states it is in; states it was in before are outlined in moss, 
 agent        the turn it is on; each tool and ask going now, held for the ask, used at an earlier step, or never used
 ```
 
+A run that ended is marked by how it ended. A stage still running when it ended is outlined in rowan where the run failed, and grey where it was cancelled. In a failed run, the states it ended in are outlined in rowan, and so is the card of the job whose failure ended it, such as the model of an agent whose turn failed.
+
 A statechart's run is followed through its steps: from the states it was in before a step, by the events the step took, to the states it is in after. A state it passed through within one step was entered, such as the state it started in and left at its first step. Where an event has rules to several states, the rule taken is the one to a state the run is in after the step.
 
-The transition the latest step took is drawn in petrol and heavier than the other arrows, or written in petrol in its card. The states a run ended in are outlined in moss, as states it was in.
+The transition the latest step took is drawn in petrol, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. The states a run that did not fail ended in are outlined in moss, as states it was in.
 
-An agent's ask is going while a tool waits for its approval. The tool is outlined in amber, as held, and the ask as going now: a part's ask where the tool is in that part, and the agent's otherwise.
+An agent's ask is going while a tool waits for its approval. The tool is outlined in amber, as held, and the ask as going now: a part's ask where the tool is in that part, and the agent's otherwise. A run knows each ask by where it is written, so the run an ask started is linked from that ask's card alone.

@@ -55,7 +55,19 @@ func drawChart(c *statechart.Chart, run *Run, w *walker) drawn {
 
 	var d drawn
 	arrows := ch.arrows()
-	for _, a := range arrows {
+	// A transition just taken is drawn last, over any arrow it shares a
+	// line with.
+	order := slices.Clone(arrows)
+	slices.SortStableFunc(order, func(a, b arrow) int {
+		if a.taken(marks) == b.taken(marks) {
+			return 0
+		}
+		if a.taken(marks) {
+			return 1
+		}
+		return -1
+	})
+	for _, a := range order {
 		from, okFrom := ch.at[a.from]
 		to, okTo := ch.at[a.to]
 		if !okFrom || !okTo {
@@ -89,6 +101,11 @@ func drawChart(c *statechart.Chart, run *Run, w *walker) drawn {
 type arrow struct {
 	from, to string
 	rules    []rule
+}
+
+// taken says a rule of the arrow is one the latest step took.
+func (a arrow) taken(marks chartMarks) bool {
+	return slices.ContainsFunc(a.rules, func(r rule) bool { return marks.taken[r] })
 }
 
 func (a arrow) label() string {
@@ -223,6 +240,9 @@ func (ch *chart) sent(holder, name, event string, sends []statechart.Send) {
 		ch.parent[key] = holder
 		ch.kids[holder] = append(ch.kids[holder], key)
 		it := item{name: path.Base(send.Machine), icon: "file", lines: []string{"send " + send.Event}}
+		if m, ok := ch.walker.machines[send.Machine]; ok {
+			it.icon = m.Type
+		}
 		if w := ch.walker; w.draft != nil && w.draft.Children[send.Machine] != nil {
 			it.icon = w.draft.Children[send.Machine].Definition.Type
 			it.href, it.in = w.open(key, send.Machine)
@@ -443,7 +463,7 @@ func (ch *chart) paint(d *drawn, level string, marks chartMarks) {
 		}
 		if final(s) {
 			class += " final"
-			if s.End == "failed" {
+			if s.End == "failed" && marks.of(n) != "failed" {
 				class += " failed"
 			}
 		}
@@ -568,6 +588,8 @@ func (m chartMarks) of(name string) string {
 		return ""
 	case m.now[name] && !m.run.Ended:
 		return "now"
+	case m.now[name] && m.run.Failed:
+		return "failed"
 	case m.was[name]:
 		return "done"
 	}
@@ -593,14 +615,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// clipStart keeps the end of a text, where a path says most.
-func clipStart(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return "…" + string(r[len(r)-n+1:])
-	}
-	return s
 }
 
 func clip(s string, n int) string {
