@@ -350,7 +350,7 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 }
 
 /* controller */
-.cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 18px; align-items: start; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 18px; align-items: stretch; }
 @media (max-width: 1200px) { .cols { grid-template-columns: minmax(0, 1fr); } }
 .contents { display: contents; }
 .list td.row-acts { overflow: visible; text-align: right; }
