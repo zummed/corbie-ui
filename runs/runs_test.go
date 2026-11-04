@@ -159,6 +159,26 @@ func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
 		t.Errorf("with no client the page offers %+v", v.Idle.Cancel)
 	}
 
+	// Each client has its own current version of a path, whichever submitted
+	// it last.
+	lab := map[string]string{client.LabelMachine: "chat.yaml", client.LabelHash: "lab"}
+	ci := map[string]string{client.LabelMachine: "chat.yaml", client.LabelHash: "ci"}
+	two := []*client.Run{
+		run("lab-client/20261015T080000.000Z-aa", "chat", "flow", "running", 2*time.Hour, 0, func(r *client.Run) { r.Key, r.Labels, r.Jobs = "file:chat.yaml", lab, 1 }),
+		run("ci-client/20261015T090000.000Z-bb", "chat", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Key, r.Labels, r.Jobs = "file:chat.yaml", ci, 1 }),
+		run("ci-client/20261015T090100.000Z-cc", "talk", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels, r.Timers = ci, 1 }),
+		run("lab-client/20261015T080100.000Z-dd", "talk", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels, r.Timers = lab, 1 }),
+	}
+	v = listOf(two, nil, narrowingOf(url.Values{}), at, "ci-client")
+	for _, l := range append(v.Services.Lines, v.Idle.Lines...) {
+		if l.Old {
+			t.Errorf("%s is marked as on an old version of its own client's path", l.ID)
+		}
+	}
+	if v.Idle.Cancel != nil {
+		t.Errorf("with two clients the page offers %+v", v.Idle.Cancel)
+	}
+
 	var calls []string
 	command := func(_ context.Context, c page.Call) page.Answer {
 		calls = append(calls, c.String())
