@@ -436,15 +436,6 @@ func counted(n int, what string) string {
 	return plural(n, what)
 }
 
-// due is when a timer is due: the time of day, with the date when it is
-// not today.
-func due(t, at time.Time) string {
-	t = t.Local()
-	if y, m, d := at.Local().Date(); t.Year() == y && t.Month() == m && t.Day() == d {
-		return t.Format("15:04")
-	}
-	return t.Format("2 Jan 15:04")
-}
 
 // cancelOf is the command that cancels a run the UI's client started.
 func cancelOf(id string) page.Call {
@@ -576,15 +567,6 @@ func pluralWord(n int, one string) string {
 	return one + "s"
 }
 
-// when is a time as a list shows it: the time of day within the last day,
-// and the date before that.
-func when(t, at time.Time) string {
-	t = t.Local()
-	if at.Sub(t) < 20*time.Hour {
-		return t.Format("15:04")
-	}
-	return t.Format("2 Jan")
-}
 
 func took(d time.Duration) string {
 	switch {
