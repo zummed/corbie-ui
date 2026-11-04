@@ -21,6 +21,7 @@ The UI is a dashboard. It uses the whole window, with a 20px margin and no colum
 - Data is set in IBM Plex Mono at 13px, secondary data at 11.5px, and labels and buttons in IBM Plex Sans. Both are in the binary, and no page of the UI fetches anything from another site.
 - A page carries labels and data. It writes a sentence only where it cannot show a thing, or where a person must act to fix one.
 - A status is a dot and a word, and a failure adds its kind in brackets: `failed (denied)`. The dot is petrol for running, moss for done and rowan for failed.
+- A time is its time of day when it is today, and has its date on any other day: `20:29`, `10 Nov 20:29`.
 - A machine's type is an icon beside its name, drawn as its drawing draws the type: stages for a flow, rounded states for a statechart, and the model's star for an agent.
 - The status colours mark status: rowan also marks problems and the buttons that cancel or remove, and petrol what a run is doing now. A blue marks the field with the keyboard, a link under the pointer, and the keys of a machine's text.
 - Corbie's gradient, from petrol through blue to violet, colours the icons of the types. No panel has a gradient or a shadow.
