@@ -506,13 +506,15 @@ type stepReader struct {
 	ctx  context.Context
 	c    *client.Client
 	s    *steps
+	runs []*client.Run
 	kept map[string]stepRead
 	errs []error
 }
 
-func (s *steps) reader(ctx context.Context, c *client.Client) *stepReader {
+// reader reads steps of the runs listed, as one drawing of the page needs.
+func (s *steps) reader(ctx context.Context, c *client.Client, runs []*client.Run) *stepReader {
 	s.mu.Lock()
-	return &stepReader{ctx: ctx, c: c, s: s, kept: map[string]stepRead{}}
+	return &stepReader{ctx: ctx, c: c, s: s, runs: runs, kept: map[string]stepRead{}}
 }
 
 // of gives the latest step of a run the client started, read again only
@@ -537,9 +539,14 @@ func (r *stepReader) of(run *client.Run) *instance.Step {
 	return got.step
 }
 
-// done keeps the steps this drawing read, forgets the rest, and gives what
-// could not be read.
+// done keeps the steps of the runs still listed, forgets the rest, and
+// gives what could not be read.
 func (r *stepReader) done() error {
+	for _, run := range r.runs {
+		if got, ok := r.s.read[run.ID]; ok && r.kept[run.ID] == (stepRead{}) {
+			r.kept[run.ID] = got
+		}
+	}
 	r.s.read = r.kept
 	r.s.mu.Unlock()
 	return errors.Join(r.errs...)
