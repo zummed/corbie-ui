@@ -32,9 +32,9 @@ An ended line holds its status, title, machine, the number of runs under it, whe
 A line unfolds to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
 
 ```
-running  chat [waiting]                                           timer quiet due 20:36               3 Nov 20:34
-done       message  message › … › attend   done from attend · 8 runs     3 Nov 20:36  1.7s
-done       message  message › say › slack-say   done from say · 14 runs  3 Nov 20:34  4.1s
+running  chat [waiting]                                   timer quiet due 20:36         3 Nov 20:34
+done       message  message › … › attend               done from attend · 8 runs     3 Nov 20:36  1.7s
+done       message  message › say › slack-say          done from say · 14 runs       3 Nov 20:34  4.1s
 ```
 
 ```

@@ -84,7 +84,7 @@ func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	if h.Client != nil && h.Client.ID != nil {
 		mine = h.Client.ID.Name
 	}
-	read := h.steps.reader(ctx, h.Client)
+	read := h.steps.reader(ctx, h.Client, runs)
 	v := listOf(runs, read.of, n, time.Now(), mine)
 	return v, errors.Join(err, read.done())
 }

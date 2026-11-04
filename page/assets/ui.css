@@ -170,7 +170,7 @@ div.list > a[aria-current] .name { font-weight: 500; }
 /* runs */
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
-.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 92px 100px; gap: 18px; align-items: center;
+.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 100px 100px; gap: 18px; align-items: center;
   height: 31px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); white-space: nowrap; transition: background .15s; }
 .req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .req > summary > :first-child, .req .node > :first-child { overflow: visible; }
