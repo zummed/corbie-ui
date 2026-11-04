@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -210,7 +209,6 @@ func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
 // fixed is a list that holds the runs of a store at the moment it is
 // asked.
 type fixed struct {
-	mu      sync.Mutex
 	from    *client.Client
 	changed chan struct{}
 }
@@ -219,7 +217,6 @@ func (f *fixed) Runs() ([]*client.Run, error) {
 	return f.from.List(context.Background(), client.Filter{Finished: true})
 }
 func (f *fixed) Changed() <-chan struct{} { return f.changed }
-func (f *fixed) Poke()                    {}
 
 const review = `statechart: review
 initial: drafting

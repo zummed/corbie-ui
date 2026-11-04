@@ -25,7 +25,6 @@ import (
 type List interface {
 	Runs() ([]*client.Run, error)
 	Changed() <-chan struct{}
-	Poke()
 }
 
 // Config is what the Runs pages are given: the list, the parties that read
@@ -293,7 +292,6 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer := h.Command(r.Context(), call)
-	h.List.Poke()
 	if answer.Status != 0 {
 		page.Error(w, http.StatusConflict, answer.Error())
 		return

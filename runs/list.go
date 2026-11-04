@@ -362,7 +362,6 @@ func (h *handler) cancel(w http.ResponseWriter, r *http.Request) {
 		}
 		count[text]++
 	}
-	h.List.Poke()
 	for i, text := range said {
 		said[i] = fmt.Sprintf("%s: %d", text, count[text])
 	}
