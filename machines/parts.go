@@ -33,13 +33,16 @@ type part struct {
 // whether the job needs approval.
 type partTool struct {
 	Name, Does, Job, File string
-	Held                  bool
+	Approve               bool
 }
 
 // An opener is an agent that opens a part, and the machines that start it.
+// Problems says Corbie cannot read the machine the agent is in, so what
+// starts it is not known.
 type opener struct {
 	Name, File string
 	Starts     []start
+	Problems   bool
 }
 
 // A start is a machine that starts an agent.
@@ -90,6 +93,22 @@ func (d *dir) partsOf(ix *index) []part {
 		parts = append(parts, *p)
 	}
 	parts = append(parts, d.unopened(parts)...)
+	for _, file := range sortedKeys(ix.own) {
+		if m := ix.machines[file]; m.Draft != nil || dotted(file) {
+			continue
+		}
+		agents := d.agentsIn(file)
+		for _, name := range sortedKeys(agents) {
+			for _, files := range agents[name] {
+				for i := range parts {
+					p := &parts[i]
+					if p.File != "" && slices.Contains(files, p.File) && !slices.ContainsFunc(p.Opened, func(o opener) bool { return o.File == file && o.Name == name }) {
+						p.Opened = append(p.Opened, opener{Name: name, File: file, Problems: true})
+					}
+				}
+			}
+		}
+	}
 	slices.SortFunc(parts, func(a, b part) int { return strings.Compare(a.Name+a.key, b.Name+b.key) })
 	uses := map[string]int{}
 	for i := range parts {
@@ -186,7 +205,7 @@ func toolOf(name string, t *agent.Tool, d *machine.Draft) partTool {
 	if t.Job == nil {
 		return out
 	}
-	out.Held = t.Job.Approve
+	out.Approve = t.Job.Approve
 	if t.Job.IsMachine() {
 		out.Job = "machine"
 		if d.Children[t.Job.Machine] != nil && !strings.HasPrefix(t.Job.Machine, "in-place-") {
@@ -240,16 +259,16 @@ func (px *partIndex) startsOf(file string) []start {
 // no agent opens, outside directories whose names begin with a dot.
 func (d *dir) unopened(known []part) []part {
 	var found []part
-	filepath.WalkDir(d.root, func(full string, e fs.DirEntry, err error) error {
+	filepath.WalkDir(d.real, func(full string, e fs.DirEntry, err error) error {
 		switch {
 		case err != nil:
 			return err
-		case e.IsDir() && full != d.root && strings.HasPrefix(e.Name(), "."):
+		case e.IsDir() && full != d.real && strings.HasPrefix(e.Name(), "."):
 			return filepath.SkipDir
 		case e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml"):
 			return nil
 		}
-		rel, err := filepath.Rel(d.root, full)
+		rel, err := filepath.Rel(d.real, full)
 		if err != nil {
 			return err
 		}
@@ -306,7 +325,7 @@ func writtenTool(name, does string, written any, file string) partTool {
 		t.File = writtenFrom(file, script)
 		return t
 	}
-	t.Held, _ = job["approve"].(bool)
+	t.Approve, _ = job["approve"].(bool)
 	script, _ := job["script"].(string)
 	t.File = writtenFrom(file, script)
 	if ran, ok := job["machine"]; ok {

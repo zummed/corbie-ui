@@ -142,8 +142,7 @@ func (d *dir) partFile(file, name, part, does string) string {
 		switch v := v.(type) {
 		case map[string]any:
 			if fmt.Sprint(v["agent"]) == name {
-				found, _ := d.openedIn(v, file, part, map[string]bool{})
-				files = append(files, found...)
+				files = append(files, d.openedIn(v, file, part)...)
 			}
 			for _, k := range sortedKeys(v) {
 				walk(v[k])
@@ -179,24 +178,30 @@ func (d *dir) partFile(file, name, part, does string) string {
 	return ""
 }
 
-// openedIn gives the files a part is included from in the `open:` of a mapping,
-// or of the first file it includes that writes one, as Corbie reads them: a
-// mapping's own field stands before a file's. A part written in place gives
-// one empty name. The bool says an `open:` was found.
-func (d *dir) openedIn(m map[string]any, file, part string, seen map[string]bool) ([]string, bool) {
+// openedIn gives the files a part is included from in the `open:` of a
+// mapping. A part written in place gives one empty name.
+func (d *dir) openedIn(m map[string]any, file, part string) []string {
+	open, at := d.openOf(m, file, map[string]bool{})
+	entry, ok := open[part].(map[string]any)
+	if !ok {
+		return nil
+	}
+	names := includes(entry)
+	if len(names) == 0 {
+		return []string{""}
+	}
+	for i := range names {
+		names[i] = fromFile(at, names[i])
+	}
+	return names
+}
+
+// openOf gives the `open:` of a mapping, or of the first file it includes that
+// writes one, as Corbie reads them, and the file it is written in: a
+// mapping's own field stands before a file's.
+func (d *dir) openOf(m map[string]any, file string, seen map[string]bool) (map[string]any, string) {
 	if open, ok := m["open"].(map[string]any); ok {
-		entry, ok := open[part].(map[string]any)
-		if !ok {
-			return nil, true
-		}
-		names := includes(entry)
-		if len(names) == 0 {
-			return []string{""}, true
-		}
-		for i := range names {
-			names[i] = fromFile(file, names[i])
-		}
-		return names, true
+		return open, file
 	}
 	for _, name := range includes(m) {
 		next := fromFile(file, name)
@@ -212,11 +217,50 @@ func (d *dir) openedIn(m map[string]any, file, part string, seen map[string]bool
 		if err != nil {
 			continue
 		}
-		if found, ok := d.openedIn(written, next, part, seen); ok {
-			return found, true
+		if open, at := d.openOf(written, next, seen); open != nil {
+			return open, at
 		}
 	}
-	return nil, false
+	return nil, ""
+}
+
+// agentsIn gives each agent a machine's file writes, by its name, with the
+// files of the parts its `open:` includes, by the part's name. It reads the
+// text alone, as for a machine Corbie cannot read.
+func (d *dir) agentsIn(file string) map[string]map[string][]string {
+	src, _, err := d.read(file)
+	if err != nil {
+		return nil
+	}
+	written, err := machine.Written(src)
+	if err != nil {
+		return nil
+	}
+	agents := map[string]map[string][]string{}
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			if name, ok := v["agent"].(string); ok {
+				open, _ := d.openOf(v, file, map[string]bool{})
+				for _, part := range sortedKeys(open) {
+					if agents[name] == nil {
+						agents[name] = map[string][]string{}
+					}
+					agents[name][part] = d.openedIn(v, file, part)
+				}
+			}
+			for _, k := range sortedKeys(v) {
+				walk(v[k])
+			}
+		case []any:
+			for _, each := range v {
+				walk(each)
+			}
+		}
+	}
+	walk(written)
+	return agents
 }
 
 // includes gives the files a mapping's `include:` names: one, or a list.

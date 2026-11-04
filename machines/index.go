@@ -63,16 +63,20 @@ func (d *dir) index() *index {
 	if err != nil {
 		ix.Unread = err.Error()
 	}
-	groups := map[string][]entry{}
 	for _, m := range found {
 		ix.machines[m.Path] = m
 		if m.Problem != nil {
 			ix.own[m.Path] = slices.SortedStableFunc(slices.Values(d.problemsOf(m.Path, m.Problem)), byPlace)
 		}
-		if dotted(m.Path) {
+	}
+	ix.unreadIncluded()
+	ix.Problems = d.problemsOnce(ix.own)
+	groups := map[string][]entry{}
+	for _, m := range found {
+		if dotted(m.Path) || ix.machines[m.Path] == nil {
 			continue
 		}
-		en := entry{Path: m.Path, Problems: len(ix.own[m.Path])}
+		en := entry{Path: m.Path, Problems: len(ix.at(m.Path))}
 		if m.Draft != nil {
 			en.Type, en.First = m.Draft.Definition.Type, m.Draft.Definition.Name
 		} else if src, _, err := d.read(m.Path); err == nil {
@@ -86,7 +90,6 @@ func (d *dir) index() *index {
 	for _, at := range sortedKeys(groups) {
 		ix.Groups = append(ix.Groups, group{Dir: at, Entries: groups[at]})
 	}
-	ix.Problems = d.problemsOnce(ix.own)
 	for file := range ix.own {
 		if !dotted(file) {
 			ix.Broken++
@@ -94,6 +97,35 @@ func (d *dir) index() *index {
 	}
 	ix.parts = d.partsOf(ix)
 	return ix
+}
+
+// unreadIncluded reads a file an `include:` names that cannot be read as one
+// the machines that include it read, and not as a machine: its problems are
+// theirs.
+func (ix *index) unreadIncluded() {
+	for _, file := range sortedKeys(ix.own) {
+		for _, p := range ix.own[file] {
+			if m := ix.machines[p.File]; p.included && m != nil && m.Draft == nil && p.File != file {
+				delete(ix.machines, p.File)
+			}
+		}
+	}
+	for _, file := range sortedKeys(ix.own) {
+		var out []problem
+		for _, p := range ix.own[file] {
+			if own, ok := ix.own[p.File]; p.included && ok && ix.machines[p.File] == nil {
+				out = append(out, own...)
+				continue
+			}
+			out = append(out, p)
+		}
+		ix.own[file] = out
+	}
+	for file := range ix.own {
+		if ix.machines[file] == nil {
+			delete(ix.own, file)
+		}
+	}
 }
 
 // problemsOnce gives each problem of the project's machines once, at the file

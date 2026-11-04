@@ -166,7 +166,7 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	if looker.File != "timed.yaml" || len(looker.Starts) != 1 || looker.Starts[0].File != "timed.yaml" {
 		t.Errorf("an agent written in place is not started by the machine it is written in: %+v", looker)
 	}
-	if len(shared.Tools) != 1 || !shared.Tools[0].Held || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/say.yaml" {
+	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/say.yaml" {
 		t.Errorf("the tool is %+v", shared.Tools)
 	}
 
@@ -182,8 +182,15 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	if s := yml.Opened[0].Starts; len(s) != 1 || s[0].File != "side.yaml" {
 		t.Errorf("the machine above a .yml file is %+v", s)
 	}
-	if len(unopened.Opened) != 0 || unopened.File != "parts/new/part.yaml" || !unopened.Tools[0].Held || unopened.Tools[0].File != "parts/new/try.js" {
+	if len(unopened.Opened) != 0 || unopened.File != "parts/new/part.yaml" || !unopened.Tools[0].Approve || unopened.Tools[0].File != "parts/new/try.js" {
 		t.Errorf("the part nothing opens is %+v", unopened)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	if linked := partsView_(t, link, ""); len(linked.Parts) != len(v.Parts) {
+		t.Errorf("through a link to the directory the parts are %+v", linked.Parts)
 	}
 
 	h, err := New(Config{Dir: dir, Interval: time.Second})
@@ -194,7 +201,7 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 		t.Errorf("an agent no machine starts does not say so:\n%s", body)
 	}
 	body := do(h, "GET", "/parts?part=new", nil).Body.String()
-	for _, want := range []string{`<span class="chip">not opened</span>`, "No agent opens it.", "needs approval", "2 machines with problems", `href="/machines?file=parts%2fnew%2fpart.yaml&amp;view=text"`} {
+	for _, want := range []string{`<span class="chip">not opened</span>`, `<p class="dim">not opened</p>`, "needs approval", "2 machines with problems", `href="/machines?file=parts%2fnew%2fpart.yaml&amp;view=text"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %q:\n%s", want, body)
 		}
@@ -221,7 +228,8 @@ func Test_machines_parts_show_the_problems_in_their_file(t *testing.T) {
 		"parts/net/part.yaml": "does: the network\ntools:\n  r:\n    description: r\n    job: { script: r.js }\n",
 	})
 	v := partsView_(t, dir, "net")
-	if v.Open == nil || len(v.Open.Opened) != 0 || v.Broken != 2 {
+	// The agent that opens the part has problems, and still opens it.
+	if v.Open == nil || len(v.Open.Opened) != 1 || v.Open.Opened[0].File != "a.yaml" || !v.Open.Opened[0].Problems || v.Broken != 2 {
 		t.Fatalf("the part is %+v, with %d machines with problems", v.Open, v.Broken)
 	}
 	if len(v.Problems) == 0 || v.Problems[0].File != "parts/net/part.yaml" || len(v.Problems[0].Breaks) != 2 || v.Problems[0].Line == 0 {

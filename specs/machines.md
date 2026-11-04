@@ -17,14 +17,14 @@ The list holds the project's own machines, those outside directories whose names
 ```
 answer.yaml        flow: answer          2
 attend.yaml        flow: attend
-AGENTS/
+agents/
 helper.yaml        agent: helper         2
 team.yaml          agent: team
-BRIDGES/
+bridges/
 slack.yaml         flow: slack-bridge    2
 ```
 
-Each machine has its type's icon, its file's name, its first line, and the count of its problems. The drawing of a machine shows what it names, and unfolds it. A directory that cannot be read ends the list there, and the list says so.
+Each machine has its type's icon, its file's name, its first line, and the count of the problems shown at its text. The drawing of a machine shows what it names, and unfolds it. A directory that cannot be read ends the list there, and the list says so.
 
 ## Problems
 
@@ -42,15 +42,16 @@ breaks 3 machines
 
 - The place is given as the file writes it, with the line where the text writes it. A place in a file that a machine includes is found in that file.
 - Paths in a problem's text are written from the directory.
+- A file an `include:` names that cannot be read is one problem at that file, breaking each machine that includes it, however each writes its path. The other problems of those machines are not listed, and the file is not listed as a machine.
 - A machine with problems that reads without any from a directory below this one is listed under one problem for that directory: `slackbot/ is the top of a project, and its machines read their paths from there: start the UI in slackbot/`. The machine's own problems are not listed, here or at its text.
 
 ## The drawing
 
-Choosing a machine shows its drawing, as Drawing says, with the secrets it names above it. A machine with problems has no drawing, and shows its text. A file that changes on disk is shown again. Text shows the file, and Drawing goes back.
+Choosing a machine shows its drawing, as Drawing says, with the secrets it names above it. A machine with problems has no drawing, and shows its text. A file that changes on disk is shown again. The tabs Drawing and Text choose the view.
 
 ## The text
 
-A file is shown as text, read-only, with its lines numbered, and its keys, values and expressions set apart. Above the text are the problems found in it, and the lines they are found at are marked.
+A file is shown as text, read-only, with its lines numbered, and its keys, expressions and comments set apart. Above the text are the problems found in it, and the lines they are found at are marked.
 
 ```
 a machine        the problems Corbie gives for it, wherever each is
@@ -89,12 +90,12 @@ machine tell.yaml
 
 | Field | What it shows |
 |---|---|
-| Opened by | each agent whose `open:` holds the part, in its own file or written in place in another machine |
+| Opened by | each agent whose `open:` holds the part, in its own file or written in place in another machine; an agent in a machine with problems, read from its text, says `has problems` |
 | Started by | the machine the agent is written in, or the nearest machine above it on each path outside directories whose names begin with a dot, or `by hand` where there is none |
 | Tools | each tool's `does:`, its job, and `needs approval` where the job has `approve: true` |
 
 - Two agents that open the same file open one part, whichever path and name each gives it.
 - Opening a part with `approve: true` is shown as `opening it needs approval`.
-- A file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, is listed under the name of its directory, with a grey `not opened`. A new part therefore shows before anything uses it.
+- A file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, is listed under the name of its directory, with a grey `not opened`, and its page says `not opened`. A new part therefore shows before anything uses it.
 - A part's file with problems shows them above the part, as the text does.
-- What a machine with problems opens cannot be read. The list says how many of the project's machines have problems, with a link to Machines.
+- The list says how many of the project's machines have problems, with a link to Machines.
