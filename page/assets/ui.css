@@ -306,7 +306,7 @@ svg.machine { flex: none; max-width: 100%; height: auto; }
 .files h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files .bad { min-width: 19px; height: 19px; padding: 0 6px; border-radius: 999px; font: 500 11px/19px var(--mono); text-align: center; color: var(--rowan); background: color-mix(in srgb, var(--rowan) 15%, transparent); }
 .files .chip { height: 19px; padding: 0 8px; border-radius: 999px; font: 500 11px/19px var(--sans); color: var(--ink2); background: var(--hover); white-space: nowrap; }
-.files .problems { margin: 10px 12px; padding: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--rowan) 35%, var(--line)); border-radius: 6px; }
+.problems { flex: none; margin: 10px 12px; padding: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--rowan) 35%, var(--line)); border-radius: 6px; }
 .problem { display: grid; gap: 3px; padding: 6px 0; font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
 .problem + .problem { border-top: 1px solid var(--line); }
 .problem p { margin: 0; }

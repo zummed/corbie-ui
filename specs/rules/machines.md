@@ -18,7 +18,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Problems
 
-**R-machines-08** Above the list, each problem of the listed machines is given once, at the file Corbie names, with its place as that file writes it, its line, and the machines it breaks; a file an `include:` names that cannot be read is one problem at that file, and not a machine. *Test:* `machines_problems_are_listed_once_at_their_file`
+**R-machines-08** Above the lists of Machines and of Parts, each problem of the listed machines is given once, at the file Corbie names, with its place as that file writes it, its line, and the machines it breaks; a file an `include:` names that cannot be read is one problem at that file, and not a machine. *Test:* `machines_problems_are_listed_once_at_their_file`
 
 **R-machines-09** A machine with problems that reads without any from a directory below this one is listed under one problem for that directory, which is the top of its project, and its own problems are not listed. *Test:* `machines_directory_below_the_top_is_one_problem`
 

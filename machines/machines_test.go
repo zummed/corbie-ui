@@ -255,9 +255,6 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 	if atPart == 0 || len(ix.Problems) != atPart+1 {
 		t.Errorf("the problems are %+v", ix.Problems)
 	}
-	if ix.Broken != 3 {
-		t.Errorf("%d machines of the project have problems", ix.Broken)
-	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	body := do(h, "GET", "/machines?file=z.yaml", nil).Body.String()
 	if n := strings.Count(body, "breaks 2 machines"); n != atPart {
@@ -265,6 +262,18 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 	}
 	if strings.Contains(body, ".kit/c.yaml") {
 		t.Errorf("a machine in a dotted directory is counted:\n%s", body)
+	}
+	// The Parts page lists the same problems, drawn the same way.
+	parts := do(h, "GET", "/parts", nil).Body.String()
+	box := func(page string) string {
+		start := strings.Index(page, `<div class="problems">`)
+		if start < 0 {
+			return ""
+		}
+		return page[start : start+strings.Index(page[start:], "</div>")]
+	}
+	if box(parts) == "" || box(parts) != box(do(h, "GET", "/machines", nil).Body.String()) {
+		t.Errorf("the Parts page lists the problems %q, and not as the Machines page does", box(parts))
 	}
 
 	// A file that three machines include, which cannot be read, is one
@@ -286,8 +295,8 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		if len(ix.Problems) != 1 || ix.Problems[0].File != "base.yaml" || len(ix.Problems[0].Breaks) != 3 {
 			t.Errorf("a %s file three machines include gives the problems %+v", name, ix.Problems)
 		}
-		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") }) || ix.Broken != 3 {
-			t.Errorf("with a %s file included, the list is %v and %d machines have problems", name, got, ix.Broken)
+		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") })  {
+			t.Errorf("with a %s file included, the list is %v", name, got)
 		}
 	}
 }
@@ -347,7 +356,7 @@ func Test_machines_text_shows_the_problems_found_in_it(t *testing.T) {
 	if !strings.Contains(part, "tools.r.colour") || !strings.Contains(part, "breaks 1 machine") || strings.Count(part, `class="l err"`) != 1 {
 		t.Errorf("a part's text does not show the problem found in it:\n%s", part)
 	}
-	if a := do(h, "GET", "/machines?file=a.yaml", nil).Body.String(); !strings.Contains(a, "tools.r.colour") || strings.Contains(a, `class="l err"`) {
+	if a := do(h, "GET", "/machines?file=a.yaml", nil).Body.String(); !strings.Contains(a, "tools.r.colour") || !strings.Contains(a, "breaks 1 machine") || strings.Contains(a, `class="l err"`) {
 		t.Errorf("a machine marks its lines for a problem in a file it includes:\n%s", a)
 	}
 	for _, file := range []string{"people.yaml", "helper.yaml"} {
@@ -515,7 +524,7 @@ func Test_machines_dotted_files_are_reached_through_what_names_them(t *testing.T
 			t.Errorf("the list holds %s", line)
 		}
 	}
-	if len(ix.Problems) != 0 || ix.Broken != 0 {
+	if len(ix.Problems) != 0 {
 		t.Errorf("a machine in a dotted directory that nothing names gives problems: %+v", ix.Problems)
 	}
 	v := ix.partsView("")

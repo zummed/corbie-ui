@@ -51,12 +51,16 @@ type start struct {
 }
 
 // partsView is the Parts page as it is drawn.
+// It lists the project's problems as the Machines page does, and shows the
+// part chosen with the problems found in its file, or its file's text.
 type partsView struct {
 	Dir      string
 	Parts    []part
 	Open     *part
 	Problems []problem
-	Broken   int
+	Found    []problem
+	ShowText bool
+	Text     []codeLine
 	Unread   string
 }
 
@@ -124,14 +128,14 @@ func (d *dir) partsOf(ix *index) []part {
 
 // partsView gives the Parts page with a part chosen, by default the first.
 func (ix *index) partsView(open string) partsView {
-	v := partsView{Parts: ix.parts, Broken: ix.Broken, Unread: ix.Unread}
+	v := partsView{Parts: ix.parts, Problems: ix.Problems, Unread: ix.Unread}
 	for i := range v.Parts {
 		if v.Parts[i].ID == open || (open == "" && i == 0) {
 			v.Open = &v.Parts[i]
 		}
 	}
 	if v.Open != nil && v.Open.File != "" {
-		v.Problems = ix.at(v.Open.File)
+		v.Found = ix.at(v.Open.File)
 	}
 	return v
 }
@@ -335,17 +339,40 @@ func writtenTool(name, does string, written any, file string) partTool {
 	return t
 }
 
+// partsPage reads the Parts page as an address asks for it: the part
+// chosen, and its file's text where the address says view=text.
+func (h *handler) partsPage(q url.Values) (partsView, error) {
+	v := h.index.current().partsView(q.Get("part"))
+	v.Dir = shortly(h.Dir)
+	if v.Open != nil && v.Open.File != "" && q.Get("view") == "text" {
+		src, _, err := h.dir.read(v.Open.File)
+		if err != nil {
+			return v, err
+		}
+		v.ShowText, v.Text = true, colour(src, v.Open.File, v.Found)
+	}
+	return v, nil
+}
+
 // showParts is the Parts page.
 func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("part")
-	v := h.index.current().partsView(id)
-	v.Dir = shortly(h.Dir)
+	q := r.URL.Query()
+	v, err := h.partsPage(q)
+	if err != nil {
+		page.Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	id := q.Get("part")
 	if id != "" && v.Open == nil {
 		page.Error(w, http.StatusNotFound, "there is no part "+id)
 		return
 	}
+	stream := url.Values{}
 	if v.Open != nil {
-		id = v.Open.ID
+		stream.Set("part", v.Open.ID)
+	}
+	if v.ShowText {
+		stream.Set("view", "text")
 	}
 	main, err := render("parts", v)
 	if err != nil {
@@ -353,16 +380,19 @@ func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Main = "Parts", "Parts", "/parts/stream?part="+url.QueryEscape(id), main
+	s.Title, s.Current, s.Stream, s.Main = "Parts", "Parts", "/parts/stream?"+stream.Encode(), main
 	page.Write(w, s)
 }
 
 // streamParts sends the page the parts as the directory now holds them.
 func (h *handler) streamParts(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("part")
+	q := r.URL.Query()
 	never := make(chan struct{})
 	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(context.Context) ([]page.Part, error) {
-		v := h.index.current().partsView(id)
+		v, err := h.partsPage(q)
+		if err != nil {
+			return nil, err
+		}
 		var parts []page.Part
 		for _, name := range []string{"partlist", "partview"} {
 			html, err := render(name, v)
