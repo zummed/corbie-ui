@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -247,7 +248,10 @@ func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
 	}
 
 	var calls []string
+	var mu sync.Mutex
 	command := func(_ context.Context, c page.Call) page.Answer {
+		mu.Lock()
+		defer mu.Unlock()
 		calls = append(calls, c.String())
 		return page.Answer{Out: `{"taken":true}`}
 	}

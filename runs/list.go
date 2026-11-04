@@ -464,10 +464,18 @@ func (h *handler) cancel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Each cancel waits for the controller's answer, so they are sent side
+	// by side and the answers are read in order.
+	answers := make([]page.Answer, len(ids))
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Go(func() { answers[i] = h.Command(r.Context(), cancelOf(id)) })
+	}
+	wg.Wait()
 	var said, failed []string
 	count := map[string]int{}
-	for _, id := range ids {
-		answer := h.Command(r.Context(), cancelOf(id))
+	for i, id := range ids {
+		answer := answers[i]
 		if answer.Status != 0 {
 			failed = append(failed, id+": "+answer.Error())
 			continue
