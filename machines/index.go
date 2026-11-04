@@ -69,7 +69,7 @@ func (d *dir) index() *index {
 			ix.own[m.Path] = slices.SortedStableFunc(slices.Values(d.problemsOf(m.Path, m.Problem)), byPlace)
 		}
 	}
-	ix.unreadIncluded()
+	ix.unreadIncluded(d)
 	ix.Problems = d.problemsOnce(ix.own)
 	groups := map[string][]entry{}
 	for _, m := range found {
@@ -99,13 +99,13 @@ func (d *dir) index() *index {
 	return ix
 }
 
-// unreadIncluded reads a file an `include:` names that cannot be read as one
-// the machines that include it read, and not as a machine: its problems are
-// theirs.
-func (ix *index) unreadIncluded() {
+// unreadIncluded reads a file an `include:` names that cannot be read, and
+// that does not begin as a machine does, as one the machines that include it
+// read: its problems are theirs.
+func (ix *index) unreadIncluded(d *dir) {
 	for _, file := range sortedKeys(ix.own) {
 		for _, p := range ix.own[file] {
-			if m := ix.machines[p.File]; p.included && m != nil && m.Draft == nil && p.File != file {
+			if m := ix.machines[p.File]; p.included && m != nil && m.Draft == nil && p.File != file && !d.beginsAsMachine(p.File) {
 				delete(ix.machines, p.File)
 			}
 		}
@@ -126,6 +126,16 @@ func (ix *index) unreadIncluded() {
 			delete(ix.own, file)
 		}
 	}
+}
+
+// beginsAsMachine says a file's first line gives a type of machine.
+func (d *dir) beginsAsMachine(file string) bool {
+	src, _, err := d.read(file)
+	if err != nil {
+		return false
+	}
+	kind, _ := firstLine(src)
+	return kind != ""
 }
 
 // problemsOnce gives each problem of the project's machines once, at the file
