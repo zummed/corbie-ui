@@ -14,11 +14,11 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## The list
 
-**R-machines-01** The list holds each machine outside directories whose names begin with a dot, by its directory, each with its type's icon, its file's name, its first line and the count of its problems. *Test:* `machines_list_shows_what_each_item_is`
+**R-machines-01** The list holds each machine outside directories whose names begin with a dot, by its directory, each with its type's icon, its file's name, its first line and the count of the problems shown at its text. *Test:* `machines_list_shows_what_each_item_is`
 
 ## Problems
 
-**R-machines-08** Above the list, each problem of the listed machines is given once, at the file Corbie names, with its place as that file writes it, its line, and the machines it breaks. *Test:* `machines_problems_are_listed_once_at_their_file`
+**R-machines-08** Above the list, each problem of the listed machines is given once, at the file Corbie names, with its place as that file writes it, its line, and the machines it breaks; a file an `include:` names that cannot be read is one problem at that file, and not a machine. *Test:* `machines_problems_are_listed_once_at_their_file`
 
 **R-machines-09** A machine with problems that reads without any from a directory below this one is listed under one problem for that directory, which is the top of its project, and its own problems are not listed. *Test:* `machines_directory_below_the_top_is_one_problem`
 
@@ -34,7 +34,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Parts
 
-**R-machines-06** The Parts page lists each part an agent opens, in its own file or written in place, and each file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, marked `not opened`. A part shows each tool's `does:`, its job, and whether the job has `approve: true`; each agent that opens it; and for each agent the machine it is written in, or the nearest machine above it on each path outside directories whose names begin with a dot, or `by hand`. *Test:* `machines_parts_show_what_opens_each`
+**R-machines-06** The Parts page lists each part an agent opens, in its own file or written in place, and each file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, marked `not opened`. A part shows each tool's `does:`, its job, and whether the job has `approve: true`; each agent that opens it, an agent in a machine with problems marked so; and for each agent the machine it is written in, or the nearest machine above it on each path outside directories whose names begin with a dot, or `by hand`. *Test:* `machines_parts_show_what_opens_each`
 
 ## Interfaces
 

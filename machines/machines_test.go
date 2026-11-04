@@ -194,7 +194,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	body := do(h, "GET", "/machines?file=bridges/b.yaml", nil).Body.String()
 	_, list, _ := strings.Cut(body, `id="files"`)
 	list, _, _ = strings.Cut(list, "</nav>")
-	for _, want := range []string{`<h2 class="group" title="bridges">bridges/</h2>`, `<use href="#g-agent"/>`, "<small>agent: helper</small>", `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=bridges%2fb.yaml" class="m" aria-current="page"`} {
+	for _, want := range []string{`<h2 class="group" title="bridges">bridges/</h2>`, `<use href="#g-agent"/>`, "<small>agent: helper</small>", `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=bridges%2fb.yaml" aria-current="page"`} {
 		if !strings.Contains(list, want) {
 			t.Errorf("the list does not show %s:\n%s", want, list)
 		}
@@ -266,6 +266,30 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 	if strings.Contains(body, ".kit/c.yaml") {
 		t.Errorf("a machine in a dotted directory is counted:\n%s", body)
 	}
+
+	// A file that three machines include, which cannot be read, is one
+	// problem at that file, however each machine writes its path.
+	for name, base := range map[string]string{"not YAML": "stages: [ { a: \n", "missing": ""} {
+		dir := t.TempDir()
+		files := map[string]string{
+			"w.js":           "return 1",
+			"one.yaml":       "flow: one\ninclude: ./base.yaml\n",
+			"two.yaml":       "flow: two\ninclude: ./base.yaml\n",
+			"sub/three.yaml": "flow: three\ninclude: base.yaml\n",
+		}
+		if base != "" {
+			files["base.yaml"] = base
+		}
+		write(t, dir, files)
+		d, _ := newDir(dir)
+		ix := d.index()
+		if len(ix.Problems) != 1 || ix.Problems[0].File != "base.yaml" || len(ix.Problems[0].Breaks) != 3 {
+			t.Errorf("a %s file three machines include gives the problems %+v", name, ix.Problems)
+		}
+		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") }) || ix.Broken != 3 {
+			t.Errorf("with a %s file included, the list is %v and %d machines have problems", name, got, ix.Broken)
+		}
+	}
 }
 
 func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
@@ -290,6 +314,9 @@ func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 		if p.File != "z.yaml" {
 			t.Errorf("a machine read from the wrong directory gave %+v", p)
 		}
+	}
+	if got := listed(ix); !slices.Contains(got, "proj proj/a.yaml flow: a 1") {
+		t.Errorf("a machine read from the wrong directory counts other than the one problem shown at it: %v", got)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, "<code>proj/</code> is the top of a project") || !strings.Contains(body, "breaks 2 machines") {

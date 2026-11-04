@@ -16,34 +16,53 @@ import (
 // A problem is one of Corbie's, at the file it names: the file, the place in
 // it and its line where the text writes the place, what is wrong, and the
 // machines of the project it breaks. Top says the file is a directory below
-// the one the UI reads that is the top of a project.
+// the one the UI reads that is the top of a project. included says the
+// problem is a file an `include:` names that cannot be read.
 type problem struct {
 	File, Place, Text string
 	Line              int
 	Breaks            []string
 	Top               bool
+	included          bool
 }
+
+// cannotRead is how Corbie says a file a definition names cannot be read.
+var cannotRead = regexp.MustCompile(`^("(?:[^"\\]|\\.)*") cannot be read: (.*)$`)
+
+// includeAt matches the place of an `include:`.
+var includeAt = regexp.MustCompile(`(^|\.)include(\[\d+\])?$`)
 
 // problemsOf gives the problems Corbie found reading the machine in a file,
 // each at the file it names, with its place as that file writes it and its
-// paths from the directory.
+// paths from the directory. A file an `include:` names that cannot be read
+// is the problem of that file, and the problems that follow from it are
+// left out.
 func (d *dir) problemsOf(file string, err error) []problem {
 	from := strings.NewReplacer(d.real+string(filepath.Separator), "", d.root+string(filepath.Separator), "")
 	var found machine.Problems
 	if !errors.As(err, &found) {
 		return []problem{{File: file, Text: from.Replace(err.Error())}}
 	}
-	var out []problem
+	var out, included []problem
 	for _, p := range found {
 		at := file
 		if p.File != "" {
 			at = path.Clean(strings.TrimPrefix(p.File, "./"))
+		}
+		if m := cannotRead.FindStringSubmatch(p.Text); m != nil && includeAt.MatchString(p.Place) {
+			if name, err := strconv.Unquote(m[1]); err == nil {
+				included = append(included, problem{File: fromFile(at, name), Text: "cannot be read: " + from.Replace(m[2]), included: true})
+				continue
+			}
 		}
 		pr := problem{File: at, Place: p.Place, Text: from.Replace(p.Text)}
 		if src, _, err := d.read(at); err == nil {
 			pr.Place, pr.Line = placeIn(src, p.Place)
 		}
 		out = append(out, pr)
+	}
+	if len(included) > 0 {
+		return included
 	}
 	return out
 }
