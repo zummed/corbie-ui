@@ -659,9 +659,15 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	}
 
 	// The client that started the run lists it, and heads its page, by
-	// its title, with the key in the tooltip and beside the title.
-	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
+	// its title, with the key in the tooltip and beside the title. A list
+	// drawn again reads nothing more.
+	counted := &counting{Store: l.Client.Store}
+	c := client.New(l.Client.ID, l.Client.Controller, counted)
+	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: c, Interval: time.Second, Shell: page.Shell{}})
 	list := get(t, h, "/runs")
+	if once := counted.reads.Load(); get(t, h, "/runs") != list || counted.reads.Load() != once {
+		t.Errorf("the list drawn again read %d more times", counted.reads.Load()-once)
+	}
 	if want := "<span class=\"title\" title=\"door for zummed\nkey door:7\n" + id + "\">door for zummed</span>"; !strings.Contains(list, want) {
 		t.Errorf("the run's line is not named by its title, %s:\n%s", want, list)
 	}
@@ -680,27 +686,67 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 		t.Errorf("with no client the run is not named by its key:\n%s", list)
 	}
 
-	// Each title is read once while the run is listed, and forgotten
-	// once it is not.
-	counted := &counting{Store: l.Client.Store}
-	c := client.New(l.Client.ID, l.Client.Controller, counted)
+	// Nor does a UI acting as another client, on the same store.
+	other, err := identity.New("other-client", identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h = New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: client.New(other, l.Client.Controller, l.Client.Store), Interval: time.Second, Shell: page.Shell{}})
+	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
+	if !strings.Contains(list, "title=\"key door:7\n"+id+"\">door:7</span>") || strings.Contains(list+body, "door for") {
+		t.Errorf("another client's run is not named by its key:\n%s", list)
+	}
+
+	// Each title is read once while the run is listed, though its head
+	// moves on, and forgotten once it is not listed.
 	runs, err := (&fixed{from: viewer}).Runs()
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept := &titles{}
+	kept, before := &titles{}, counted.reads.Load()
 	if _, err := kept.of(ctx, c, runs); err != nil {
 		t.Fatal(err)
 	}
 	once := counted.reads.Load()
 	got, err := kept.of(ctx, c, runs)
-	if err != nil || counted.reads.Load() != once || once == 0 {
-		t.Errorf("the titles were read %d times, then %d more: %v", once, counted.reads.Load()-once, err)
+	if err != nil || counted.reads.Load() != once || once == before {
+		t.Errorf("the titles were read %d times, then %d more: %v", once-before, counted.reads.Load()-once, err)
 	}
 	if i := slices.IndexFunc(got, func(r *client.Run) bool { return r.ID == id }); i < 0 || got[i].Title != "door for zummed" || runs[i].Title != "" {
 		t.Errorf("the listed runs are titled %+v", got)
 	}
+	for _, r := range runs {
+		r.Step++
+	}
+	if _, err := kept.of(ctx, c, runs); err != nil || counted.reads.Load() != once {
+		t.Errorf("a head that moved on had its title read %d more times: %v", counted.reads.Load()-once, err)
+	}
 	if kept.of(ctx, c, nil); len(kept.read) != 0 {
 		t.Errorf("the titles of runs no longer listed are kept: %v", kept.read)
+	}
+}
+
+func Test_runs_a_child_is_named_by_its_title(t *testing.T) {
+	// A child with a title is named by it on its row and in Children, one
+	// with a key by its key, and one with neither by its machine.
+	chat := run("c-client/1", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Key = "slack:D1" })
+	titled := run("c-client/2", "message", "flow", "running", time.Minute, 0, func(r *client.Run) { r.Parent, r.Key, r.Title = chat.ID, "msg:1", "Zummed: hello" })
+	keyed := run("c-client/3", "message", "flow", "running", 2*time.Minute, 0, func(r *client.Run) { r.Parent, r.Key = chat.ID, "msg:2" })
+	bare := run("c-client/4", "say", "flow", "running", 3*time.Minute, 0, func(r *client.Run) { r.Parent = chat.ID })
+	v := listOf([]*client.Run{chat, titled, keyed, bare}, noSteps, narrowing{}, at, "")
+	var names []string
+	for _, r := range v.Busy.Lines[0].Rows[1:] {
+		names = append(names, r.Name)
+	}
+	if got := strings.Join(names, ", "); got != "say, msg:2, Zummed: hello" {
+		t.Errorf("the unfolded rows are named %s", got)
+	}
+	for _, c := range []struct {
+		r         *client.Run
+		name, tip string
+	}{{titled, "Zummed: hello", "Zummed: hello\nkey msg:1\nc-client/2"}, {keyed, "msg:2", "key msg:2\nc-client/3"}, {bare, "say", "c-client/4"}} {
+		if got := childOf(c.r, at); got.Name != c.name || got.Tip != c.tip || got.Machine != c.r.Machine {
+			t.Errorf("Children lists %s as %+v", c.r.ID, got)
+		}
 	}
 }

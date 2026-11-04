@@ -4,7 +4,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## Names
 
-**R-runs-09** A run the UI's client started is named by its title where it has one, read from its record once while the list holds it; any other run, and a run with no title, by its key, or by its machine where it has no key. The name is what its line, its row and Children show, the row that started it and its page's title line show its title, the title line beside the key; where a title names a run, the tooltip of its name gives its key. *Test:* `runs_a_run_is_named_by_its_title`
+**R-runs-09** A run the UI's client started is named by its title where it has one, read from its record once while the list holds it; any other run, and a run with no title, by its key, or by its machine where it has no key. Its line, its row and Children show its name. The row that started it shows its title, and its page's title line shows its title beside its key. Where a title names a run, the tooltip of its name gives its key. *Test:* `runs_a_run_is_named_by_its_title`, `runs_a_child_is_named_by_its_title`
 
 ## The list
 

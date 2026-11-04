@@ -7,7 +7,7 @@ The Runs page lists runs, and a run's page shows one. A run has Corbie's one sha
 The UI names a run by the first of these it has:
 
 ```
-title     what the definition's title: filled in to, read from the record of a run the UI's client started
+title     the definition's title: as the controller filled it in, read from the record of a run the UI's client started
 key       the run's key
 machine   its machine's name
 ```

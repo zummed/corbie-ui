@@ -136,7 +136,7 @@ type rootLine struct {
 	// Titled says the name is the root's title, which is cut at its end;
 	// a key is cut in its middle.
 	Titled bool
-	Chain                                                 []link
+	Chain  []link
 	folded
 	Shown, Waits string
 	Old, Ended   bool
@@ -171,7 +171,7 @@ func fold(chain []link) folded {
 // where it runs, comes first.
 type row struct {
 	ID, Status, Failure, Name, Tip, Machine, Type string
-	Own                                      bool
+	Own                                           bool
 	folded
 	Shown, Says, When, Took string
 	Under                   int
