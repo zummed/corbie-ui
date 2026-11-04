@@ -5,9 +5,9 @@
 {{define "machine"}}<a href="/run/{{.ID}}" title="{{.Machine}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}
 
 {{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}">
-<span>{{template "status" .}}</span><span class="title" title="{{.Title}}">{{.Title}}</span>
+<span>{{template "status" .}}</span><span class="title" title="{{.Title}}">{{middle .Title}}</span>
 {{- if .Ended}}<span class="chain">{{template "machine" .}}</span><span class="dim">{{.Under}} {{word .Under "run"}} under it</span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span>
-{{- else}}<span class="chain">{{range $i, $l := .Chain}}{{if $i}}<i>›</i>{{end}}{{template "machine" $l}}{{end}}{{if .Shown}}<span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
+{{- else}}<span class="chain">{{range $i, $l := .Front}}{{if $i}}<i>›</i>{{end}}{{template "machine" $l}}{{end}}{{with .Between}}<i>›</i><span class="between" title="{{.}}">…</span>{{end}}{{range .Back}}<i>›</i>{{template "machine" .}}{{end}}{{if .Shown}}<span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
 </summary>
 <div class="tree">{{range .Tree}}<a class="node" href="/run/{{.ID}}"><span>{{template "status" .}}</span><span class="name" style="--d: {{.Depth}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}{{if .Shown}} <span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span></span></a>{{end}}</div>
 </details>{{end}}
