@@ -32,8 +32,8 @@ if (client) client.addEventListener('change', () => { location = client.value; }
 // A run's Steps. Each child run is a group under the row that started it:
 // an ended child is folded and a running one open, until the person folds
 // or opens it. One row is selected; the drawing and the details beside the
-// list show its run as of its step. The selection follows the newest row
-// until the person moves it.
+// list show its run as of its step. The selection follows the newest row,
+// or the row of the folded group it is in, until the person moves it.
 const split = document.querySelector('.split[data-page]');
 const folds = new Map();
 let selected = null, moved = false, details = false, detailTab = 'what', seen = null, asked = null, base = null;
@@ -53,6 +53,14 @@ function applyFolds() {
     const open = folds.has(g.dataset.group) ? folds.get(g.dataset.group) : !g.hasAttribute('data-ended');
     g.classList.toggle('folded', !open);
   }
+}
+
+// shownOf gives the row that shows a row: itself, or the first row of the
+// outermost folded group it is in.
+function shownOf(row) {
+  let at = row;
+  for (let g = row && groupOf(row); g; g = groupOf(g.firstElementChild)) if (g.classList.contains('folded')) at = g.firstElementChild;
+  return at;
 }
 
 function newestRow() {
@@ -110,10 +118,21 @@ async function show(row) {
         for (const pane of next.querySelectorAll(':scope > .pane')) pane.hidden = pane.dataset.pane !== detailTab;
       }
       old?.replaceWith(next);
+      if (part.id === 'view') showMarked(next);
     }
   } catch (err) {
     if (err.name !== 'AbortError') console.error(err);
   }
+}
+
+// showMarked scrolls a drawing to the first card marked as going, held or
+// failed.
+function showMarked(view) {
+  const drawn = view.querySelector('.drawn'), card = drawn?.querySelector('g.now:not(.holder), g.held, g.failed:not(.holder)');
+  if (!card) return;
+  const a = drawn.getBoundingClientRect(), b = card.getBoundingClientRect();
+  drawn.scrollTop += b.top - a.top - 24;
+  drawn.scrollLeft += b.left - a.left - 24;
 }
 
 function select(row, fetchToo = true) {
@@ -138,8 +157,9 @@ if (split && listOf()) {
   seen = new Set([...listOf().querySelectorAll('.step')].map(r => r.dataset.row));
   applyFolds();
   select(newestRow(), false);
-  const sel = rowOf(selected);
-  if (sel) show(sel);
+  const sel = rowOf(selected), view = document.getElementById('view');
+  if (sel && sel.dataset.row !== view?.dataset.row) show(sel);
+  else if (view) showMarked(view);
 
   document.addEventListener('part', e => {
     if (e.detail.id === 'path') {
@@ -151,7 +171,7 @@ if (split && listOf()) {
     applyFolds();
     for (const r of listOf().querySelectorAll('.step')) if (!seen.has(r.dataset.row)) { r.classList.add('new'); seen.add(r.dataset.row); }
     const row = rowOf(selected);
-    if (!moved || !row) select(newestRow());
+    if (!moved || !row) select(shownOf(newestRow()));
     else select(row, false);
   });
 
@@ -165,8 +185,13 @@ if (split && listOf()) {
       if (top && all.dataset.fold === 'fold') { moved = true; select(top.firstElementChild); }
       return;
     }
-    const button = e.target.closest('.fold');
-    if (button) { const g = button.closest('li.group'); fold(g, g.classList.contains('folded')); return; }
+    const button = e.target.closest('button.fold');
+    if (button) {
+      const g = button.closest('li.group'), row = rowOf(selected);
+      fold(g, g.classList.contains('folded'));
+      if (row && shownOf(row) !== row) select(shownOf(row));
+      return;
+    }
     const row = e.target.closest('.step');
     if (!row || e.target.closest('a')) return;
     moved = true;
@@ -176,11 +201,12 @@ if (split && listOf()) {
   });
 
   document.addEventListener('keydown', e => {
-    if (e.target.closest('input, textarea, select') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.target !== document.body && !e.target.closest('#steps .steplist') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'Enter' && e.target.closest('a, button')) return;
     const row = rowOf(selected);
     if (!row || listOf().offsetParent === null) return;
     const rows = visible();
-    const at = rows.indexOf(row);
+    const at = rows.indexOf(shownOf(row));
     const head = row.parentElement.matches('li.group') ? row.parentElement : null;
     let next = null;
     switch (e.key) {

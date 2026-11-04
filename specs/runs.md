@@ -78,11 +78,11 @@ slack-listen ⇢ chat › message › answer › helper › approval › ask ›
 
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send to a key started the root, the run that sent it comes first, with `⇢`. The run itself is in bold, and the run of the step selected is lit.
 
-On the left are three tabs: Steps, Output and Children. On the right are the drawing, what the run waits on, and the details of the step selected.
+On the left are four tabs: Steps, Waiting on, Output and Children. On the right are the drawing and the details of the step selected.
 
 ### Steps
 
-Steps lists what happened in the run and in every run under it, one row each, read from the record as `corbie run show --record` reads it. A row holds its time, its run's machine in the colour of the machine's type, and what happened:
+Steps lists what happened in the run and in every run under it, one row each, read from the record as `corbie run show --record` reads it. A row holds its time to the second, with its date where that is not the date the run started, its run's machine in the colour of the machine's type, and what happened:
 
 ```
 statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started message
@@ -94,12 +94,15 @@ a send       ⇢ sent answer to the key question:1d3473b2cc · question       in
 ```
 
 - A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
-- A send to a key has a dashed mark and links to the run that held the key when it was sent. The row in the run it reached links to the sender.
+- A send to a key has a dashed mark, and the machine of the run it went to is a link to that run. In the run it reached, the sender's machine is a link to the sender.
+- An undelivered send ends with `undelivered`, and its details say why.
 - The row that started a child ends with the child's status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
 - An ended child is folded, and a running one open. Open all and Fold all fold every group.
 - On the page of a run another client started, there are no Steps.
 
-One row is selected. On a running run it is the newest row until the person selects another; on an ended run it is the last.
+One row is selected. On a running run it is the newest row, or the first row of the folded group it is in, until the person selects another; on an ended run it is the last. Folding the group of the selected row selects the group's first row.
+
+The keys act when the list has the focus, or nothing else on the page has it:
 
 ```
 ↑ ↓      selects the row above or below, of those shown
@@ -108,7 +111,7 @@ One row is selected. On a running run it is the newest row until the person sele
 click    selects the row and shows its details
 ```
 
-The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls.
+The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls to the first card that is going, held or failed.
 
 The details of a row have four tabs, and Open opens the row's run's page:
 
@@ -116,7 +119,7 @@ The details of a row have four tabs, and Open opens the row's run's page:
 What happened   the row's facts: the job and its machine or script, a tool's arguments, the run a tool is held for, the turn, the error
 Input           what the row's job, call or event was given
 Output          what it gave back
-Record          the entries of the row's step, in the words corbie run show --record prints, each named by its run's machine
+Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine
 ```
 
 ### Waiting on, Output and Children

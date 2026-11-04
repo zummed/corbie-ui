@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -388,7 +389,7 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		"a-client/1": {ID: "a-client/1", Machine: "chat", Type: "statechart", Status: "running"},
 		"a-client/2": {ID: "a-client/2", Machine: "message", Type: "flow", Status: "done", Parent: "a-client/1", Started: now, Ended: now.Add(time.Second)},
 	}
-	rows := rowsOf("a-client/1", tree, byID, now)
+	rows := rowsOf("a-client/1", tree, byID, now, now)
 	var said []string
 	for _, r := range rows {
 		said = append(said, r.Said())
@@ -439,21 +440,82 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		t.Errorf("the details are not those of the first step:\n%s", details)
 	}
 
-	// A send to a key links to the run that held the key when it was
-	// sent, and the path begins with the run whose send started the root.
+	// A send to a key links to the run it went to, and its record says
+	// what `corbie run show --record` says; one that went nowhere says
+	// why. The path begins with the run whose send started the root.
 	sent := at.Add(-time.Hour)
 	byID := map[string]*client.Run{
 		"a-client/1": {ID: "a-client/1", Machine: "listen", Type: "statechart", Status: "running"},
-		"a-client/2": {ID: "a-client/2", Machine: "question", Type: "statechart", Status: "done", Key: "question:1", Started: sent.Add(-time.Hour), Ended: sent.Add(time.Minute)},
-		"a-client/3": {ID: "a-client/3", Machine: "question", Type: "statechart", Status: "running", Key: "question:1", Started: sent.Add(time.Hour)},
+		"a-client/2": {ID: "a-client/2", Machine: "question", Type: "statechart", Status: "done", Key: "question:1"},
 		"a-client/4": {ID: "a-client/4", Machine: "chat", Type: "statechart", Status: "running", StartedBy: "a-client/1"},
 		"a-client/5": {ID: "a-client/5", Machine: "message", Type: "flow", Status: "running", Parent: "a-client/4"},
 	}
-	rows := rowsOf("a-client/1", []client.Entry{{ID: "a-client/1", Step: 3, Time: sent,
-		Asks: []instance.Ask{{Kind: instance.AskEvent, Key: "question:1", Event: &machine.Event{Name: "answer"}}}}}, byID, at)
-	if len(rows) != 1 || rows[0].Kind != "send" || rows[0].To == nil || rows[0].To.ID != "a-client/2" || rows[0].Said() != "⇢ sent answer to the key question:1 · question" {
-		t.Errorf("the send is %+v", rows)
+	sends := client.Entry{ID: "a-client/1", Step: 3, Time: sent, Status: "running", Asks: []instance.Ask{
+		{Kind: instance.AskEvent, Key: "question:1", To: "a-client/2", Event: &machine.Event{Name: "answer"}},
+		{Kind: instance.AskEvent, Key: "question:2", Undelivered: true, Event: &machine.Event{Name: "answer"}},
+	}}
+	rows := rowsOf("a-client/1", []client.Entry{sends}, byID, at, sent)
+	var to *link
+	for _, w := range rows[0].What {
+		to = cmp.Or(to, w.Run)
 	}
+	if len(rows) != 2 || rows[0].Kind != "send" || to == nil || to.ID != "a-client/2" || rows[0].Said() != "⇢ sent answer to the key question:1 · question" ||
+		rows[1].Said() != "⇢ sent answer to the key question:2 · undelivered" {
+		t.Errorf("the sends are %+v", rows)
+	}
+	var said []string
+	for _, l := range lines(sends, "listen", sent) {
+		said = append(said, l.Text)
+	}
+	if strings.Join(said, "; ") != `send answer to the key "question:1"; send answer to the key "question:2" (undelivered: it is not running)` {
+		t.Errorf("the record of the sends says %q", said)
+	}
+	if rows[0].Time != sent.Local().Format("15:04:05") {
+		t.Errorf("a step's time is %q", rows[0].Time)
+	}
+
+	// A job asked again has its own input and output: Corbie writes the
+	// ask as answering#2, and the end as from answering.
+	again := func(typ string, end string) []stepRow {
+		job := func(name, child, input string) instance.Ask {
+			if typ == "agent" {
+				return instance.Ask{Kind: instance.AskScript, Name: name, Job: &machine.Job{Script: "work.sh", Input: input}}
+			}
+			return instance.Ask{Kind: instance.AskChild, Name: name, Child: child, Job: &machine.Job{Machine: "work", Input: input}}
+		}
+		ended := func(data string) []instance.Arrived {
+			return []instance.Arrived{{Event: machine.Event{Name: end, From: "answering", Data: data}}}
+		}
+		runs := map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "chat", Type: typ, Status: "running"}}
+		return rowsOf("a-client/1", []client.Entry{
+			{ID: "a-client/1", Step: 1, Time: sent, Status: "running", Asks: []instance.Ask{job("answering", "a-client/2", "first")}},
+			{ID: "a-client/1", Step: 2, Time: sent, Status: "running", Events: ended("one"), Asks: []instance.Ask{job("answering#2", "a-client/3", "second")}},
+			{ID: "a-client/1", Step: 3, Time: sent, Status: "running", Events: ended("two")},
+		}, runs, at, sent)
+	}
+	if rows := again("statechart", "done"); len(rows) != 3 || rows[1].In != "first" || rows[1].Out != "one" || rows[2].In != "second" || rows[2].Out != "two" {
+		t.Errorf("a job asked again is shown as %+v", rows)
+	}
+	if rows := again("agent", "failed"); len(rows) != 3 || rows[1].In != "first" || rows[2].In != "second" || rows[2].Facts[0].Text != "answering#2" {
+		t.Errorf("an agent's job asked again is shown as %+v", rows)
+	}
+
+	// A step's details hold the values its run's jobs emitted since the
+	// step before.
+	record := []client.Entry{
+		{ID: "a-client/1", Step: 1, Time: sent, Status: "running"},
+		{ID: "a-client/1", Time: sent, Job: "hearing", Name: "early", Data: "no"},
+		{ID: "a-client/1", Step: 2, Time: sent, Status: "running"},
+		{ID: "a-client/1", Time: sent, Job: "hearing#2", Name: "answer", Data: "yes"},
+		{ID: "a-client/2", Step: 1, Time: sent, Status: "running"},
+		{ID: "a-client/1", Step: 3, Time: sent, Status: "running"},
+		{ID: "a-client/1", Time: sent, Job: "hearing#2", Name: "late", Data: "no"},
+	}
+	cut, own := cutAt(record, &stepRow{Run: link{ID: "a-client/1"}, Step: 3})
+	if len(cut) != 3 || len(own) != 2 || lines(own[0], "listen", sent)[0].Text != "hearing#2 answer: yes" || own[1].Step != 3 {
+		t.Errorf("step 3 is cut as %+v, and its details hold %+v", cut, own)
+	}
+
 	under := map[string][]*client.Run{"a-client/4": {byID["a-client/5"]}}
 	var path []string
 	for _, l := range pathOf(byID["a-client/5"], byID, under) {

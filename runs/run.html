@@ -8,11 +8,11 @@
 
 {{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}{{if .Sent}}<span class="sep send" title="a send of the run before started it">⇢</span>{{else}}<span class="sep">›</span>{{end}}{{end}}<a href="/run/{{.ID}}" data-run="{{.ID}}" title="{{.ID}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
 
-{{define "words"}}{{range .}}{{if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
+{{define "words"}}{{range .}}{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.ID}}"><b>{{.Text}}</b></a>{{else if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
 
 {{define "steprow"}}<div class="step {{.Run.Type}}{{with .Kind}} {{.}}{{end}}" data-row="{{.Key}}" data-run="{{.Run.ID}}" data-at="{{.Unix}}" style="--d: {{.Depth}}">
-<span class="t" title="{{.Exact}}">{{.Time}}</span><span class="link">{{with .To}}<a href="/run/{{.ID}}" title="{{.ID}}" aria-label="{{.Machine}}"></a>{{end}}</span>
-<span class="who" title="{{.Run.ID}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
+<span class="t" title="{{.Exact}}">{{.Time}}</span><span class="link"></span>
+<span class="who" title="{{.Run.ID}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{else}}<span class="fold"></span>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
 <span class="what" title="{{.Said}}">{{template "words" .What}}{{with .Group}}<span class="sum"> · <span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span> · {{.Steps}} {{word .Steps "step"}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}</span>
 </div>{{end}}
 
@@ -23,10 +23,10 @@
     <span class="legend"><span class="statechart"><i></i>statechart</span><span class="flow"><i></i>flow</span><span class="agent"><i></i>agent</span></span>
     <span class="acts"><button class="btn sm" type="button" data-fold="open">Open all</button><button class="btn sm" type="button" data-fold="fold">Fold all</button></span>
   </div>
-  <ol class="steplist{{if .Dated}} dated{{end}}">{{template "steprows" .Rows}}{{if not .Rows}}<li class="dim none">nothing yet</li>{{end}}</ol>
+  <ol class="steplist{{if .Dated}} dated{{end}}" tabindex="0">{{template "steprows" .Rows}}{{if not .Rows}}<li class="dim none">nothing yet</li>{{end}}</ol>
 </div>{{end}}
 
-{{define "view"}}<section class="panel asof" id="view">
+{{define "view"}}<section class="panel asof" id="view"{{with .Row}} data-row="{{.Key}}"{{end}}>
   {{if .Row}}<div class="head">{{template "icon" .Type}}<span>{{.Row.Run.Machine}}</span><span class="dim">{{.Type}}</span><span class="facts">as of step {{.Row.Step}}, {{.Time}}</span></div>{{end}}
   <div class="drawn">{{if .Drawing}}{{.Drawing}}{{else if .Row}}<p class="dim">no drawing</p>{{else}}<p class="dim">a run another client started: only its status can be read</p>{{end}}</div>
 </section>{{end}}
@@ -42,8 +42,7 @@
   <div class="pane" data-pane="lines" hidden><ol class="record">{{range $.Lines}}<li><span class="t">{{.Time}}</span><span class="i" title="{{.Machine}}">{{.Machine}}</span><span class="n">{{if .Step}}{{.Step}}{{end}}</span><span class="w{{if .End}} end {{.End}}{{end}}">{{if eq .Way "in"}}<b>&lt;-</b> {{else if eq .Way "out"}}<b>-&gt;</b> {{end}}{{.Text}}</span></li>{{end}}</ol></div>
 {{end}}</section>{{end}}
 
-{{define "waits"}}<div class="panel" id="waits">
-  <div class="head"><h2>Waiting on</h2></div>
+{{define "waits"}}<div id="waits">
   <div class="waitlist">
   {{if .Run.HasEnded}}<div class="wait dim">nothing: the run has ended</div>{{end}}
   {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}
@@ -72,14 +71,14 @@
 {{template "path" .}}
 <div class="split" data-page="{{.Run.ID}}">
   <div class="panel tabbed">
-    <nav class="tabs">{{if .Mine}}<a href="#steps" aria-current="true">Steps</a>{{end}}<a href="#output"{{if not .Mine}} aria-current="true"{{end}}>Output</a><a href="#children">Children</a></nav>
+    <nav class="tabs">{{if .Mine}}<a href="#steps" aria-current="true">Steps</a>{{end}}<a href="#waits"{{if not .Mine}} aria-current="true"{{end}}>Waiting on</a><a href="#output">Output</a><a href="#children">Children</a></nav>
     {{if .Mine}}<div class="pane" data-pane="steps">{{template "steps" .}}</div>{{end}}
-    <div class="scroll pane" data-pane="output"{{if .Mine}} hidden{{end}}>{{template "output" .}}</div>
+    <div class="scroll pane" data-pane="waits"{{if .Mine}} hidden{{end}}>{{template "waits" .}}</div>
+    <div class="scroll pane" data-pane="output" hidden>{{template "output" .}}</div>
     <div class="scroll pane" data-pane="children" hidden>{{template "children" .}}</div>
   </div>
   <div class="side">
     {{template "view" .Shown}}
-    {{template "waits" .}}
     {{template "details" .Shown}}
   </div>
 </div>

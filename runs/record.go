@@ -21,7 +21,6 @@ import (
 // --record` prints: when, which run by its machine, the step, which way it
 // went, and what. The line a run ends with has its status.
 type line struct {
-	Key     string
 	Time    string
 	Machine string
 	Step    int
@@ -31,28 +30,21 @@ type line struct {
 }
 
 // lines gives an entry of a record as Corbie's command line prints it,
-// which it keeps to itself, with the run named by its machine where names
-// gives it.
-func lines(e client.Entry, names map[string]string, now time.Time) []line {
-	at := page.When(e.Time, now)
-	short := names[e.ID]
-	if short == "" {
-		short = e.ID[strings.LastIndexByte(e.ID, '-')+1:]
-	}
-	key := func(i int) string {
-		return e.ID + "/" + strconv.Itoa(e.Step) + "/" + e.Job + "/" + e.Name + "/" + strconv.Itoa(i)
-	}
+// which it keeps to itself, with the run named as name, and its time as
+// the steps of a run that started on day show it.
+func lines(e client.Entry, name string, day time.Time) []line {
+	at := page.Clock(e.Time, day)
 	if e.Step == 0 {
 		data, _ := json.Marshal(e.Data, json.Deterministic(true))
 		text := string(data)
 		if s, ok := e.Data.(string); ok {
 			text = s
 		}
-		return []line{{Key: key(0), Time: at, Machine: short, Text: fmt.Sprintf("%s %s: %s", e.Job, e.Name, text)}}
+		return []line{{Time: at, Machine: name, Text: fmt.Sprintf("%s %s: %s", e.Job, e.Name, text)}}
 	}
 	var out []line
 	add := func(way, text string) {
-		out = append(out, line{Key: key(len(out)), Time: at, Machine: short, Step: e.Step, Way: way, Text: text})
+		out = append(out, line{Time: at, Machine: name, Step: e.Step, Way: way, Text: text})
 	}
 	for _, event := range e.Events {
 		text := event.Name
@@ -81,9 +73,12 @@ func lines(e client.Entry, names map[string]string, now time.Time) []line {
 			if ask.Name != "" {
 				to = ask.Name
 			}
+			if ask.Key != "" || ask.Text != "" {
+				to = fmt.Sprintf("the key %q", ask.Key)
+			}
 			text = fmt.Sprintf("send %s to %s", ask.Event.Name, to)
 			if ask.Undelivered {
-				text += " (undelivered: it is not running)"
+				text += " (undelivered: " + cmp.Or(ask.Text, "it is not running") + ")"
 			}
 		case instance.AskFail:
 			text = fmt.Sprintf("%s fails: %s", ask.Name, ask.Error.Error)
@@ -128,7 +123,6 @@ type stepRow struct {
 	// Kind colours a row: send and got for a send between runs, held,
 	// failed, and the status a run ended with.
 	Kind  string
-	To    *link
 	Group *group
 	// What the row's details show: its facts, and what went in and came
 	// out.
@@ -136,10 +130,12 @@ type stepRow struct {
 	In, Out any
 }
 
-// A word is part of what a row says; a name is bold.
+// A word is part of what a row says; a name is bold, and the run a send
+// went to or came from is a link to it.
 type word struct {
 	Text string
 	Bold bool
+	Run  *link
 }
 
 // A fact is one line of a row's details, with the run it names.
@@ -186,22 +182,23 @@ func linkOf(id string, byID map[string]*client.Run) link {
 }
 
 // rowsOf gives a run's rows, from its record and its children's, each
-// child's under the row that started it.
-func rowsOf(id string, entries []client.Entry, byID map[string]*client.Run, now time.Time) []stepRow {
+// child's under the row that started it. A row's time has its date where it
+// is not on day's date.
+func rowsOf(id string, entries []client.Entry, byID map[string]*client.Run, now, day time.Time) []stepRow {
 	of := map[string][]client.Entry{}
 	for _, e := range entries {
 		if e.Step > 0 {
 			of[e.ID] = append(of[e.ID], e)
 		}
 	}
-	b := &rowBuilder{of: of, byID: byID, now: now}
+	b := &rowBuilder{of: of, byID: byID, now: now, day: day}
 	return b.rows(id, 0)
 }
 
 type rowBuilder struct {
-	of   map[string][]client.Entry
-	byID map[string]*client.Run
-	now  time.Time
+	of       map[string][]client.Entry
+	byID     map[string]*client.Run
+	now, day time.Time
 }
 
 // steps counts the steps of a run and of every run under it.
@@ -223,7 +220,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 	var out []stepRow
 	var prev any
 	turn := 0
-	jobs := map[string]*instance.Ask{} // the ask that started each job, by its full name
+	jobs := map[string]*instance.Ask{} // the latest ask that started each job, by its name
 	for i, e := range own {
 		n := 0
 		add := func(r stepRow) *stepRow {
@@ -231,7 +228,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				r.Key = e.ID + "/" + strconv.Itoa(e.Step) + "/" + strconv.Itoa(n)
 				n++
 			}
-			r.Run, r.Step, r.At, r.Time, r.Depth = run, e.Step, e.Time, page.When(e.Time, b.now), depth
+			r.Run, r.Step, r.At, r.Time, r.Depth = run, e.Step, e.Time, page.Clock(e.Time, b.day), depth
 			r.Exact = e.Time.Local().Format("2 Jan 2006 15:04:05.000")
 			out = append(out, r)
 			return &out[len(out)-1]
@@ -253,26 +250,32 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			case ev.Name == machine.Start:
 			case store.CheckInstance(ev.From) == nil:
 				from := linkOf(ev.From, b.byID)
-				add(stepRow{What: say("⇠ ", bold(ev.Name), " from ", bold(from.Machine)), Kind: "got", To: &from, In: ev.Data,
+				add(stepRow{What: say("⇠ ", bold(ev.Name), " from ", linked(&from)), Kind: "got", In: ev.Data,
 					Facts: []fact{{Name: "event", Text: ev.Name}, {Name: "from", Text: from.ID, Run: &from}}})
 			case ev.Name == machine.Timer:
-				add(stepRow{What: say("timer ", bold(jobOf(ev.From)), " fired"), Facts: []fact{{Name: "timer", Text: jobOf(ev.From)}, {Name: "due", Text: fmt.Sprint(ev.Data)}}})
+				r := stepRow{What: say("timer ", bold(jobOf(ev.From)), " fired"), Facts: []fact{{Name: "timer", Text: jobOf(ev.From)}}}
+				if s, _ := ev.Data.(string); s != "" {
+					if due, err := time.Parse(time.RFC3339Nano, s); err == nil {
+						r.Facts = append(r.Facts, fact{Name: "due", Text: page.When(due, b.now)})
+					}
+				}
+				add(r)
 			case ev.Answer:
 				add(stepRow{What: say("⇠ ", bold(ev.Name), " answered"), Kind: "got", In: ev.Data, Facts: []fact{{Name: "ticket", Text: ev.Name}}})
 			case ev.Name == machine.Failed && run.Type != "flow":
-				r := stepRow{What: say(bold(jobOf(ev.From)), " failed"), Kind: "failed", Out: ev.Data, Facts: jobFacts(jobs[ev.From], b.byID)}
-				if a := jobs[ev.From]; a != nil && a.Job != nil {
+				r := stepRow{What: say(bold(jobOf(ev.From)), " failed"), Kind: "failed", Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID)}
+				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 					r.In = a.Job.Input
 				}
 				r.Facts = append(r.Facts, fact{Name: "error", Text: failure(ev.Data)})
 				add(r)
-			case run.Type == "agent" && ev.Name == machine.Done && isTurn(jobs[ev.From]):
+			case run.Type == "agent" && ev.Name == machine.Done && isTurn(jobs[named(ev.From)]):
 				data, _ := ev.Data.(map[string]any)
 				calls, _ := data["calls"].([]any)
 				for _, c := range calls {
 					call, _ := c.(map[string]any)
 					name, _ := call["name"].(string)
-					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i:], name),
+					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i+1:], name),
 						Facts: []fact{{Name: "tool", Text: name}, {Name: "args", Text: compact(call["args"])}, {Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 				if len(calls) == 0 {
@@ -281,8 +284,8 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 						Facts: []fact{{Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 			case run.Type == "agent" && ev.Name == machine.Done:
-				r := stepRow{What: say(bold(jobOf(ev.From)), " done"), Out: ev.Data, Facts: jobFacts(jobs[ev.From], b.byID)}
-				if a := jobs[ev.From]; a != nil && a.Job != nil {
+				r := stepRow{What: say(bold(jobOf(ev.From)), " done"), Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID)}
+				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 					r.In = a.Job.Input
 				}
 				add(r)
@@ -323,7 +326,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 						if ev.Name == machine.Failed {
 							r.Facts = append(r.Facts, fact{Name: "error", Text: failure(ev.Data)})
 						}
-						if a := jobs[ev.From]; a != nil && a.Job != nil {
+						if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 							r.In = a.Job.Input
 						}
 					}
@@ -334,7 +337,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 		for k := range e.Asks {
 			a := &e.Asks[k]
 			if a.Name != "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild || a.Kind == instance.AskHold) {
-				jobs[a.Name] = a
+				jobs[named(a.Name)] = a
 			}
 			switch a.Kind {
 			case instance.AskChild:
@@ -351,7 +354,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
-				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i:], a.Name)}
+				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name)}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -376,7 +379,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 					add(stepRow{What: say("timer ", bold(name), " set, due "+page.When(a.At, b.now)), Facts: []fact{{Name: "timer", Text: name}, {Name: "due", Text: page.When(a.At, b.now)}}})
 				}
 			case instance.AskEvent:
-				add(b.sendOf(a, e.Time))
+				add(b.sendOf(a))
 			case instance.AskHold:
 				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID)}
 				if a.Job != nil {
@@ -424,74 +427,52 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 	return out
 }
 
-// sendOf is the row of an event a run sent: to a key, with the run that
-// holds the key, or to a run it started or the run that started it.
-func (b *rowBuilder) sendOf(a *instance.Ask, at time.Time) stepRow {
+// sendOf is the row of an event a run sent: to a key, to a job's child, or
+// to the run that started it, linked to the run it went to.
+func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	event := ""
 	var data any
 	if a.Event != nil {
 		event, data = a.Event.Name, a.Event.Data
 	}
 	r := stepRow{In: data, Facts: []fact{{Name: "event", Text: event}}}
-	to := cmp.Or(a.To, a.Run)
-	if a.Key != "" && to == "" {
-		to = b.holder(a.Key, at)
-	}
-	var reached *link
-	if to != "" {
-		l := linkOf(to, b.byID)
-		reached = &l
+	var to *link
+	if a.To != "" {
+		l := linkOf(a.To, b.byID)
+		to = &l
 	}
 	switch {
-	case a.Key != "":
-		r.Kind, r.To = "send", reached
+	case a.Key != "" || a.Text != "":
+		r.Kind = "send"
 		r.What = say("⇢ sent ", bold(event), " to the key ", bold(a.Key))
-		if reached != nil {
-			r.What = append(r.What, word{Text: " · " + reached.Machine})
+		if to != nil {
+			r.What[3].Run = to
+			r.What = append(r.What, word{Text: " · "}, linked(to))
 		}
 		r.Facts = append(r.Facts, fact{Name: "key", Text: a.Key})
-	case reached != nil:
-		r.What = say("sent ", bold(event), " to ", bold(reached.Machine))
+	case to != nil:
+		r.What = say("sent ", bold(event), " to ", linked(to))
+	case a.Name != "":
+		r.What = say("sent ", bold(event), " to ", bold(a.Name))
 	default:
 		r.What = say("sent ", bold(event), " to its parent")
 	}
-	if reached != nil {
-		r.Facts = append(r.Facts, fact{Name: "reached", Text: reached.ID + statusOf(b.byID[reached.ID]), Run: reached})
+	if to != nil {
+		r.Facts = append(r.Facts, fact{Name: "reached", Text: to.ID + statusOf(b.byID[to.ID]), Run: to})
 	}
 	if a.Undelivered {
 		r.What = append(r.What, word{Text: " · undelivered"})
-		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: "no running run had the key, or the run was not running"})
+		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: cmp.Or(a.Text, "it is not running")})
 	}
 	return r
 }
 
-// holder gives the run that held a key at a time: one started by then and
-// not yet ended, or the newest started before.
-func (b *rowBuilder) holder(key string, at time.Time) string {
-	var best *client.Run
-	for _, r := range b.byID {
-		if r.Key != key || r.Started.After(at) {
-			continue
-		}
-		if !r.HasEnded() || !r.Ended.Before(at) {
-			return r.ID
-		}
-		if best == nil || r.Started.After(best.Started) {
-			best = r
-		}
-	}
-	if best == nil {
-		return ""
-	}
-	return best.ID
-}
-
-// resultOf gives what a job gave, from the first step from the one given
-// that took its end: its output, or its error.
+// resultOf gives what a job gave, from the first of entries that took its
+// end: its output, or its error.
 func (b *rowBuilder) resultOf(entries []client.Entry, job string) any {
 	for _, e := range entries {
 		for _, ev := range e.Events {
-			if (ev.Name == machine.Done || ev.Name == machine.Failed) && (ev.From == job || jobOf(ev.From) == job) {
+			if (ev.Name == machine.Done || ev.Name == machine.Failed) && (named(ev.From) == named(job) || jobOf(ev.From) == job) {
 				return ev.Data
 			}
 		}
@@ -653,6 +634,18 @@ func say(parts ...any) []word {
 }
 
 func bold(text string) word { return word{Text: text, Bold: true} }
+
+// linked is a run named in bold, as a link to it.
+func linked(l *link) word { return word{Text: l.Machine, Bold: true, Run: l} }
+
+// named gives a job's name as the event of its end gives it: without the
+// number of the ask or the attempt that Corbie writes after it.
+func named(name string) string {
+	if i := strings.IndexAny(name, "#@"); i > 0 {
+		return name[:i]
+	}
+	return name
+}
 
 // names gives names in bold, joined by "and".
 func names(list []string) []word {
