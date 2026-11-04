@@ -6,27 +6,27 @@ The Runs page lists runs, and a run's page shows one. A run has Corbie's one sha
 
 The list reads every run whose status the UI may read. The UI lists as a viewer where the store lets a viewer read, as `corbie run ls --all` does with no client: every client's runs on a directory, and on a bucket with a viewer's key. Where the store does not, as on a served directory or a bucket with a client's key, it lists its client's own, as `corbie run ls --all` does for that client.
 
-A root is a running run whose parent is not running. Each root is one line, in one of four sections:
+A root is a running run whose parent is not running. Each root is one line in Busy, Idle or Services, and Ended lists the runs with no parent that ended:
 
 ```
-Services   a root whose key begins file:, as corbie run submit of a directory starts it
 Busy       a root with a running child, a job on a runner or a ticket, or with status waiting
-Idle       any other root: one that waits only on timers
+Idle       any other root: no running child, no job on a runner and no ticket
+Services   a root whose key begins file:, as corbie run submit of a directory starts it, whatever it waits on
 Ended      a run with no parent that ended in the window, newest first
 ```
 
-The window is 1h, 6h, 24h or 7d, and 6h by default. A line of the first three sections reads:
+The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Services reads:
 
 ```
-running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29, events at key question:9de2a8913b  20:29  old version
+running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29  old version
 ```
 
 - The title is the root's key, or its machine's name where it has none.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
 - The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
-- Then come what the deepest run waits on and when the root started.
+- Then come what the deepest run waits on and when the root started. Events at the root's key are left out, since the title is that key.
 
-A line unfolds to the root's running tree, one line for each run, indented under its parent, each with what it waits on. An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took, and unfolds to those runs.
+A line unfolds to the root's running tree, one line for each run, indented under its parent, each with what it waits on and when it started. An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took, and unfolds to those runs, each with when it ended.
 
 What a run waits on is written as:
 
@@ -45,13 +45,13 @@ The names and times come from the latest step of a run the UI's client started, 
 
 `corbie run submit` of a directory labels each run `machine=<path>` and `hash=<hash>`, and the runs under it and those its sends start carry the same labels. Each client has its own current hash of a path: the `hash=` of the newest run with no parent that the client keyed `file:<path>`. A root of that client whose `hash=` differs is marked `old version`.
 
-Where Idle holds roots on old versions that the UI's client started, its head offers one button, `Cancel the 14 idle runs on old versions`. It runs `corbie run cancel <id>` for each, and holding the pointer over it shows every command.
+Where Idle holds roots on old versions that the UI's client started, its title line offers one button, `Cancel the 14 idle runs on old versions`. It runs `corbie run cancel <id>` for each, and holding the pointer over it shows every command.
 
 The page is narrowed by label, as `--label` narrows `corbie run ls`, and by client, the first part of a run's ID, which `corbie run ls` has no flag for. The client is chosen only where the list holds more than one, or the address names one. A root or ended run the narrowing leaves is listed with every run under it.
 
 ## One run
 
-A run's page opens from its line in the list. Its top line is the run: its machine, type, status and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
+A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
 
 ```
 chat › message › answer › helper › approval › ask › question
