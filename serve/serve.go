@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -275,10 +274,7 @@ func commandOf(ctx context.Context, o options, c page.Call) page.Answer {
 			return page.Answer{Status: 2, Said: fmt.Sprintf("%q begins with \"-\", which the command line reads as a flag", a)}
 		}
 	}
-	args := append(append(append([]string{}, c.Words...), c.Args...), c.Flags...)
-	if c.Lines == nil {
-		args = append(args, "--json")
-	}
+	args := append(append(append(append([]string{}, c.Words...), c.Args...), c.Flags...), "--json")
 	if o.config != "" {
 		args = append(args, "--config", o.config)
 	}
@@ -286,10 +282,6 @@ func commandOf(ctx context.Context, o options, c page.Call) page.Answer {
 		args = append(args, "--store", o.store)
 	}
 	var out, said bytes.Buffer
-	var to io.Writer = &out
-	if c.Lines != nil {
-		to = c.Lines
-	}
-	status := cli.Run(ctx, args, strings.NewReader(c.Stdin), to, &said)
+	status := cli.Run(ctx, args, strings.NewReader(c.Stdin), &out, &said)
 	return page.Answer{Status: status, Out: out.String(), Said: said.String()}
 }
