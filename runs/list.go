@@ -129,28 +129,65 @@ type cancelling struct {
 }
 
 // A rootLine is one root run: the chain of running runs from it to the
-// deepest, what the deepest waits on, and the tree it unfolds to. A chain of
-// more than four is shown as its first, an ellipsis holding the names
-// between, and its last two.
+// deepest, what the deepest waits on, and the rows it unfolds to.
 type rootLine struct {
 	ID, Status, Failure, Title, Machine, Type, When, Took string
-	Chain, Front, Back                                    []link
-	Between                                               string
-	Shown, Waits                                          string
-	Old, Ended                                            bool
-	Under                                                 int
-	Tree                                                  []node
+	Chain                                                 []link
+	folded
+	Shown, Waits string
+	Old, Ended   bool
+	Under        int
+	Rows         []row
+	// More is how many of the runs it started are not rows, and are
+	// listed on its page.
+	More int
 }
 
-// A node is one run of a tree, indented by its depth under the root.
-type node struct {
-	ID, Status, Failure, Machine, Type, Shown, Waits, When string
-	Depth                                                  int
+// folded is a chain as a line shows it: a chain of more than three is its
+// first, an ellipsis holding the whole chain, and its last.
+type folded struct {
+	Front, Back []link
+	Between     string
 }
 
-// listOf gives the Runs page from the runs and the latest step of each
-// running run the UI's client, mine, started.
-func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at time.Time, mine string) listView {
+func fold(chain []link) folded {
+	if len(chain) <= 3 {
+		return folded{Front: chain}
+	}
+	var names []string
+	for _, c := range chain {
+		names = append(names, c.Machine)
+	}
+	return folded{Front: chain[:1], Between: strings.Join(names, " › "), Back: chain[len(chain)-1:]}
+}
+
+// A row is one run a root started, as its line unfolds: its name, the chain
+// below it, what it ended with or what the deepest waits on, how many runs
+// are under it, when it started and how long it took. The root's own row,
+// where it runs, comes first.
+type row struct {
+	ID, Status, Failure, Name, Machine, Type string
+	Own                                      bool
+	folded
+	Shown, Says, When, Took string
+	Under                   int
+}
+
+// most is how many runs a root started are rows of its line.
+const most = 20
+
+// nameOf is how a line or a row names a run: by its key, or by its
+// machine where it has none.
+func nameOf(r *client.Run) string {
+	if r.Key != "" {
+		return r.Key
+	}
+	return r.Machine
+}
+
+// listOf gives the Runs page from the runs and the latest step of each run
+// of the UI's client, mine, that the page shows.
+func listOf(runs []*client.Run, stepOf func(*client.Run) *instance.Step, n narrowing, at time.Time, mine string) listView {
 	v := listView{Narrowing: n,
 		Busy:     section{ID: "busy", Name: "Busy"},
 		Idle:     section{ID: "idle", Name: "Idle"},
@@ -202,30 +239,21 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 	slices.SortFunc(roots, func(a, b *client.Run) int { return strings.Compare(b.ID, a.ID) })
 	slices.SortFunc(ended, func(a, b *client.Run) int { return b.Ended.Compare(a.Ended) })
 
+	l := lister{byID: byID, under: under, stepOf: stepOf, from: from, at: at}
 	for _, r := range roots {
-		l := lineOf(r, at)
-		l.Old = old(r)
-		l.Chain = chainOf(r, under)
-		l.Front = l.Chain
-		if n := len(l.Chain); n > 4 {
-			var names []string
-			for _, c := range l.Chain[1 : n-2] {
-				names = append(names, c.Machine)
-			}
-			l.Front, l.Between, l.Back = l.Chain[:1], strings.Join(names, " › "), l.Chain[n-2:]
-		}
-		deepest := byID[l.Chain[len(l.Chain)-1].ID]
-		l.Shown = shownOf(steps[deepest.ID])
-		l.Waits = inWords(listed(waitsOf(deepest, stateOf(steps[deepest.ID]), running(under[deepest.ID]), at), r.Key))
-		l.Tree = treeOf(r, under, running, steps, at)
+		line := l.line(r)
+		line.Old = old(r)
+		line.Chain = descent(r, under, running)
+		line.folded = fold(line.Chain)
+		line.Shown, line.Waits = l.waits(byID[line.Chain[len(line.Chain)-1].ID], r.Key)
 		switch {
 		case strings.HasPrefix(r.Key, client.KeyFile):
-			v.Services.Lines = append(v.Services.Lines, l)
+			v.Services.Lines = append(v.Services.Lines, line)
 		case r.Status == instance.Waiting || r.Jobs > 0 || len(r.Tickets) > 0 || len(running(under[r.ID])) > 0:
-			v.Busy.Lines = append(v.Busy.Lines, l)
+			v.Busy.Lines = append(v.Busy.Lines, line)
 		default:
-			v.Idle.Lines = append(v.Idle.Lines, l)
-			if l.Old && mine != "" && store.InstanceClient(r.ID) == mine {
+			v.Idle.Lines = append(v.Idle.Lines, line)
+			if line.Old && mine != "" && store.InstanceClient(r.ID) == mine {
 				if v.Idle.Cancel == nil {
 					v.Idle.Cancel = &cancelling{}
 				}
@@ -240,60 +268,125 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 		}
 		c.Commands = strings.Join(commands, "\n$ ")
 	}
-	all := func(kids []*client.Run) []*client.Run { return kids }
 	for _, r := range ended {
-		l := lineOf(r, at)
-		l.Tree = treeOf(r, under, all, steps, at)
-		l.Under = len(l.Tree) - 1
-		v.Ended.Lines = append(v.Ended.Lines, l)
+		line := l.line(r)
+		line.When = page.When(r.Ended, at)
+		v.Ended.Lines = append(v.Ended.Lines, line)
 	}
 	return v
 }
 
-func lineOf(r *client.Run, at time.Time) rootLine {
-	l := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Title: r.Key, Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
-	if l.Title == "" {
-		l.Title = r.Machine
-	}
-	if r.HasEnded() {
-		l.When, l.Took = when(r.Ended, at), took(r.Ended.Sub(r.Started))
-	} else if !r.Started.IsZero() {
-		l.When = when(r.Started, at)
-	}
-	return l
+// A lister gives the lines of the Runs page from the runs under each run
+// and the latest steps of the client's own.
+type lister struct {
+	byID   map[string]*client.Run
+	under  map[string][]*client.Run
+	stepOf func(*client.Run) *instance.Step
+	from   time.Time
+	at     time.Time
 }
+
+// line gives a root's line, with the rows it unfolds to: its own row where
+// it runs, then the runs it started that run or ended in the window,
+// newest first, the first twenty of them.
+func (l lister) line(r *client.Run) rootLine {
+	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Title: nameOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
+	if r.HasEnded() {
+		line.Took = took(r.Ended.Sub(r.Started))
+	} else {
+		line.When = page.When(r.Started, l.at)
+		own := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: r.Machine, Machine: r.Machine, Type: r.Type, Own: true, When: line.When}
+		own.Shown, own.Says = l.waits(r, r.Key)
+		line.Rows = append(line.Rows, own)
+	}
+	kids, shown := l.under[r.ID], 0
+	for i := len(kids) - 1; i >= 0; i-- {
+		switch k := kids[i]; {
+		case k.HasEnded() && k.Ended.Before(l.from):
+		case shown == most:
+			line.More++
+		default:
+			line.Rows = append(line.Rows, l.row(k, r.Key))
+			shown++
+		}
+	}
+	return line
+}
+
+// row gives a run a root started: a running one with the chain of running
+// runs below it and what the deepest waits on, an ended one with the chain
+// of the newest run at each level below it and what it ended with.
+func (l lister) row(r *client.Run, key string) row {
+	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
+	if !r.HasEnded() {
+		chain := descent(r, l.under, running)
+		w.folded = fold(chain)
+		w.Shown, w.Says = l.waits(l.byID[chain[len(chain)-1].ID], key)
+		return w
+	}
+	w.folded = fold(descent(r, l.under, all))
+	w.Took = took(r.Ended.Sub(r.Started))
+	w.Says = endOf(l.stepOf(r))
+	return w
+}
+
+// waits gives the states a running run is in and what it waits on, from
+// its latest step where the UI's client started it, events at the root's
+// key left out.
+func (l lister) waits(r *client.Run, key string) (shown, says string) {
+	step := l.stepOf(r)
+	return shownOf(step), inWords(listed(waitsOf(r, stateOf(step), running(l.under[r.ID]), l.at), key))
+}
+
+// count gives how many runs are under a run.
+func (l lister) count(r *client.Run) int {
+	n := 0
+	for _, k := range l.under[r.ID] {
+		n += 1 + l.count(k)
+	}
+	return n
+}
+
+// endOf gives what a run ended with, from its last step: its error, or
+// the last event it took, as its record writes it.
+func endOf(step *instance.Step) string {
+	switch {
+	case step == nil:
+		return ""
+	case step.State.Error != nil:
+		return step.State.Error.Error
+	case len(step.Events) == 0:
+		return ""
+	}
+	e := step.Events[len(step.Events)-1]
+	if e.From != "" {
+		return e.Name + " from " + e.From
+	}
+	return e.Name
+}
+
+// descent gives a run and, at each level below it, the newest of the runs
+// kids leaves.
+func descent(r *client.Run, under map[string][]*client.Run, kids func([]*client.Run) []*client.Run) []link {
+	var chain []link
+	for r != nil {
+		chain = append(chain, link{ID: r.ID, Machine: r.Machine, Type: r.Type})
+		left := kids(under[r.ID])
+		r = nil
+		if len(left) > 0 {
+			r = left[len(left)-1]
+		}
+	}
+	return chain
+}
+
+// all gives every run of kids.
+func all(kids []*client.Run) []*client.Run { return kids }
 
 // listed gives waits as a root's line lists them: events at the root's key
 // are left out, since the line's title is that key.
 func listed(waits []wait, key string) []wait {
 	return slices.DeleteFunc(waits, func(w wait) bool { return key != "" && w.Text == "events at key "+key })
-}
-
-// treeOf gives a root and the runs under it that kids leaves, each under
-// its parent, oldest first: a running run with when it started, and an
-// ended one with when it ended.
-func treeOf(root *client.Run, under map[string][]*client.Run, kids func([]*client.Run) []*client.Run, steps map[string]*instance.Step, at time.Time) []node {
-	var tree []node
-	var add func(r *client.Run, depth int)
-	add = func(r *client.Run, depth int) {
-		n := node{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type, Depth: depth}
-		switch {
-		case r.HasEnded():
-			n.When = when(r.Ended, at)
-		case !r.Started.IsZero():
-			n.When = when(r.Started, at)
-		}
-		if !r.HasEnded() {
-			n.Shown = shownOf(steps[r.ID])
-			n.Waits = inWords(listed(waitsOf(r, stateOf(steps[r.ID]), running(under[r.ID]), at), root.Key))
-		}
-		tree = append(tree, n)
-		for _, k := range kids(under[r.ID]) {
-			add(k, depth+1)
-		}
-	}
-	add(root, 0)
-	return tree
 }
 
 // shownOf gives the states or stages a run is in, or what an agent waits
@@ -394,9 +487,9 @@ func (h *handler) cancel(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, strings.Join(said, "; "))
 }
 
-// steps keeps the latest step of each running run the UI's client
-// started, by the step of its head it was read at: a step never changes
-// once it is written.
+// steps keeps the latest step of each run of the UI's client that the
+// Runs page shows, by the step of its head it was read at: a step never
+// changes once it is written.
 type steps struct {
 	mu   sync.Mutex
 	read map[string]stepRead
@@ -407,31 +500,49 @@ type stepRead struct {
 	step *instance.Step
 }
 
-// of gives the latest step of each running run the client started, read
-// again only where its head has moved on.
-func (s *steps) of(ctx context.Context, c *client.Client, runs []*client.Run) (map[string]*instance.Step, error) {
-	if c == nil || c.ID == nil {
-		return nil, nil
-	}
+// A stepReader reads the steps one drawing of the Runs page shows. The
+// page is drawn by one reader at a time.
+type stepReader struct {
+	ctx  context.Context
+	c    *client.Client
+	s    *steps
+	kept map[string]stepRead
+	errs []error
+}
+
+func (s *steps) reader(ctx context.Context, c *client.Client) *stepReader {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	kept, out := map[string]stepRead{}, map[string]*instance.Step{}
-	for _, r := range runs {
-		if r.HasEnded() || store.InstanceClient(r.ID) != c.ID.Name {
-			continue
-		}
-		got, ok := s.read[r.ID]
-		if !ok || got.at != r.Step {
-			step, err := instance.Latest(ctx, c.Store, c.Controller, c.ID, r.ID, r.Step)
-			if err != nil && !errors.Is(err, identity.ErrNotForUs) {
-				return nil, err
-			}
-			got = stepRead{at: r.Step, step: step}
-		}
-		kept[r.ID], out[r.ID] = got, got.step
+	return &stepReader{ctx: ctx, c: c, s: s, kept: map[string]stepRead{}}
+}
+
+// of gives the latest step of a run the client started, read again only
+// where its head has moved on, and nothing for another client's run.
+func (r *stepReader) of(run *client.Run) *instance.Step {
+	if r.c == nil || r.c.ID == nil || store.InstanceClient(run.ID) != r.c.ID.Name {
+		return nil
 	}
-	s.read = kept
-	return out, nil
+	got, ok := r.kept[run.ID]
+	if !ok {
+		got, ok = r.s.read[run.ID]
+	}
+	if !ok || got.at != run.Step {
+		step, err := instance.Latest(r.ctx, r.c.Store, r.c.Controller, r.c.ID, run.ID, run.Step)
+		if err != nil && !errors.Is(err, identity.ErrNotForUs) {
+			r.errs = append(r.errs, err)
+			return nil
+		}
+		got = stepRead{at: run.Step, step: step}
+	}
+	r.kept[run.ID] = got
+	return got.step
+}
+
+// done keeps the steps this drawing read, forgets the rest, and gives what
+// could not be read.
+func (r *stepReader) done() error {
+	r.s.read = r.kept
+	r.s.mu.Unlock()
+	return errors.Join(r.errs...)
 }
 
 // middle cuts a long title in its middle, where keys that differ at their

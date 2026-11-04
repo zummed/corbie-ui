@@ -169,18 +169,26 @@ div.list > a[aria-current] .name { font-weight: 500; }
 /* runs */
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
-.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 52px 100px; gap: 18px; align-items: center;
+.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 92px 100px; gap: 18px; align-items: center;
   height: 31px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); white-space: nowrap; transition: background .15s; }
 .req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .req > summary > :first-child, .req .node > :first-child { overflow: visible; }
-.req > summary { cursor: pointer; list-style: none; }
+.req > summary { position: relative; cursor: pointer; list-style: none; }
+.req > summary::before { content: "▸"; position: absolute; left: 5px; top: 9px; font-size: 11px; color: var(--ink2); }
+.req[open] > summary::before { content: "▾"; }
 .req > summary::-webkit-details-marker { display: none; }
 .req > summary:hover, .req .node:hover { background: var(--hover); }
 .req[open] > summary { background: color-mix(in srgb, var(--hover) 60%, transparent); }
 .reqs > .req:last-child:not([open]) > summary, .reqs > .req:last-child .node:last-child { border-bottom: 0; }
 .req .tree { background: color-mix(in srgb, var(--paper) 55%, var(--plate)); }
-.req .node .name { grid-column: 2 / 4; padding-left: calc(var(--d) * 20px); }
-.req .chain a:hover, .req .node:hover .name { color: var(--accent); }
+.req .node .name { padding-left: 20px; }
+.req .node.own .name { grid-column: 2 / 4; padding-left: 0; }
+.req .node.more .name { color: var(--ink2); }
+.req .says { display: flex; }
+.req .says > * { flex: none; }
+.req .says > .waits { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.req .says i { margin: 0 6px; font-style: normal; color: var(--ink2); }
+.req .chain a:hover, .req .node .name:hover { color: var(--accent); }
 .req .chain { display: flex; align-items: center; }
 .req .chain > a { flex: none; }
 .req .chain > .dim { flex: 0 1 auto; min-width: 0; margin-left: 7px; overflow: hidden; text-overflow: ellipsis; }
