@@ -38,4 +38,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell and the stream (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`), and Drawing to draw a definition (`drawing.Unfolded`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`), and Drawing to draw a definition (`drawing.Unfolded`, `drawing.Unfold`).
