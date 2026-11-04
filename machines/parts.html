@@ -1,9 +1,10 @@
-{{define "partlist"}}<div class="filelist list" id="partlist">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{if .Broken}}<p class="unread"><a href="/machines">{{plural .Broken "machine"}} with problems</a></p>{{end}}{{range .Parts}}<a href="/parts?part={{.ID}}"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if not .Opened}}<span class="chip">not opened</span>{{end}}<small>{{plural (len .Tools) "tool"}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}</div>{{end}}
+{{define "partlist"}}<div class="filelist list" id="partlist">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{template "problems" .Problems}}{{range .Parts}}<a href="/parts?part={{.ID}}"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if not .Opened}}<span class="chip">not opened</span>{{end}}<small>{{plural (len .Tools) "tool"}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}</div>{{end}}
 
 {{define "partview"}}<div class="panel view part" id="partview">{{with .Open}}
-  <div class="head"><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span>{{.Name}}</span><span class="facts">{{.File}}</span>{{if .Opening}}<span class="approve">opening it needs approval</span>{{end}}{{if .File}}<span class="acts"><a class="btn" href="/machines?file={{.File}}&amp;view=text">Text</a></span>{{end}}</div>
-  {{template "found" $.Problems}}
-  <div class="body">
+  <div class="head"><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span>{{.Name}}</span><span class="facts">{{.File}}</span>{{if .Opening}}<span class="approve">opening it needs approval</span>{{end}}</div>
+  {{if .File}}<nav class="tabs"><a href="/parts?part={{.ID}}"{{if not $.ShowText}} aria-current="page"{{end}}>Drawing</a><a href="/parts?part={{.ID}}&amp;view=text"{{if $.ShowText}} aria-current="page"{{end}}>Text</a></nav>{{end}}
+  {{template "problems" $.Found}}
+  {{if $.ShowText}}<pre class="code" aria-label="{{.File}}">{{template "code" $.Text}}</pre>{{else}}<div class="body">
     <p class="does">{{.Does}}</p>
     {{if .Opened}}<table class="list opened"><thead><tr><th>Opened by</th><th>Started by</th></tr></thead><tbody>{{range .Opened}}<tr>
       <td><a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="agent"><use href="#g-agent"/></svg>{{.Name}}</a> <small>{{.File}}</small></td>
@@ -15,7 +16,7 @@
       <p title="{{.Does}}">{{.Does}}</p>
       <p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>
     </section>{{end}}</div>
-  </div>{{else}}<div class="body"><p class="dim">no part chosen</p></div>{{end}}
+  </div>{{end}}{{else}}<div class="body"><p class="dim">no part chosen</p></div>{{end}}
 </div>{{end}}
 
 {{define "parts"}}

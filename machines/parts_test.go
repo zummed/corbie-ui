@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -129,9 +130,6 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	if v.Open == nil || v.Open.ID != "kept" {
 		t.Errorf("the first part is not open: %+v", v.Open)
 	}
-	if v.Broken != 2 {
-		t.Errorf("%d machines have problems, and not bad.yaml and odd.yaml", v.Broken)
-	}
 
 	var shared, own, unopened, zed, yml *part
 	for i := range v.Parts {
@@ -201,7 +199,7 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 		t.Errorf("an agent no machine starts does not say so:\n%s", body)
 	}
 	body := do(h, "GET", "/parts?part=new", nil).Body.String()
-	for _, want := range []string{`<span class="chip">not opened</span>`, `<p class="dim">not opened</p>`, "needs approval", "2 machines with problems", `href="/machines?file=parts%2fnew%2fpart.yaml&amp;view=text"`} {
+	for _, want := range []string{`<span class="chip">not opened</span>`, `<p class="dim">not opened</p>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/parts?part=new&amp;view=text">Text</a>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %q:\n%s", want, body)
 		}
@@ -210,6 +208,10 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 		if strings.Contains(body, gone) {
 			t.Errorf("the page shows %q:\n%s", gone, body)
 		}
+	}
+	text := do(h, "GET", "/parts?part=new&view=text", nil).Body.String()
+	if !strings.Contains(text, `<pre class="code" aria-label="parts/new/part.yaml"><span class="l"><span class="k">does</span>`) || strings.Contains(text, `class="toolcards"`) {
+		t.Errorf("the part's Text tab does not show its file:\n%s", text)
 	}
 	if w := do(h, "GET", "/parts?part=gone", nil); w.Code != http.StatusNotFound {
 		t.Errorf("a part that is not there answered %d", w.Code)
@@ -229,11 +231,14 @@ func Test_machines_parts_show_the_problems_in_their_file(t *testing.T) {
 	})
 	v := partsView_(t, dir, "net")
 	// The agent that opens the part has problems, and still opens it.
-	if v.Open == nil || len(v.Open.Opened) != 1 || v.Open.Opened[0].File != "a.yaml" || !v.Open.Opened[0].Problems || v.Broken != 2 {
-		t.Fatalf("the part is %+v, with %d machines with problems", v.Open, v.Broken)
+	if v.Open == nil || len(v.Open.Opened) != 1 || v.Open.Opened[0].File != "a.yaml" || !v.Open.Opened[0].Problems {
+		t.Fatalf("the part is %+v", v.Open)
 	}
-	if len(v.Problems) == 0 || v.Problems[0].File != "parts/net/part.yaml" || len(v.Problems[0].Breaks) != 2 || v.Problems[0].Line == 0 {
-		t.Errorf("the problems in the part's file are %+v", v.Problems)
+	if len(v.Found) == 0 || v.Found[0].File != "parts/net/part.yaml" || len(v.Found[0].Breaks) != 2 || v.Found[0].Line == 0 {
+		t.Errorf("the problems in the part's file are %+v", v.Found)
+	}
+	if !slices.EqualFunc(v.Problems, v.Found, func(a, b problem) bool { return a.File == b.File && a.Line == b.Line && a.Text == b.Text }) {
+		t.Errorf("the Parts list gives the problems %+v, and not the project's", v.Problems)
 	}
 }
 
