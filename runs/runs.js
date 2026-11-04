@@ -88,7 +88,8 @@ function showPath(row) {
       sep.textContent = '›';
       const link = document.createElement('a');
       link.href = '/run/' + g.dataset.group;
-      link.dataset.run = link.title = g.dataset.group;
+      link.dataset.run = g.dataset.group;
+      link.title = g.dataset.tip;
       const icon = g.querySelector(':scope > ol .step svg.g');
       link.append(g.dataset.machine);
       if (icon) link.prepend(icon.cloneNode(true));

@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -131,7 +132,10 @@ type cancelling struct {
 // A rootLine is one root run: the chain of running runs from it to the
 // deepest, what the deepest waits on, and the rows it unfolds to.
 type rootLine struct {
-	ID, Status, Failure, Title, Machine, Type, When, Took string
+	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
+	// Titled says the name is the root's title, which is cut at its end;
+	// a key is cut in its middle.
+	Titled bool
 	Chain                                                 []link
 	folded
 	Shown, Waits string
@@ -166,7 +170,7 @@ func fold(chain []link) folded {
 // are under it, when it started and how long it took. The root's own row,
 // where it runs, comes first.
 type row struct {
-	ID, Status, Failure, Name, Machine, Type string
+	ID, Status, Failure, Name, Tip, Machine, Type string
 	Own                                      bool
 	folded
 	Shown, Says, When, Took string
@@ -176,13 +180,21 @@ type row struct {
 // most is how many runs a root started are rows of its line.
 const most = 20
 
-// nameOf is how a line or a row names a run: by its key, or by its
-// machine where it has none.
-func nameOf(r *client.Run) string {
-	if r.Key != "" {
-		return r.Key
+// nameOf is how the UI names a run wherever it lists it: by its title, by
+// its key where it has none, and by its machine where it has neither.
+func nameOf(r *client.Run) string { return cmp.Or(r.Title, r.Key, r.Machine) }
+
+// tipOf is the tooltip of a run's name: its title and its key, where it has
+// them, and its ID.
+func tipOf(r *client.Run) string {
+	var tip []string
+	if r.Title != "" {
+		tip = append(tip, r.Title)
 	}
-	return r.Machine
+	if r.Key != "" {
+		tip = append(tip, "key "+r.Key)
+	}
+	return strings.Join(append(tip, r.ID), "\n")
 }
 
 // listOf gives the Runs page from the runs and the latest step of each run
@@ -290,12 +302,12 @@ type lister struct {
 // it runs, then the runs it started that run or ended in the window,
 // newest first, the first twenty of them.
 func (l lister) line(r *client.Run) rootLine {
-	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Title: nameOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
+	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
 	if r.HasEnded() {
 		line.Took = took(r.Ended.Sub(r.Started))
 	} else {
 		line.When = page.When(r.Started, l.at)
-		own := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: r.Machine, Machine: r.Machine, Type: r.Type, Own: true, When: line.When}
+		own := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: r.Machine, Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Own: true, When: line.When}
 		own.Shown, own.Says = l.waits(r, r.Key)
 		line.Rows = append(line.Rows, own)
 	}
@@ -317,7 +329,7 @@ func (l lister) line(r *client.Run) rootLine {
 // runs below it and what the deepest waits on, an ended one with the chain
 // of the newest run at each level below it and what it ended with.
 func (l lister) row(r *client.Run, key string) row {
-	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
+	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
 	if !r.HasEnded() {
 		chain := descent(r, l.under, running)
 		w.folded = fold(chain)
@@ -370,7 +382,7 @@ func endOf(step *instance.Step) string {
 func descent(r *client.Run, under map[string][]*client.Run, kids func([]*client.Run) []*client.Run) []link {
 	var chain []link
 	for r != nil {
-		chain = append(chain, link{ID: r.ID, Machine: r.Machine, Type: r.Type})
+		chain = append(chain, linkTo(r))
 		left := kids(under[r.ID])
 		r = nil
 		if len(left) > 0 {
@@ -384,7 +396,7 @@ func descent(r *client.Run, under map[string][]*client.Run, kids func([]*client.
 func all(kids []*client.Run) []*client.Run { return kids }
 
 // listed gives waits as a root's line lists them: events at the root's key
-// are left out, since the line's title is that key.
+// are left out, since the line gives that key.
 func listed(waits []wait, key string) []wait {
 	return slices.DeleteFunc(waits, func(w wait) bool { return key != "" && w.Text == "events at key "+key })
 }
@@ -542,7 +554,73 @@ func (r *stepReader) done() error {
 	return errors.Join(r.errs...)
 }
 
-// middle cuts a long title in its middle, where keys that differ at their
+// titles keeps the title of each run of the UI's client that the list
+// holds: it is filled in at the run's first step and never changes.
+type titles struct {
+	mu   sync.Mutex
+	read map[string]titleRead
+}
+
+// A titleRead is a run's title, and the step of its head it was looked
+// for at. Kept says the title was read, and is the run's title for good.
+type titleRead struct {
+	at    int
+	title string
+	kept  bool
+}
+
+// of gives the runs of a listing, each run of the client's a copy with its
+// title, read once for each run. The titles of runs the listing no longer
+// holds are forgotten.
+func (t *titles) of(ctx context.Context, c *client.Client, runs []*client.Run) ([]*client.Run, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	kept := map[string]titleRead{}
+	var errs []error
+	var out []*client.Run
+	for _, run := range runs {
+		if c == nil || c.ID == nil || store.InstanceClient(run.ID) != c.ID.Name {
+			out = append(out, run)
+			continue
+		}
+		got, ok := t.read[run.ID]
+		if !ok || (!got.kept && got.at != run.Step) {
+			title, found, err := titleOf(ctx, c, run)
+			if err != nil {
+				errs = append(errs, err)
+				out = append(out, run)
+				continue
+			}
+			got = titleRead{at: run.Step, title: title, kept: found}
+		}
+		kept[run.ID] = got
+		titled := *run
+		titled.Title = got.title
+		out = append(out, &titled)
+	}
+	t.read = kept
+	return out, errors.Join(errs...)
+}
+
+// titleOf reads a run's title from the step its head gives, or from its
+// latest step where that one is not there. A run with no step yet has not
+// been given its title; one sealed to a key the client no longer has shows
+// none.
+func titleOf(ctx context.Context, c *client.Client, run *client.Run) (title string, found bool, err error) {
+	step, err := instance.ReadStep(ctx, c.Store, c.Controller, c.ID, run.ID, run.Step)
+	if err == nil && step == nil {
+		step, err = instance.Current(ctx, c.Store, c.Controller, c.ID, run.ID)
+	}
+	switch {
+	case errors.Is(err, identity.ErrNotForUs):
+		return "", true, nil
+	case err != nil || step == nil:
+		return "", false, err
+	}
+	return step.State.Title, true, nil
+}
+
+// middle cuts a long key in its middle, where keys that differ at their
 // end keep it.
 func middle(s string) string {
 	const most = 32

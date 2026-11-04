@@ -1,22 +1,23 @@
 {{define "summary"}}<div class="head" id="summary">
-  {{template "icon" .Run.Type}}<span>{{.Name}}</span><span class="dim">{{.Run.Type}}</span>
+  {{template "icon" .Run.Type}}<span>{{.Run.Machine}}</span><span class="dim">{{.Run.Type}}</span>
   {{template "status" .Run}}
-  {{if .Run.Key}}<span class="key" title="{{.Run.Key}}">{{.Run.Key}}</span>{{end}}
+  {{with .Run.Title}}<span class="title" title="{{.}}">{{.}}</span>{{end}}
+  {{if .Run.Key}}<span class="key" title="key {{.Run.Key}}">{{.Run.Key}}</span>{{end}}
   <span class="facts"><span title="{{.Run.ID}}">{{.Run.ID}}</span><span>started {{.Started}}</span>{{if .Ended}}<span>ended {{.Ended}}</span><span>took {{.Took}}</span>{{end}}</span>
   <span class="acts">{{if .Cancel}}<form data-act method="post" action="/run/{{.Run.ID}}/cancel"><span class="said"></span><button class="btn stop" data-cmd="{{cmd .Cancel}}">Cancel</button></form>{{end}}</span>
 </div>{{end}}
 
-{{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}{{if .Sent}}<span class="sep send" title="a send of the run before started it">⇢</span>{{else}}<span class="sep">›</span>{{end}}{{end}}<a href="/run/{{.ID}}" data-run="{{.ID}}" title="{{.ID}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
+{{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}{{if .Sent}}<span class="sep send" title="a send of the run before started it">⇢</span>{{else}}<span class="sep">›</span>{{end}}{{end}}<a href="/run/{{.ID}}" data-run="{{.ID}}" title="{{.Tip}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
 
-{{define "words"}}{{range .}}{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.ID}}"><b>{{.Text}}</b></a>{{else if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
+{{define "words"}}{{range .}}{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.Tip}}"><b>{{.Text}}</b></a>{{else if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
 
 {{define "steprow"}}<div class="step {{.Run.Type}}{{with .Kind}} {{.}}{{end}}" data-row="{{.Key}}" data-run="{{.Run.ID}}" data-at="{{.Unix}}" style="--d: {{.Depth}}">
 <span class="t" title="{{.Exact}}">{{.Time}}</span><span class="link"></span>
-<span class="who" title="{{.Run.ID}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{else}}<span class="fold"></span>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
-<span class="what" title="{{.Said}}">{{template "words" .What}}{{with .Group}}<span class="sum"> · <span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span> · {{.Steps}} {{word .Steps "step"}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}</span>
+<span class="who" title="{{.Run.Tip}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{else}}<span class="fold"></span>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
+<span class="what" title="{{.Said}}">{{template "words" .What}}{{with .Group}}<span class="sum">{{with .Run.Title}} · <span class="name">{{.}}</span>{{end}} · <span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span> · {{.Steps}} {{word .Steps "step"}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}</span>
 </div>{{end}}
 
-{{define "steprows"}}{{range .}}{{if .Group}}<li class="group" data-group="{{.Group.Run.ID}}" data-machine="{{.Group.Run.Machine}}" data-type="{{.Group.Run.Type}}"{{if .Group.Ended}} data-ended{{end}}>{{template "steprow" .}}<ol>{{template "steprows" .Group.Rows}}</ol></li>{{else}}<li>{{template "steprow" .}}</li>{{end}}{{end}}{{end}}
+{{define "steprows"}}{{range .}}{{if .Group}}<li class="group" data-group="{{.Group.Run.ID}}" data-machine="{{.Group.Run.Machine}}" data-tip="{{.Group.Run.Tip}}" data-type="{{.Group.Run.Type}}"{{if .Group.Ended}} data-ended{{end}}>{{template "steprow" .}}<ol>{{template "steprows" .Group.Rows}}</ol></li>{{else}}<li>{{template "steprow" .}}</li>{{end}}{{end}}{{end}}
 
 {{define "steps"}}<div class="steps" id="steps">
   <div class="head"><h2>Steps</h2><span class="facts" data-count="steps">{{.Count}}</span>
@@ -36,7 +37,7 @@
     <span class="facts">{{.Said}}</span>
     <span class="acts">{{if ne .Run.ID $.Page}}<a class="btn sm" href="/run/{{.Run.ID}}">Open {{.Run.Machine}} ›</a>{{end}}</span></div>
   <nav class="tabs"><a href="#what" aria-current="true">What happened</a><a href="#input">Input</a><a href="#output">Output</a><a href="#lines">Record</a></nav>
-  <div class="pane" data-pane="what"><dl class="kv">{{range .Facts}}<dt>{{.Name}}</dt><dd>{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}{{.Run.Machine}}</a> <span class="dim">{{.Text}}</span>{{else}}{{.Text}}{{end}}</dd>{{else}}<dt></dt><dd class="dim">{{.Said}}</dd>{{end}}</dl></div>
+  <div class="pane" data-pane="what"><dl class="kv">{{range .Facts}}<dt>{{.Name}}</dt><dd>{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.Tip}}">{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}{{.Run.Machine}}</a> <span class="dim">{{.Text}}</span>{{else}}{{.Text}}{{end}}</dd>{{else}}<dt></dt><dd class="dim">{{.Said}}</dd>{{end}}</dl></div>
   <div class="pane" data-pane="input" hidden>{{if $.Input}}<pre class="json">{{$.Input}}</pre>{{else}}<p class="dim">nothing went in</p>{{end}}</div>
   <div class="pane" data-pane="output" hidden>{{if $.Output}}<pre class="json">{{$.Output}}</pre>{{else}}<p class="dim">nothing came out</p>{{end}}</div>
   <div class="pane" data-pane="lines" hidden><ol class="record">{{range $.Lines}}<li><span class="t">{{.Time}}</span><span class="i" title="{{.Machine}}">{{.Machine}}</span><span class="n">{{if .Step}}{{.Step}}{{end}}</span><span class="w{{if .End}} end {{.End}}{{end}}">{{if eq .Way "in"}}<b>&lt;-</b> {{else if eq .Way "out"}}<b>-&gt;</b> {{end}}{{.Text}}</span></li>{{end}}</ol></div>
@@ -45,7 +46,7 @@
 {{define "waits"}}<div id="waits">
   <div class="waitlist">
   {{if .Run.HasEnded}}<div class="wait dim">nothing: the run has ended</div>{{end}}
-  {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.ID}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}
+  {{range .Waits}}<div class="wait">{{if .Run}}<span>{{.Text}} <a href="/run/{{.Run.ID}}" title="{{.Run.Tip}}">{{template "icon" .Run.Type}}{{.Run.Machine}}</a></span>{{else}}<span>{{.Text}}</span>{{end}}
     {{- if .Value}}<code class="value" title="the ticket's value: whoever has it can answer">{{.Value}}</code>
     <form data-act="reset" method="post" action="/run/{{$.Run.ID}}/reply"><input type="hidden" name="ticket" value="{{.Value}}"><input name="value" placeholder="answer, as JSON" size="16"><button class="btn sm" data-cmd="corbie run reply {{$.Run.ID}} {{.Value}} &lt;answer&gt;">Reply</button><span class="said"></span></form>{{end}}</div>{{end}}
   {{if not (or .Run.HasEnded .Waits)}}<div class="wait dim">nothing</div>{{end}}
@@ -64,7 +65,7 @@
 </div>{{end}}
 
 {{define "children"}}<table class="list kids" id="children"><tbody>{{range .Children}}<tr data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="/run/{{.ID}}">
-<td>{{template "status" .}}</td><td title="{{.ID}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</td><td class="dim num">{{.When}}</td><td class="dim num">{{.Took}}</td></tr>{{else}}<tr><td class="dim">no children</td></tr>{{end}}</tbody></table>{{end}}
+<td>{{template "status" .}}</td><td title="{{.Tip}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Name}}{{if ne .Name .Machine}} <span class="dim">{{.Machine}}</span>{{end}}</td><td class="dim num">{{.When}}</td><td class="dim num">{{.Took}}</td></tr>{{else}}<tr><td class="dim">no children</td></tr>{{end}}</tbody></table>{{end}}
 
 {{define "run"}}
 {{template "summary" .}}
