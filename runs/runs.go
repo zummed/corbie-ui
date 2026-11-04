@@ -43,8 +43,9 @@ type Config struct {
 
 type handler struct {
 	Config
-	steps *steps
-	kept  *kept
+	steps  *steps
+	kept   *kept
+	titles *titles
 }
 
 //go:embed list.html run.html runs.js
@@ -58,7 +59,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
-	h := &handler{Config: c, steps: &steps{}, kept: &kept{}}
+	h := &handler{Config: c, steps: &steps{}, kept: &kept{}, titles: &titles{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
@@ -79,7 +80,7 @@ func New(c Config) http.Handler {
 // listOf reads the Runs page: the runs, and the latest step of each run of
 // the UI's client that it shows.
 func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
-	runs, err := h.List.Runs()
+	runs, err := h.titled(ctx)
 	if runs == nil && err != nil {
 		return listView{}, err
 	}
@@ -146,7 +147,7 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	v, err := h.runOf(r.Context(), id, entries, &reading{})
 	if err == nil && v.Mine {
 		if last := newest(v.Rows); last != nil {
-			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(), v.Run.Started)
+			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(r.Context()), v.Run.Started)
 		}
 	}
 	if err != nil {
@@ -218,7 +219,7 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	}
 	// A row's time has its date where it is not on the date the page's run
 	// started.
-	at, byID, of := time.Now(), h.byID(), r.URL.Query().Get("page")
+	at, byID, of := time.Now(), h.byID(r.Context()), r.URL.Query().Get("page")
 	var day time.Time
 	if p := cmp.Or(byID[of], byID[id]); p != nil {
 		day = p.Started
@@ -246,9 +247,17 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	json.MarshalWrite(w, parts)
 }
 
+// titled gives the runs of the list, each run of the UI's client with its
+// title.
+func (h *handler) titled(ctx context.Context) ([]*client.Run, error) {
+	runs, err := h.List.Runs()
+	titled, read := h.titles.of(ctx, h.Client, runs)
+	return titled, errors.Join(err, read)
+}
+
 // byID gives the runs of the list by their IDs.
-func (h *handler) byID() map[string]*client.Run {
-	runs, _ := h.List.Runs()
+func (h *handler) byID(ctx context.Context) map[string]*client.Run {
+	runs, _ := h.titled(ctx)
 	byID := map[string]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r

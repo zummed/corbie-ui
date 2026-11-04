@@ -10,7 +10,9 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,10 +56,10 @@ func run(id, machine, kind, status string, started, ended time.Duration, more fu
 
 func noSteps(*client.Run) *instance.Step { return nil }
 
-func titles(s section) []string {
+func lineNames(s section) []string {
 	var out []string
 	for _, l := range s.Lines {
-		out = append(out, l.Title)
+		out = append(out, l.Name)
 	}
 	return out
 }
@@ -86,7 +88,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 		s    section
 		want string
 	}{{v.Busy, "door slack:C1/1"}, {v.Idle, "slack:C1/3 slack:C1/2"}, {v.Services, "file:bridges/slack.yaml"}, {v.Ended, "digest file:bridges/slack.yaml"}} {
-		if got := strings.Join(titles(c.s), " "); got != c.want {
+		if got := strings.Join(lineNames(c.s), " "); got != c.want {
 			t.Errorf("%s holds %s, not %s", c.s.Name, got, c.want)
 		}
 	}
@@ -192,15 +194,15 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 		run("laptop-client/4", "review", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels = data; r.Tickets = []string{"verdict"} }),
 	}
 	v := listOf(runs, noSteps, narrowingOf(url.Values{"client": {"ci-client"}, "label": {"team=data"}}), at, "")
-	if got := titles(v.Busy); len(got) != 1 || v.Busy.Lines[0].ID != "ci-client/1" || len(v.Ended.Lines) != 1 || len(v.Idle.Lines) != 0 {
-		t.Errorf("the page holds %v and %v", got, titles(v.Ended))
+	if got := lineNames(v.Busy); len(got) != 1 || v.Busy.Lines[0].ID != "ci-client/1" || len(v.Ended.Lines) != 1 || len(v.Idle.Lines) != 0 {
+		t.Errorf("the page holds %v and %v", got, lineNames(v.Ended))
 	}
 	if len(v.Clients) != 2 || !v.Clients[0].Current {
 		t.Errorf("the clients offered are %+v", v.Clients)
 	}
 	v = listOf(runs, noSteps, narrowingOf(url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
-	if got := strings.Join(titles(v.Busy), " "); got != "review digest" || len(v.Ended.Lines) != 1 {
-		t.Errorf("narrowed to team in the last hour, the page holds %s and %v", got, titles(v.Ended))
+	if got := strings.Join(lineNames(v.Busy), " "); got != "review digest" || len(v.Ended.Lines) != 1 {
+		t.Errorf("narrowed to team in the last hour, the page holds %s and %v", got, lineNames(v.Ended))
 	}
 }
 
@@ -620,5 +622,85 @@ func Test_runs_result_file_is_a_download(t *testing.T) {
 	h := w.Header()
 	if h.Get("Content-Type") != "application/octet-stream" || h.Get("X-Content-Type-Options") != "nosniff" || h.Get("Content-Disposition") != `attachment; filename=pages-2` {
 		t.Errorf("a result file is sent with %v", h)
+	}
+}
+
+// counting is a store that counts its reads.
+type counting struct {
+	store.Store
+	reads atomic.Int64
+}
+
+func (c *counting) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	c.reads.Add(1)
+	return c.Store.Read(ctx, name)
+}
+
+func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
+	l, viewer, _ := local(t)
+	ctx := context.Background()
+	door, err := machine.Parse([]byte("statechart: door\ntitle: \"door for ${input.who}\"\ninitial: shut\nstates:\n  shut:\n    on: { open: opened }\n  opened: { end: done }\n"), machine.Given(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := l.Start(ctx, door, client.Start{Key: "door:7", Input: map[string]any{"who": "zummed"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(20 * time.Second); ; {
+		r, err := viewer.Show(ctx, id)
+		if err == nil && r.Step > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the door never started: %+v %v", r, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// The client that started the run lists it, and heads its page, by
+	// its title, with the key in the tooltip and beside the title.
+	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
+	list := get(t, h, "/runs")
+	if want := "<span class=\"title\" title=\"door for zummed\nkey door:7\n" + id + "\">door for zummed</span>"; !strings.Contains(list, want) {
+		t.Errorf("the run's line is not named by its title, %s:\n%s", want, list)
+	}
+	body := get(t, h, "/run/"+id)
+	for _, want := range []string{`<span class="title" title="door for zummed">door for zummed</span>`, `<span class="key" title="key door:7">door:7</span>`, "<title>door for zummed · Corbie</title>", "<span class=\"who\" title=\"door for zummed\nkey door:7\n" + id + "\">"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the run's page does not show %s", want)
+		}
+	}
+
+	// A UI that acts as no client reads no title, and names the run by
+	// its key.
+	h = New(Config{List: &fixed{from: viewer}, Lister: viewer, Interval: time.Second, Shell: page.Shell{}})
+	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
+	if !strings.Contains(list, "title=\"key door:7\n"+id+"\">door:7</span>") || strings.Contains(list+body, "door for") {
+		t.Errorf("with no client the run is not named by its key:\n%s", list)
+	}
+
+	// Each title is read once while the run is listed, and forgotten
+	// once it is not.
+	counted := &counting{Store: l.Client.Store}
+	c := client.New(l.Client.ID, l.Client.Controller, counted)
+	runs, err := (&fixed{from: viewer}).Runs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := &titles{}
+	if _, err := kept.of(ctx, c, runs); err != nil {
+		t.Fatal(err)
+	}
+	once := counted.reads.Load()
+	got, err := kept.of(ctx, c, runs)
+	if err != nil || counted.reads.Load() != once || once == 0 {
+		t.Errorf("the titles were read %d times, then %d more: %v", once, counted.reads.Load()-once, err)
+	}
+	if i := slices.IndexFunc(got, func(r *client.Run) bool { return r.ID == id }); i < 0 || got[i].Title != "door for zummed" || runs[i].Title != "" {
+		t.Errorf("the listed runs are titled %+v", got)
+	}
+	if kept.of(ctx, c, nil); len(kept.read) != 0 {
+		t.Errorf("the titles of runs no longer listed are kept: %v", kept.read)
 	}
 }

@@ -2,6 +2,10 @@
 
 The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
+## Names
+
+**R-runs-09** A run the UI's client started is named by its title where it has one, read from its record once while the list holds it; any other run, and a run with no title, by its key, or by its machine where it has no key. The name is what its line, its row and Children show, the row that started it and its page's title line show its title, the title line beside the key; where a title names a run, the tooltip of its name gives its key. *Test:* `runs_a_run_is_named_by_its_title`
+
 ## The list
 
 **R-runs-01** Each root, a running run whose parent is not running, is one line in Busy, Idle or Services by its key, its status, its jobs, its tickets and its running children, with the chain of running runs from it to the deepest through the newest running child at each level, and what the deepest waits on, by name from its latest step where the UI's client started it; below them, each run with no parent that ended in the window. *Test:* `runs_list_roots_by_section`, `runs_own_runs_wait_by_name`

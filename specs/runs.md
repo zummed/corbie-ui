@@ -2,6 +2,20 @@
 
 The Runs page lists runs, and a run's page shows one. A run has Corbie's one shape for a run and the words `corbie run show` prints, wherever the UI shows it.
 
+## Names
+
+The UI names a run by the first of these it has:
+
+```
+title     what the definition's title: filled in to, read from the record of a run the UI's client started
+key       the run's key
+machine   its machine's name
+```
+
+- A run another client started, and every run of a UI that acts as no client, is named by its key or its machine.
+- Holding the pointer over a name shows the run's title, its key and its ID.
+- The UI reads each title once, from the step the run's head gives, while the list holds the run, since a title never changes once the run has started.
+
 ## The list
 
 The list reads every run whose status the UI may read. The UI lists as a viewer where the store lets a viewer read, as `corbie run ls --all` does with no client: every client's runs on a directory, and on a bucket with a viewer's key. Where the store does not, as on a served directory or a bucket with a client's key, it lists its client's own, as `corbie run ls --all` does for that client.
@@ -18,16 +32,16 @@ Ended      a run with no parent that ended in the window, newest first
 The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Services reads:
 
 ```
-running  slack:D0CFF1XQXLY  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29  old version
+running  Zummed in DM: Please tell zummed…  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29  old version
 ```
 
-- The title is the root's key, or its machine's name where it has none. A long title is cut in its middle, since keys differ at their end.
+- The line begins with the root's status and its name. A long key is cut in its middle, since keys differ at their end, and a title at its end.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
 - A chain of more than three machines shows the first, `…` and the last, and the `…` gives the whole chain in its tooltip.
 - The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
-- Then come what the deepest run waits on and when the root started. Events at the root's key are left out, since the title is that key.
+- Then come what the deepest run waits on and when the root started. Events at the root's key are left out, since the name's tooltip gives that key.
 
-An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took.
+An ended line holds its status, name, machine, the number of runs under it, when it ended and how long it took.
 
 A line unfolds to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
 
@@ -38,7 +52,7 @@ done       message  message › say › slack-say          done from say · 14 r
 ```
 
 ```
-name         the run's key, or its machine's name where it has none
+name         the run's name
 chain        the runs below it as a line's chain: the running ones, or for an ended run the newest at each level
 ended with   the error it failed with or the last event it took, as its record writes it; for a running run, what the deepest waits on
 runs         how many runs are under it
@@ -70,13 +84,13 @@ The page is narrowed by label, as `--label` narrows `corbie run ls`, and by clie
 
 ## One run
 
-A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
+A run's page opens from its line in the list. Its title line holds the run: its machine, type, status, title and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
 
 ```
 slack-listen ⇢ chat › message › answer › helper › approval › ask › question
 ```
 
-The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send to a key started the root, the run that sent it comes first, with `⇢`. The run itself is in bold, and the run of the step selected is lit.
+The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send to a key started the root, the run that sent it comes first, with `⇢`. The run itself is in bold, and the run of the step selected is lit. Holding the pointer over a run shows its title, its key and its ID, as over a name.
 
 On the left are four tabs: Steps, Waiting on, Output and Children. On the right are the drawing and the details of the step selected.
 
@@ -93,10 +107,11 @@ a send       ⇢ sent answer to the key question:1d3473b2cc · question       in
              ⇠ message from slack-listen                                  in the run it reached
 ```
 
+- Holding the pointer over a row's machine shows its run's title, its key and its ID.
 - A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
 - A send to a key has a dashed mark, and the machine of the run it went to is a link to that run. In the run it reached, the sender's machine is a link to the sender.
 - An undelivered send ends with `undelivered`, and its details say why.
-- The row that started a child ends with the child's status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
+- The row that started a child ends with the child's title where it has one, its status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
 - An ended child is folded, and a running one open. Open all and Fold all fold every group.
 - On the page of a run another client started, there are no Steps.
 
@@ -126,7 +141,7 @@ Record          the values the run's jobs emitted since the step before, and the
 
 - What the run waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below. Events at the run's own key are left out, since its title line gives the key.
 - Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
-- Children lists the runs it started, with each one's status and when it started or ended.
+- Children lists the runs it started, with each one's status, name, machine where that is not its name, and when it started or ended.
 
 A run that another client started shows its status, its path, its children and its labels, and nothing from its record. Its jobs and timers are counted and its tickets named.
 

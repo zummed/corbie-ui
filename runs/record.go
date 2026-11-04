@@ -168,17 +168,19 @@ func (r stepRow) Said() string {
 	return b.String()
 }
 
-// runName is what a run's page calls a run: in its title line, its path,
-// its rows and their details.
-func runName(r *client.Run) string { return r.Machine }
+// linkTo is a link to a run: by its machine, with its title and the
+// tooltip of its name.
+func linkTo(r *client.Run) link {
+	return link{ID: r.ID, Machine: r.Machine, Title: r.Title, Tip: tipOf(r), Type: r.Type}
+}
 
-// linkOf is a run as a row names it: by its name where the list holds it,
-// and by the end of its ID where it does not.
+// linkOf is a run as a row names it: by its machine where the list holds
+// it, and by the end of its ID where it does not.
 func linkOf(id string, byID map[string]*client.Run) link {
 	if r := byID[id]; r != nil {
-		return link{ID: id, Machine: runName(r), Type: r.Type}
+		return linkTo(r)
 	}
-	return link{ID: id, Machine: id[strings.LastIndexByte(id, '-')+1:]}
+	return link{ID: id, Machine: id[strings.LastIndexByte(id, '-')+1:], Tip: id}
 }
 
 // rowsOf gives a run's rows, from its record and its children's, each

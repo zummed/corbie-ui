@@ -48,11 +48,12 @@ type runView struct {
 	Shown                shown
 }
 
-// A link is a run named by its name, as the path, the waits and the steps
-// show it. Sent says a send of the run before it in a path started it.
+// A link is a run by its machine, as the path, the waits and the steps
+// show it, with its title and the tooltip of its name. Sent says a send of
+// the run before it in a path started it.
 type link struct {
-	ID, Machine, Type string
-	This, Sent        bool
+	ID, Machine, Title, Tip, Type string
+	This, Sent                    bool
 }
 
 // shown is a run as of one row of Steps: its drawing as it was at the
@@ -101,8 +102,8 @@ type file struct {
 
 // A child is a run another started, as its parent's page lists it.
 type child struct {
-	ID, Status, Failure, Machine, Type, When, Took string
-	Ended                                          bool
+	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
+	Ended                                                     bool
 }
 
 // record is what a run's page has read of its record, as it is read.
@@ -355,7 +356,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	if err != nil {
 		return v, err
 	}
-	v.Run, v.Name = run, runName(run)
+	v.Run, v.Name = run, nameOf(run)
 	v.Started = page.When(run.Started, at)
 	if run.HasEnded() {
 		v.Ended, v.Took = page.When(run.Ended, at), took(run.Ended.Sub(run.Started))
@@ -363,7 +364,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	for _, name := range slices.Sorted(maps.Keys(run.Labels)) {
 		v.Labels = append(v.Labels, label{Name: name, Value: run.Labels[name]})
 	}
-	runs, _ := h.List.Runs()
+	runs, _ := h.titled(ctx)
 	byID := map[string]*client.Run{}
 	under := map[string][]*client.Run{}
 	for _, r := range runs {
@@ -444,11 +445,11 @@ func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*cl
 	for up := byID[run.Parent]; up != nil && !seen[up.ID]; up = byID[up.Parent] {
 		seen[up.ID] = true
 		root = up
-		path = slices.Insert(path, 0, link{ID: up.ID, Machine: runName(up), Type: up.Type})
+		path = slices.Insert(path, 0, linkTo(up))
 	}
 	if by := byID[root.StartedBy]; by != nil && !seen[by.ID] {
 		path[0].Sent = true
-		path = slices.Insert(path, 0, link{ID: by.ID, Machine: runName(by), Type: by.Type})
+		path = slices.Insert(path, 0, linkTo(by))
 	}
 	return path
 }
@@ -477,7 +478,8 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 		waits = append(waits, wait{Text: "ticket " + t, Ticket: t})
 	}
 	for _, r := range kids {
-		waits = append(waits, wait{Text: "child", Run: &link{ID: r.ID, Machine: runName(r), Type: r.Type}})
+		kid := linkTo(r)
+		waits = append(waits, wait{Text: "child", Run: &kid})
 	}
 	if st == nil {
 		if run.Jobs > 0 {
@@ -535,7 +537,7 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 			}
 			s.Asked = append(s.Asked, name)
 			if r := byID[a.Child]; r != nil {
-				m.Children[name] = drawing.Child{ID: r.ID, Machine: runName(r), Type: r.Type}
+				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
 			}
 		}
 		m.Steps = append(m.Steps, s)
@@ -600,7 +602,7 @@ func jobOf(name string) string {
 }
 
 func childOf(r *client.Run, at time.Time) child {
-	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: runName(r), Type: r.Type, Ended: r.HasEnded()}
+	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
 	c.When = page.When(r.Started, at)
 	if r.HasEnded() {
 		c.When, c.Took = page.When(r.Ended, at), took(r.Ended.Sub(r.Started))
