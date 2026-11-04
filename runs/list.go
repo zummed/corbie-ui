@@ -436,7 +436,6 @@ func counted(n int, what string) string {
 	return plural(n, what)
 }
 
-
 // cancelOf is the command that cancels a run the UI's client started.
 func cancelOf(id string) page.Call {
 	return page.Call{Words: []string{"run", "cancel"}, Args: []string{id}}
@@ -566,7 +565,6 @@ func pluralWord(n int, one string) string {
 	}
 	return one + "s"
 }
-
 
 func took(d time.Duration) string {
 	switch {

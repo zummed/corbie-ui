@@ -4,6 +4,7 @@ package runs
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"embed"
 	"encoding/json/v2"
@@ -145,7 +146,7 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	v, err := h.runOf(r.Context(), id, entries, &reading{})
 	if err == nil && v.Mine {
 		if last := newest(v.Rows); last != nil {
-			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(), time.Now())
+			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(), v.Run.Started)
 		}
 	}
 	if err != nil {
@@ -215,13 +216,19 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	at, byID := time.Now(), h.byID()
-	row := rowAt(rowsOf(id, entries, byID, at), r.URL.Query().Get("row"))
+	// A row's time has its date where it is not on the date the page's run
+	// started.
+	at, byID, of := time.Now(), h.byID(), r.URL.Query().Get("page")
+	var day time.Time
+	if p := cmp.Or(byID[of], byID[id]); p != nil {
+		day = p.Started
+	}
+	row := rowAt(rowsOf(id, entries, byID, at, day), r.URL.Query().Get("row"))
 	if row == nil || row.Run.ID != id {
 		page.Error(w, http.StatusNotFound, "the run has no such row")
 		return
 	}
-	s, err := h.shownAt(ctx, r.URL.Query().Get("page"), row, entries, byID, at)
+	s, err := h.shownAt(ctx, of, row, entries, byID, day)
 	if err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return

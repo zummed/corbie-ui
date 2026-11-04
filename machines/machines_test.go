@@ -295,7 +295,7 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		if len(ix.Problems) != 1 || ix.Problems[0].File != "base.yaml" || len(ix.Problems[0].Breaks) != 3 {
 			t.Errorf("a %s file three machines include gives the problems %+v", name, ix.Problems)
 		}
-		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") })  {
+		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") }) {
 			t.Errorf("with a %s file included, the list is %v", name, got)
 		}
 	}

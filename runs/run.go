@@ -233,23 +233,13 @@ func (h *handler) definitionOf(ctx context.Context, id string, step *instance.St
 
 // shownAt gives a run as of one of its rows: its drawing, from its record
 // cut at the row's step and the state that step left, and the row's
-// details.
-func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, at time.Time) (shown, error) {
+// details, whose record holds the row's step and the values its run's jobs
+// emitted since the step before.
+func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, day time.Time) (shown, error) {
 	s := shown{Row: r, Page: page, Type: r.Run.Type, Time: r.Time, Input: indentOf(r.In), Output: indentOf(r.Out)}
-	names := map[string]string{}
-	var cut []client.Entry
-	for _, e := range entries {
-		if b := byID[e.ID]; b != nil {
-			names[e.ID] = runName(b)
-		}
-		if e.ID == r.Run.ID && e.Step > 0 && e.Step <= r.Step {
-			cut = append(cut, e)
-		}
-	}
-	for _, e := range cut {
-		if e.Step == r.Step {
-			s.Lines = append(s.Lines, lines(e, names, at)...)
-		}
+	cut, own := cutAt(entries, r)
+	for _, e := range own {
+		s.Lines = append(s.Lines, lines(e, r.Run.Machine, day)...)
 	}
 	step, err := h.step(ctx, r.Run.ID, r.Step)
 	if err != nil || step == nil {
@@ -268,6 +258,25 @@ func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries 
 	marks.Machines = d.machines
 	s.Drawing, err = drawing.Draw(d.def, marks)
 	return s, err
+}
+
+// cutAt gives the steps of a row's run up to the row's step, and the
+// entries of the row's details: the values the run's jobs emitted since the
+// step before, then the step.
+func cutAt(entries []client.Entry, r *stepRow) (cut, own []client.Entry) {
+	var emits []client.Entry
+	for _, e := range entries {
+		switch {
+		case e.ID != r.Run.ID || e.Step > r.Step:
+		case e.Step == 0:
+			emits = append(emits, e)
+		case e.Step < r.Step:
+			cut, emits = append(cut, e), nil
+		default:
+			cut, own, emits = append(cut, e), append(emits, e), nil
+		}
+	}
+	return cut, own
 }
 
 // newest gives the row that happened last, the latest of those at one
@@ -303,14 +312,14 @@ func rowAt(rows []stepRow, key string) *stepRow {
 	return nil
 }
 
-// dated says whether any row happened on another day than now, and so
+// dated says whether any row happened on another date than day's, and so
 // shows its date.
-func dated(rows []stepRow, now time.Time) bool {
+func dated(rows []stepRow, day time.Time) bool {
 	for _, r := range rows {
-		if page.When(r.At, now) != r.At.Local().Format("15:04") {
+		if page.Dated(r.At, day) {
 			return true
 		}
-		if r.Group != nil && dated(r.Group.Rows, now) {
+		if r.Group != nil && dated(r.Group.Rows, day) {
 			return true
 		}
 	}
@@ -389,8 +398,8 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		st = &r.step.State
 	}
 	v.Waits = listed(waitsOf(run, st, running(under[id]), at), run.Key)
-	v.Rows = rowsOf(id, entries, byID, at)
-	v.Count, v.Dated = countRows(v.Rows), dated(v.Rows, at)
+	v.Rows = rowsOf(id, entries, byID, at, run.Started)
+	v.Count, v.Dated = countRows(v.Rows), dated(v.Rows, run.Started)
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))
 		v.Output = indent(data)
