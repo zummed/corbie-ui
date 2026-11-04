@@ -36,7 +36,7 @@ The program links Corbie's packages. Its `main` runs a job's own process when it
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 
 - Corbie's command line opens a config's parties to read the store.
-- `corbie run submit` reads a definition with the files beside it, and refuses one outside its directory.
+- An `include:` names a file from the file that writes it when it begins `./`, and from the top of the project otherwise.
 - `corbie run show` prints the words of a run and of its record.
 - The flow package has the rule by which a stage waits for others (see Drawing).
 
