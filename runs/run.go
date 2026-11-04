@@ -118,14 +118,17 @@ func (r *record) Changed() <-chan struct{} {
 
 // reading is what a run's page has read of a run the UI's client started,
 // kept while the page is open: its latest step, read again when the run
-// takes another, and its definition, which never changes.
+// takes another, and its definition and the machines it names, which never
+// change.
 type reading struct {
-	step *instance.Step
-	def  *machine.Definition
+	step     *instance.Step
+	def      *machine.Definition
+	machines map[string]drawing.Machine
 }
 
-// read reads a run's latest step, and its definition once. A run with no
-// step yet, or one sealed to a key the client no longer has, has neither.
+// read reads a run's latest step, and its definition and the machines it
+// names once. A run with no step yet, or one sealed to a key the client no
+// longer has, has neither.
 func (h *handler) read(ctx context.Context, id string, number int, r *reading) error {
 	if r.step != nil && r.step.Number >= number {
 		return nil
@@ -138,10 +141,23 @@ func (h *handler) read(ctx context.Context, id string, number int, r *reading) e
 		return err
 	}
 	r.step = step
-	if r.def == nil {
-		r.def, err = machine.Load(ctx, h.Client.Store, step.State.Definition)
+	if r.def != nil {
+		return nil
 	}
-	return err
+	def, err := machine.Load(ctx, h.Client.Store, step.State.Definition)
+	if err != nil {
+		return err
+	}
+	machines := map[string]drawing.Machine{}
+	for name, ref := range def.Machines {
+		child, err := machine.Load(ctx, h.Client.Store, step.State.Definition.Beside(ref))
+		if err != nil {
+			return err
+		}
+		machines[name] = drawing.Machine{Type: child.Type, Name: child.Name}
+	}
+	r.def, r.machines = def, machines
+	return nil
 }
 
 // mine says whether the UI's client started a run, and so may read it all.
@@ -206,7 +222,9 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	}
 	v.Waits = waitsOf(run, st, running(under[id]), at)
 	if r.def != nil {
-		v.Drawing, err = drawing.Draw(r.def, marksOf(id, entries, run, st, byID))
+		marks := marksOf(id, entries, run, st, byID)
+		marks.Machines = r.machines
+		v.Drawing, err = drawing.Draw(r.def, marks)
 		if err != nil {
 			return v, err
 		}
@@ -335,7 +353,7 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 // marksOf gives what a run shows of its state, from the steps of its own
 // record and the jobs going, for its drawing.
 func marksOf(id string, entries []client.Entry, run *client.Run, st *instance.State, byID map[string]*client.Run) *drawing.Run {
-	m := &drawing.Run{Ended: run.HasEnded(), Children: map[string]drawing.Child{}}
+	m := &drawing.Run{Ended: run.HasEnded(), Failed: run.Status == instance.Failed, Children: map[string]drawing.Child{}}
 	for _, e := range entries {
 		if e.ID != id || e.Step == 0 {
 			continue
@@ -343,28 +361,73 @@ func marksOf(id string, entries []client.Entry, run *client.Run, st *instance.St
 		s := drawing.Step{Shown: plain(e.Shown)}
 		for _, event := range e.Events {
 			s.Events = append(s.Events, event.Name)
+			if event.Name == machine.Failed && event.From != "" {
+				s.Failed = append(s.Failed, jobOf(event.From))
+			}
 		}
+		asks := asksOf(e.Asks)
 		for _, a := range e.Asks {
 			if a.Kind != instance.AskScript && a.Kind != instance.AskChild {
 				continue
 			}
-			s.Asked = append(s.Asked, jobOf(a.Name))
+			name := jobOf(a.Name)
+			if name == instance.AskName && len(asks) > 0 {
+				name, asks = asks[0], asks[1:]
+			}
+			s.Asked = append(s.Asked, name)
 			if r := byID[a.Child]; r != nil {
-				m.Children[jobOf(a.Name)] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
+				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
 			}
 		}
 		m.Steps = append(m.Steps, s)
 	}
 	if st != nil {
-		for _, name := range slices.Sorted(maps.Keys(st.Jobs)) {
-			j := st.Jobs[name]
-			m.Going = append(m.Going, jobOf(j.Name))
+		for _, key := range slices.Sorted(maps.Keys(st.Jobs)) {
+			j := st.Jobs[key]
+			name := jobOf(j.Name)
+			if name == instance.AskName && len(j.ForAsk) > 0 && st.Jobs[j.ForAsk[0]] != nil {
+				name = askAt(&st.Jobs[j.ForAsk[0]].Job)
+			}
+			m.Going = append(m.Going, name)
 			if j.Held {
-				m.Held = append(m.Held, jobOf(j.Name))
+				m.Held = append(m.Held, name)
 			}
 		}
 	}
 	return m
+}
+
+// asksOf gives where each ask a step starts is written, in the order the
+// asks start: the order in which the step held the first job of each, less
+// those whose jobs the step denied.
+func asksOf(asks []instance.Ask) []string {
+	var places []string
+	denied := map[string]bool{}
+	for _, a := range asks {
+		if a.Kind == instance.AskFail {
+			denied[a.Name] = true
+		}
+	}
+	started := map[string]bool{}
+	for _, a := range asks {
+		if a.Kind != instance.AskHold || a.Job == nil || denied[a.Name] {
+			continue
+		}
+		if at := askAt(a.Job); !started[at] {
+			started[at] = true
+			places = append(places, at)
+		}
+	}
+	return places
+}
+
+// askAt gives where the ask a held job goes to is written, as the drawing
+// names an ask: the machine's own is `ask`.
+func askAt(job *machine.Job) string {
+	if job.AskAt == "" {
+		return instance.AskName
+	}
+	return job.AskAt
 }
 
 // jobOf gives the name of what asked for a job or set a timer, as the

@@ -11,15 +11,19 @@ import (
 )
 
 // A partBox is one column of what the model can call: a part, or the tools
-// in no part, with where its tools and its ask are drawn.
+// in no part, with where its tools and its ask are drawn. file is the file
+// the part is included from, where it is known.
 type partBox struct {
-	name  string
-	part  bool
-	tools []string
-	items map[string]item
-	ask   *item
-	at    box
+	name, file string
+	part       bool
+	tools      []string
+	items      map[string]item
+	ask        *item
+	at         box
 }
+
+// askAt is where a part's ask is written, as a run names it.
+func askAt(part string) string { return "open." + part + ".ask" }
 
 func (g *partBox) size() {
 	g.at.h, g.at.w = 0, cardW
@@ -51,14 +55,6 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 		it := item{name: "ask"}
 		w.describe(&it, "ask", ask)
 		askItem = &it
-	}
-	// The ask going is a part's where a tool it holds is held, and the
-	// agent's otherwise.
-	partAsk := ""
-	for _, g := range groups {
-		if g.ask != nil && slices.ContainsFunc(g.tools, func(t string) bool { return run != nil && slices.Contains(run.Held, t) }) {
-			partAsk = g.name
-		}
 	}
 
 	across, high := float64(max(len(groups)-1, 0))*sideGap, 0.0
@@ -99,14 +95,14 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 		for _, g := range groups {
 			g.at.x, g.at.y = x, ty
 			x += g.at.w + sideGap
-			if d.paintGroup(g, run, g.name == partAsk) {
+			if d.paintGroup(g, run) {
 				class = "taken"
 			}
 		}
 		if askItem != nil {
 			b := askItem.size()
 			b.x, b.y = tools.cx()-b.w/2, tools.bottom()-inner-b.h
-			d.paint(*askItem, b, strings.TrimSpace("state ask "+jobMark(run, "ask", partAsk == "")), cardR, "")
+			d.paint(*askItem, b, strings.TrimSpace("state ask "+jobMark(run, "ask")), cardR, "")
 		}
 		turns := a.Turns
 		if turns == 0 {
@@ -123,11 +119,14 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 	}
 
 	mark := ""
-	if run != nil {
+	switch {
+	case run == nil:
+	case run.failedAt("turn"):
+		mark = "failed"
+	case waiting == "turn" && !run.Ended:
+		mark = "now"
+	default:
 		mark = "done"
-		if waiting == "turn" && !run.Ended {
-			mark = "now"
-		}
 	}
 	d.paint(model, top, strings.TrimSpace("state model "+mark), cardR, "")
 	if run != nil {
@@ -135,7 +134,7 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 			fmt.Fprintf(&d.shapes, `<text class="tag" x="%s" y="%s" text-anchor="start">turn %d</text>`, num(top.x+4), num(top.y-8), int(turn))
 		}
 	}
-	d.paint(item{name: "reply"}, reply, "state reply", reply.h/2, "")
+	d.paint(item{name: "reply"}, reply, "state reply", cardR, "")
 	return d
 }
 
@@ -144,13 +143,10 @@ func groupsOf(agentName string, a *agent.Agent, w *walker) []*partBox {
 	var groups []*partBox
 	byName := map[string]*partBox{}
 	for _, part := range sortedKeys(a.Parts) {
-		g := &partBox{name: part, part: true, items: map[string]item{}}
-		if file := w.part(agentName, part, a.Parts[part].Does); file != "" {
-			g.name += " · " + clipStart(file, longest)
-		}
+		g := &partBox{name: part, file: w.part(agentName, part, a.Parts[part].Does), part: true, items: map[string]item{}}
 		if ask := a.Parts[part].Ask; ask != nil {
 			it := item{name: "ask"}
-			w.describe(&it, "open."+part+".ask", ask)
+			w.describe(&it, askAt(part), ask)
 			g.ask = &it
 		}
 		byName[part] = g
@@ -186,20 +182,24 @@ func groupsOf(agentName string, a *agent.Agent, w *walker) []*partBox {
 }
 
 // paintGroup draws a column of what the model can call, and says whether a
-// tool in it is one the agent waits on. asking says the ask going is the
-// part's.
-func (d *drawn) paintGroup(g *partBox, run *Run, asking bool) bool {
+// tool in it is one the agent waits on. A part's name is cut to its holder,
+// and on the Machines page its tooltip gives the file it is included from.
+func (d *drawn) paintGroup(g *partBox, run *Run) bool {
 	b := g.at
 	y := b.y
 	if g.part {
-		fmt.Fprintf(&d.holders, `<g class="state holder part"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text></g>`,
-			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(g.name))
+		title := ""
+		if g.file != "" {
+			title = "<title>" + esc(g.file) + "</title>"
+		}
+		fmt.Fprintf(&d.holders, `<g class="state holder part"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
+			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))), title)
 		y += innerTop
 	}
 	d.reach(b)
 	now := false
 	for _, t := range g.tools {
-		mark := jobMark(run, t, true)
+		mark := jobMark(run, t)
 		now = now || mark == "now" || mark == "held"
 		at := g.items[t].size()
 		at.x, at.y = b.cx()-at.w/2, y
@@ -209,21 +209,23 @@ func (d *drawn) paintGroup(g *partBox, run *Run, asking bool) bool {
 	if g.ask != nil {
 		at := g.ask.size()
 		at.x, at.y = b.cx()-at.w/2, y
-		d.paint(*g.ask, at, strings.TrimSpace("state ask "+jobMark(run, "ask", asking)), cardR, "")
+		d.paint(*g.ask, at, strings.TrimSpace("state ask "+jobMark(run, askAt(g.name))), cardR, "")
 	}
 	return now
 }
 
-// jobMark is how a tool or an ask of a run is marked: held for the ask,
-// going now, asked for at an earlier step, or never asked for. mine says a
-// job of the name going is this card's.
-func jobMark(run *Run, name string, mine bool) string {
+// jobMark is how a tool or an ask of a run is marked: where the run failed,
+// held for the ask, going now, asked for at an earlier step, or never asked
+// for.
+func jobMark(run *Run, name string) string {
 	switch {
 	case run == nil:
 		return ""
+	case run.failedAt(name):
+		return "failed"
 	case slices.Contains(run.Held, name) && !run.Ended:
 		return "held"
-	case mine && slices.Contains(run.Going, name) && !run.Ended:
+	case slices.Contains(run.Going, name) && !run.Ended:
 		return "now"
 	case run.asked(name):
 		return "done"

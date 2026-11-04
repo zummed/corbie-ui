@@ -395,8 +395,8 @@ func Test_machines_drawing_labels_a_part_of_an_agent_written_in_place(t *testing
 	if !ok {
 		t.Fatalf("the page has no drawing:\n%s", body)
 	}
-	if !strings.Contains(drawn, "messages · parts/part.yaml") {
-		t.Errorf("the part's file is not in its label:\n%s", drawn)
+	if !strings.Contains(drawn, ">messages</text><title>parts/part.yaml</title>") {
+		t.Errorf("the part's file is not in its tooltip:\n%s", drawn)
 	}
 }
 

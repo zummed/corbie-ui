@@ -10,19 +10,19 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-02** A transition to a later state is an arrow with a chip giving its event, its condition as written and a timer's time, one arrow for all the rules between two states; a timer's arrow is dashed; a transition to an earlier state or the same state is written in its card with no arrow; a state's ticket and timers are written in it, and a final state that fails is marked as failed. *Test:* `drawing_statechart_arrows_name_event_condition_and_timer`
 
-**R-drawing-05** A `send:` that names a machine is drawn as a box of its own below the state, with a dashed arrow labelled with the event. *Test:* `drawing_statechart_send_is_a_box`
+**R-drawing-05** A `send:` that names a machine is drawn as a card of its own below the state, with a dashed arrow labelled with the event. *Test:* `drawing_statechart_send_is_a_card`
 
 ## An agent
 
-**R-drawing-06** An agent is drawn as its model, a box of its tools, with each part a box holding its tools and its ask, and `reply`, one below another, with two arrows; a tool with `approve: true` says so, and Corbie's own tools are not drawn. *Test:* `drawing_agent_is_a_loop_of_model_and_tools`
+**R-drawing-06** An agent is drawn as its model, a holder of its tools, with each part a holder of its tools and its ask, and `reply`, one below another, with two arrows; a tool with `approve: true` says so, and Corbie's own tools are not drawn. *Test:* `drawing_agent_is_a_loop_of_model_and_tools`
 
 ## A machine inside a machine
 
-**R-drawing-07** A card whose job names a machine shows the machine's type and name. On the Machines page it is a link that unfolds the machine's drawing inside the card, at any depth, and the same card then folds it; a job whose machine is an expression has no link. On a run's page it links to the run the job started. *Test:* `drawing_machine_unfolds_in_its_box`
+**R-drawing-07** A card whose job names a machine shows the machine's type and name, known from its file on the Machines page and from the definition the run was started from on a run's page. On the Machines page it is a link that unfolds the machine's drawing inside the card, at any depth, and the same card then folds it; a job whose machine is an expression has no link. On a run's page it links to the run the job started, an ask's card to the run that ask started. *Test:* `drawing_machine_unfolds_in_its_card`
 
 ## A run on the drawing
 
-**R-drawing-03** A run is marked on its drawing: a flow's stages by their status; a statechart's states as current, entered before or never entered, a state passed through within one step being entered; and an agent's model, and each tool and ask as going, held, used at an earlier step or never used. *Test:* `drawing_run_is_marked_on_the_drawing`
+**R-drawing-03** A run is marked on its drawing: a flow's stages by their status; a statechart's states as current, entered before or never entered, a state passed through within one step being entered; and an agent's model, and each tool and ask as going, held, used at an earlier step or never used; a run that ended is marked by how it ended, a failed run at the states it ended in and at the card of the job whose failure ended it. *Test:* `drawing_run_is_marked_on_the_drawing`
 
 **R-drawing-04** The transition the latest step took is marked on its arrow or in its card, and no other. *Test:* `drawing_transition_just_taken_is_marked`
 

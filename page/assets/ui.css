@@ -248,6 +248,7 @@ svg.machine { flex: none; max-width: 100%; height: auto; }
 .machine .state.now > :is(rect.box, rect.outer) { stroke: var(--petrol); stroke-width: 2; animation: glow 2.6s ease-in-out infinite; }
 .machine .state.done > :is(rect.box, rect.outer) { stroke: var(--moss); }
 .machine .state.failed > :is(rect.box, rect.outer) { stroke: var(--rowan); }
+.machine .state.cancelled > :is(rect.box, rect.outer) { stroke: var(--ink2); }
 .machine .state.held > rect.box { stroke: var(--amber); stroke-width: 2; }
 .machine .state.never { opacity: .6; }
 @keyframes glow { 50% { stroke-opacity: .4; } }
@@ -270,8 +271,9 @@ svg.machine { flex: none; max-width: 100%; height: auto; }
 .machine .start { fill: var(--ink2); }
 .machine .edge { fill: none; stroke: color-mix(in srgb, var(--ink2) 55%, var(--paper)); stroke-width: 1.3; }
 .machine .edge.timer, .machine .edge.send { stroke-dasharray: 4 4; }
-.machine .edge.taken { stroke: var(--petrol); stroke-width: 2.4; }
+.machine .edge.taken { stroke: var(--petrol); stroke-width: 2.4; stroke-dasharray: none; }
 .machine .arrow { fill: var(--ink2); }
+.machine .arrow.taken { fill: var(--petrol); }
 .machine .chip { fill: var(--paper); stroke: var(--line); stroke-width: 1; }
 .machine .on { font: 500 10.5px var(--sans); fill: var(--ink2); }
 

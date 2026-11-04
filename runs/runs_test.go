@@ -14,6 +14,7 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
@@ -286,6 +287,34 @@ func get(t *testing.T, h http.Handler, path string) string {
 }
 
 func Test_runs_own_run_shown_in_full(t *testing.T) {
+	// Each ask a step starts is named by where it is written, in the order
+	// the step held the first job of each, and a job's failure that ended
+	// the run is noted.
+	tell := &machine.Job{Name: "tell", AskAt: "open.messages.ask"}
+	entries := []client.Entry{{ID: "a-client/1", Step: 1,
+		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
+		Asks: []instance.Ask{
+			{Kind: instance.AskHold, Name: "tell#1", Job: tell},
+			{Kind: instance.AskHold, Name: "look#1", Job: &machine.Job{Name: "look"}},
+			{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/2"},
+			{Kind: instance.AskChild, Name: "ask#2", Child: "a-client/3"},
+		}}}
+	byID := map[string]*client.Run{
+		"a-client/2": {ID: "a-client/2", Machine: "approval", Type: "flow"},
+		"a-client/3": {ID: "a-client/3", Machine: "own", Type: "flow"},
+	}
+	st := &instance.State{Jobs: map[string]*instance.Going{
+		"tell":  {Job: *tell, Held: true},
+		"ask#1": {Job: machine.Job{Name: "ask"}, ForAsk: []string{"tell"}},
+	}}
+	m := marksOf("a-client/1", entries, &client.Run{ID: "a-client/1", Status: "failed"}, st, byID)
+	if m.Children["open.messages.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
+		t.Errorf("the asks' runs are known as %+v", m.Children)
+	}
+	if strings.Join(m.Going, " ") != "open.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
+		t.Errorf("the run is marked as %+v", m)
+	}
+
 	l, viewer, id := local(t)
 	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Command: nil, Interval: time.Second, Shell: page.Shell{}})
 	body := get(t, h, "/run/"+id)

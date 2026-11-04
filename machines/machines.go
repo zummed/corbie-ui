@@ -189,7 +189,7 @@ func (h *handler) secretsOf(ctx context.Context, src []byte) ([]secretView, erro
 	return out, nil
 }
 
-// hrefs gives the address of a box's link: the page with the box unfolded,
+// hrefs gives the address of a card's link: the page with the card unfolded,
 // or, when it is, with it and what is inside it folded.
 func hrefs(file string, open map[string]bool) func(string) string {
 	return func(at string) string {

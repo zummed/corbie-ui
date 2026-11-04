@@ -22,22 +22,28 @@ import (
 type Run struct {
 	// Steps are the steps of its record, in order.
 	Steps []Step
-	// Going are the jobs going after the latest step, by name, and Held
-	// those of them held for the ask.
+	// Going are the jobs going after the latest step, and Held those of
+	// them held for the ask. A job is named as the definition names what
+	// asked for it, and an ask by where it is written: `ask` for the
+	// machine's own, `open.<part>.ask` for a part's.
 	Going, Held []string
 	// Children are the runs its jobs started, by the job's name.
 	Children map[string]Child
+	// Machines are the machines its definition names, by the name its jobs
+	// give them.
+	Machines map[string]Machine
 	// Ended says the run has ended: the states it ended in are no longer
-	// lit as current.
-	Ended bool
+	// lit as current. Failed says it ended with status failed.
+	Ended, Failed bool
 }
 
 // A Step is one step of a run's record: what the machine's type showed of
-// its state after it, the events it took and the jobs it asked for, by
-// name.
+// its state after it, the events it took, the jobs whose failure it took,
+// and the jobs it asked for, by name.
 type Step struct {
 	Shown  any
 	Events []string
+	Failed []string
 	Asked  []string
 }
 
@@ -45,8 +51,10 @@ type Step struct {
 // type.
 type Child struct{ ID, Machine, Type string }
 
-// latest gives what the type showed at the latest step, and before gives
-// what it showed at the step before.
+// A Machine is a machine a definition names: its type and its name.
+type Machine struct{ Type, Name string }
+
+// latest gives what the type showed at the latest step.
 func (r *Run) latest() any {
 	if r == nil || len(r.Steps) == 0 {
 		return nil
@@ -59,12 +67,18 @@ func (r *Run) asked(name string) bool {
 	return r != nil && slices.ContainsFunc(r.Steps, func(s Step) bool { return slices.Contains(s.Asked, name) })
 }
 
+// failedAt says the run failed at a job: its last step took the job's
+// failure, and the run ended with status failed.
+func (r *Run) failedAt(name string) bool {
+	return r != nil && r.Failed && len(r.Steps) > 0 && slices.Contains(r.Steps[len(r.Steps)-1].Failed, name)
+}
+
 // Draw gives the drawing of a definition, with a run's state marked on it
 // when run is not nil.
 func Draw(def *machine.Definition, run *Run) (template.HTML, error) {
 	w := &walker{}
 	if run != nil {
-		w.children = run.Children
+		w.children, w.machines = run.Children, run.Machines
 	}
 	d, err := drawOf(def, run, w)
 	if err != nil {
@@ -73,12 +87,12 @@ func Draw(def *machine.Definition, run *Run) (template.HTML, error) {
 	return d.svg(def.Type + " " + def.Name), nil
 }
 
-// Unfold says how a drawing's boxes unfold. A box's path is the names of
-// the boxes down to it, from the machine drawn, joined by /.
+// Unfold says how a drawing's cards unfold. A card's path is the names of
+// the cards down to it, from the machine drawn, joined by /.
 type Unfold struct {
-	// Open holds the paths of the boxes unfolded.
+	// Open holds the paths of the cards unfolded.
 	Open map[string]bool
-	// Href gives the address of a box's link.
+	// Href gives the address of a card's link.
 	Href func(path string) string
 	// Part gives the file a part of an agent in a file is included from, or
 	// nothing: the agent by its name, the part by its name and its `does:`.
@@ -86,7 +100,7 @@ type Unfold struct {
 }
 
 // Unfolded gives the drawing of the machine in a file, with a link on each
-// box whose job names a machine, and the machines of the boxes unfolded
+// card whose job names a machine, and the machines of the cards unfolded
 // drawn inside them.
 func Unfolded(draft *machine.Draft, file string, u Unfold) (template.HTML, error) {
 	def := draft.Definition
@@ -124,10 +138,12 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 // A walker is what a drawing knows of the machines its jobs name. On the
 // Machines page it is a machine's draft, the file it is in, or for one
 // written in place the file that writes it, and the path of the card it is
-// drawn in. On a run's page it is the runs its jobs started.
+// drawn in. On a run's page it is the machines its definition names and
+// the runs its jobs started.
 type walker struct {
 	unfold   Unfold
 	draft    *machine.Draft
+	machines map[string]Machine
 	children map[string]Child
 	file     string
 	path     string
@@ -165,10 +181,11 @@ func (w *walker) part(name, part, does string) string {
 }
 
 // describe writes what a card's job is into it: its icon and its line, and
-// where the job names a machine, the link to it. A card's name is its job's
-// name, and at is its path on the Machines page. The machine is known by the
-// run the job started, or by its draft; one that is neither is known only by
-// how the definition names it.
+// where the job names a machine, the link to it. at is the name a run gives
+// the card's job, and its path on the Machines page. The machine is known by
+// its draft, or by the definition a run was started from; one that is
+// neither is known only by how the definition names it. On a run's page the
+// card links to the run its job started.
 func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 	switch {
 	case job == nil:
@@ -183,7 +200,10 @@ func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 	if inPlace(job.Machine) {
 		it.lines = []string{"machine: written in place"}
 	}
-	if c, ok := w.children[it.name]; ok {
+	if m, ok := w.machines[job.Machine]; ok {
+		it.icon, it.lines = m.Type, []string{fit(m.Type + ": " + m.Name)}
+	}
+	if c, ok := w.children[at]; ok {
 		it.icon, it.lines, it.href = c.Type, []string{fit(c.Type + ": " + c.Machine)}, "/run/"+c.ID
 		return
 	}
@@ -195,8 +215,8 @@ func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 	it.href, it.in = w.open(at, job.Machine)
 }
 
-// The sizes a drawing is laid out by: every box is a card of one width,
-// with an icon, a title, and the lines under it.
+// The sizes a drawing is laid out by: every card is of one width, with an
+// icon, a title, and the lines under it.
 const (
 	cardW   = 232.0
 	lineH   = 15.0
@@ -209,6 +229,9 @@ const (
 	longestChip = 18
 	// cardR is how round the corners of every card are.
 	cardR = 10.0
+	// nameW is about how wide a letter of a holder's name is, set in IBM
+	// Plex Mono at 12px.
+	nameW = 7.3
 )
 
 // A note is what leaves a box with no arrow: a transition to an earlier
@@ -289,7 +312,8 @@ func (d *drawn) svg(label string) template.HTML {
 	var b strings.Builder
 	w, h := num(d.w+margin-d.left), num(d.h+margin)
 	fmt.Fprintf(&b, `<svg class="machine" viewBox="%s 0 %s %s" width="%s" height="%s" role="img" aria-label="%s">`, num(d.left), w, h, w, h, esc(label))
-	b.WriteString(`<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z"/></marker></defs>`)
+	b.WriteString(`<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z"/></marker>` +
+		`<marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="arrow taken" d="M0 0L10 5L0 10z"/></marker></defs>`)
 	b.WriteString(d.holders.String())
 	b.WriteString(d.edges.String())
 	b.WriteString(d.shapes.String())
@@ -384,7 +408,7 @@ func (d *drawn) down(from, to box, class, label string) {
 			num(x1), num(rail), num(x1+float64(turn)), num(rail), num(x2-float64(turn)),
 			num(x2), num(rail), num(x2), num(rail+r), num(y2))
 	}
-	fmt.Fprintf(&d.edges, `<path class="%s" d="%s" marker-end="url(#ah)"/>`, esc(strings.TrimSpace("edge "+class)), p)
+	fmt.Fprintf(&d.edges, `<path class="%s" d="%s" marker-end="url(#%s)"/>`, esc(strings.TrimSpace("edge "+class)), p, head(class))
 	d.reach(box{x: math.Max(x1, x2), y: y2})
 	if label != "" {
 		d.chip(cx, cy, label)
@@ -397,10 +421,19 @@ func (d *drawn) across(from, to box, class, label string, bend float64) {
 	if x2 < x1 {
 		x1, x2 = from.x, to.right()
 	}
-	fmt.Fprintf(&d.edges, `<path class="%s" d="M%s %s H%s" marker-end="url(#ah)"/>`, esc(strings.TrimSpace("edge "+class)), num(x1), num(y), num(x2))
+	fmt.Fprintf(&d.edges, `<path class="%s" d="M%s %s H%s" marker-end="url(#%s)"/>`, esc(strings.TrimSpace("edge "+class)), num(x1), num(y), num(x2), head(class))
 	if label != "" {
 		d.chip((x1+x2)/2, y-11, label)
 	}
+}
+
+// head gives the arrowhead of an arrow: a transition just taken has its
+// own, in its colour and of the size of the others.
+func head(class string) string {
+	if slices.Contains(strings.Fields(class), "taken") {
+		return "at"
+	}
+	return "ah"
 }
 
 // chip draws a label in a pill, short enough to stay apart from the chips of

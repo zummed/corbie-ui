@@ -1,5 +1,5 @@
 // The Machines page: a file chosen is shown again when it, or what Corbie
-// found in it, changed on disk, and a box's link in a drawing unfolds it
+// found in it, changed on disk, and a card's link in a drawing unfolds it
 // where it is.
 const view = document.querySelector('.view[data-file]');
 

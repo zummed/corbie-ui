@@ -24,4 +24,4 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## Interfaces
 
-Runs uses Pages for the shell, the stream and the commands its buttons run (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Call`, `page.Command`), and Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`, `drawing.Step`, `drawing.Child`).
+Runs uses Pages for the shell, the stream and the commands its buttons run (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Call`, `page.Command`), and Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`, `drawing.Step`, `drawing.Child`, `drawing.Machine`).
