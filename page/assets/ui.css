@@ -91,7 +91,10 @@ form[data-act] { display: inline-flex; align-items: center; gap: 8px; }
 /* what changed: a line that appears, a line that changes, a count that moves */
 @keyframes arrive { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); opacity: 0; } 15% { opacity: 1; } }
 @keyframes moved { 0% { background: color-mix(in srgb, var(--accent) 11%, transparent); } }
-@keyframes settle { 0% { background: color-mix(in srgb, var(--moss) 20%, transparent); } }
+@keyframes settle { 0% { background: color-mix(in srgb, var(--end) 20%, transparent); } }
+[data-status] { --end: var(--moss); }
+[data-status=failed] { --end: var(--rowan); }
+[data-status=cancelled] { --end: var(--ink2); }
 .bump { animation: bump .5s var(--ease); }
 @keyframes bump { 30% { transform: translateY(-3px); color: var(--accent); } }
 
@@ -111,7 +114,6 @@ h2 { margin: 0 0 8px; }
 .head h2 { margin: 0; }
 .head .facts { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; color: var(--ink2); }
 .head .facts > * + * { margin-left: 12px; }
-.head .facts a:hover { color: var(--accent); }
 .head .acts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 main > .head { padding: 0 2px; }
 
@@ -215,7 +217,7 @@ dl.labels dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space
 .tabbed { display: flex; flex-direction: column; }
 .tabbed > .pane { flex: 1; min-height: 0; overflow: auto; }
 ol.record { list-style: none; margin: 0; padding: 6px 0; font: 12.5px/1.5 var(--mono); }
-.record li { display: grid; grid-template-columns: 64px 96px 26px minmax(0, 1fr); gap: 10px; padding: 3px 16px; }
+.record li { display: grid; grid-template-columns: 64px 124px 26px minmax(0, 1fr); gap: 10px; padding: 3px 16px; }
 .record li:hover { background: var(--hover); }
 .record .t, .record .i, .record .n { color: var(--ink2); } .record .n { text-align: right; }
 .record .i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -242,6 +244,7 @@ table.kids svg.g { margin-right: 6px; }
 /* drawing */
 .drawn { display: flex; justify-content: center; align-items: flex-start; padding: 22px 16px 48px; overflow: auto; background: var(--paper); }
 svg.machine { flex: none; max-width: 100%; height: auto; }
+.stack > .drawn svg.machine { width: auto; max-height: 100%; }
 .machine a { cursor: pointer; }
 .machine .state > rect.box { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: stroke .4s, fill .4s; }
 .machine .state > rect.behind { fill: var(--plate); stroke: var(--line); stroke-width: 1; }

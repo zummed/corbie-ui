@@ -4,6 +4,17 @@
 const live = document.getElementById('live');
 const main = document.querySelector('main[data-stream]');
 
+// lit are the classes that light a line, which the line was not sent with.
+const lit = ['new', 'moved', 'ended'];
+
+// sent gives a line as it was sent, without the classes that lit it.
+function sent(el) {
+  const copy = el.cloneNode(true);
+  copy.classList.remove(...lit);
+  if (!copy.classList.length) copy.removeAttribute('class');
+  return copy.outerHTML;
+}
+
 // mark lights what changed between a part as shown and as sent: a line
 // that is new, a line that changed, a run that ended, a count that moved.
 // A line is found as it was anywhere on the page, since a run that ends
@@ -13,7 +24,7 @@ function mark(old, next) {
     const was = document.querySelector(`${el.tagName}[data-key="${CSS.escape(el.dataset.key)}"]`);
     if (!was) el.classList.add('new');
     else if (was.dataset.status !== el.dataset.status && el.dataset.ended === 'true') el.classList.add('ended');
-    else if (was.outerHTML !== el.outerHTML) el.classList.add('moved');
+    else if (sent(was) !== el.outerHTML) el.classList.add('moved');
   }
   const counts = new Map([...old.querySelectorAll('[data-count]')].map(el => [el.dataset.count, el.textContent]));
   for (const el of next.querySelectorAll('[data-count]')) {
@@ -74,7 +85,6 @@ document.addEventListener('submit', async e => {
   try {
     const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) });
     const text = await res.text();
-    if (res.redirected) { location = res.url; return; }
     if (said) { said.textContent = text.trim(); said.className = res.ok ? 'said' : 'said bad'; }
     if (res.ok && form.dataset.act === 'reset') for (const f of form.querySelectorAll('input:not([type=hidden]), textarea')) f.value = '';
   } catch (err) {

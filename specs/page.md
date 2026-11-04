@@ -8,7 +8,7 @@ The header is at the top of every page. It holds Corbie's logo, the pages the UI
 
 ```
 Runs         the list of runs, and each run's page
-Machines     the definitions in the directory
+Machines     the machines in the directory
 Parts        the parts in the directory, and what opens each
 Controller   runners, clients and secrets, when the UI acts as the controller
 Manual       Corbie's manual, as corbie manual web serves it, in Corbie's own look
@@ -19,10 +19,10 @@ Manual       Corbie's manual, as corbie manual web serves it, in Corbie's own lo
 The UI is a dashboard. It uses the whole window, with a 20px margin and no column of fixed width. The page fills the window under the header: the Machines and Parts pages and a run's page fit in it, and their panels scroll inside.
 
 - Data is set in IBM Plex Mono at 13px, secondary data at 11.5px, and labels and buttons in IBM Plex Sans. Both are in the binary, and no page of the UI fetches anything from another site.
-- A page carries labels and data. It has no sentences that explain it.
+- A page carries labels and data. It writes a sentence only where it cannot show a thing, or where a person must act to fix one.
 - A status is a dot and a word, and a failure adds its kind in brackets: `failed (denied)`. The dot is petrol for running, moss for done and rowan for failed.
 - A machine's type is an icon beside its name, drawn as its drawing draws the type: stages for a flow, rounded states for a statechart, and the model's star for an agent.
-- The status colours are used for status only. A blue marks the field with the keyboard, links, and the keys of a machine's text.
+- The status colours mark status: rowan also marks problems and the buttons that cancel or remove, and petrol what a run is doing now. A blue marks the field with the keyboard, a link under the pointer, and the keys of a machine's text.
 - Corbie's gradient, from petrol through blue to violet, colours the icons of the types. No panel has a gradient or a shadow.
 - A page follows the computer's light or dark setting, with the manual's colours.
 
@@ -31,11 +31,11 @@ Each page is built from these:
 ```
 title line   one line, 46px, at the top of a page or a panel: icon, name, dim facts cut short with "…", buttons at the right
 panel        the plate colour with a thin border, corners of 10px
-list         one line for each thing, 31px high, with a thin rule between lines, cut short with "…"
+list         one line for each thing, 31px high, with a thin rule between lines, cut short with "…", and an optional dim second line
 tabs         an underlined bar of names, to choose a view
 pills        a small group of choices, such as a time window
 button       30px high, corners of 6px; one that starts or adds something is filled in ink, one that cancels or removes has rowan text
-label        a section's name, in small capitals
+label        a section's name, in capitals
 ```
 
 ## Commands
