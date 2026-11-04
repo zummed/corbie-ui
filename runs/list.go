@@ -157,15 +157,17 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 	clients := map[string]bool{}
 	byID := map[string]*client.Run{}
 	under := map[string][]*client.Run{}
-	// The current version of a file is that of the newest root keyed by it.
-	current := map[string]*client.Run{}
+	// The current version of a file, for each client, is that of the
+	// newest run with no parent that the client keyed by it.
+	current := map[[2]string]*client.Run{}
 	for _, r := range runs {
 		clients[store.InstanceClient(r.ID)] = true
 		byID[r.ID] = r
 		under[r.Parent] = append(under[r.Parent], r)
 		if file, ok := strings.CutPrefix(r.Key, client.KeyFile); ok && r.Parent == "" {
-			if c := current[file]; c == nil || r.ID > c.ID {
-				current[file] = r
+			at := [2]string{store.InstanceClient(r.ID), file}
+			if c := current[at]; c == nil || r.Started.After(c.Started) {
+				current[at] = r
 			}
 		}
 	}
@@ -179,7 +181,7 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 		v.Ended.Windows = append(v.Ended.Windows, choice{Name: w.Name, Href: n.with(func(m *narrowing) { m.Window = w.Name }), Current: n.Window == w.Name})
 	}
 	old := func(r *client.Run) bool {
-		c := current[r.Labels[client.LabelMachine]]
+		c := current[[2]string{store.InstanceClient(r.ID), r.Labels[client.LabelMachine]}]
 		return c != nil && r.Labels[client.LabelHash] != c.Labels[client.LabelHash]
 	}
 	from := at.Add(-n.long())

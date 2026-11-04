@@ -8,7 +8,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **R-runs-02** The page is narrowed by label as `corbie run ls --label` reads it, and by client; a root or ended run the narrowing leaves is listed with the runs under it. *Test:* `runs_narrowing_holds_for_the_whole_page`
 
-**R-runs-06** A root whose `hash=` label differs from that of the newest root keyed `file:` and its `machine=` label is marked as on an old version; Cancel on Idle runs `corbie run cancel` for each idle root on an old version the UI's client started, and for no other run. *Test:* `runs_cancel_idle_runs_on_old_versions`
+**R-runs-06** A root whose `hash=` label differs from that of the newest run with no parent that its client keyed `file:<path>`, where `<path>` is its `machine=` label, is marked as on an old version; Cancel on Idle runs `corbie run cancel` for each idle root on an old version the UI's client started, and for no other run. *Test:* `runs_cancel_idle_runs_on_old_versions`
 
 ## One run
 

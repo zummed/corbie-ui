@@ -43,7 +43,7 @@ The names and times come from the latest step of a run the UI's client started, 
 
 ### Old versions
 
-`corbie run submit` of a directory labels each run `machine=<path>` and `hash=<hash>`, and the runs under it and those its sends start carry the same labels. The newest root keyed `file:<path>` has the current hash of that path, and a root whose `hash=` differs is marked `old version`.
+`corbie run submit` of a directory labels each run `machine=<path>` and `hash=<hash>`, and the runs under it and those its sends start carry the same labels. Each client has its own current hash of a path: the `hash=` of the newest run with no parent that the client keyed `file:<path>`. A root of that client whose `hash=` differs is marked `old version`.
 
 Where Idle holds roots on old versions that the UI's client started, its head offers one button, `Cancel the 14 idle runs on old versions`. It runs `corbie run cancel <id>` for each, and holding the pointer over it shows every command.
 
