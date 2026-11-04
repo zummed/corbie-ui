@@ -49,8 +49,9 @@ type handler struct {
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"cmd":  func(c *page.Call) string { return c.String() },
-	"word": pluralWord,
+	"cmd":    func(c *page.Call) string { return c.String() },
+	"word":   pluralWord,
+	"middle": middle,
 }).ParseFS(files, "list.html", "run.html"))
 
 // New gives the Runs pages.

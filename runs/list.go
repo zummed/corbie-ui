@@ -129,10 +129,13 @@ type cancelling struct {
 }
 
 // A rootLine is one root run: the chain of running runs from it to the
-// deepest, what the deepest waits on, and the tree it unfolds to.
+// deepest, what the deepest waits on, and the tree it unfolds to. A chain of
+// more than four is shown as its first, an ellipsis holding the names
+// between, and its last two.
 type rootLine struct {
 	ID, Status, Failure, Title, Machine, Type, When, Took string
-	Chain                                                 []link
+	Chain, Front, Back                                    []link
+	Between                                               string
 	Shown, Waits                                          string
 	Old, Ended                                            bool
 	Under                                                 int
@@ -203,6 +206,14 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 		l := lineOf(r, at)
 		l.Old = old(r)
 		l.Chain = chainOf(r, under)
+		l.Front = l.Chain
+		if n := len(l.Chain); n > 4 {
+			var names []string
+			for _, c := range l.Chain[1 : n-2] {
+				names = append(names, c.Machine)
+			}
+			l.Front, l.Between, l.Back = l.Chain[:1], strings.Join(names, " › "), l.Chain[n-2:]
+		}
 		deepest := byID[l.Chain[len(l.Chain)-1].ID]
 		l.Shown = shownOf(steps[deepest.ID])
 		l.Waits = inWords(listed(waitsOf(deepest, stateOf(steps[deepest.ID]), running(under[deepest.ID]), at), r.Key))
@@ -421,6 +432,16 @@ func (s *steps) of(ctx context.Context, c *client.Client, runs []*client.Run) (m
 	}
 	s.read = kept
 	return out, nil
+}
+
+// middle cuts a long title in its middle, where keys that differ at their
+// end keep it.
+func middle(s string) string {
+	const most = 32
+	if r := []rune(s); len(r) > most {
+		return string(r[:most/2-1]) + "…" + string(r[len(r)-most/2:])
+	}
+	return s
 }
 
 func plural(n int, what string) string {

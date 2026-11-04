@@ -18,11 +18,12 @@ Ended      a run with no parent that ended in the window, newest first
 The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Services reads:
 
 ```
-running  slack:D0CFF1XQXLY  chat › message › answer › helper › approval › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29  old version
+running  slack:D0CFF1XQXLY  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29  old version
 ```
 
-- The title is the root's key, or its machine's name where it has none.
+- The title is the root's key, or its machine's name where it has none. A long title is cut in its middle, since keys differ at their end.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
+- A chain of more than four machines shows the first, `…` and the last two, and the `…` gives the names between in its tooltip.
 - The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
 - Then come what the deepest run waits on and when the root started. Events at the root's key are left out, since the title is that key.
 

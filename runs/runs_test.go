@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -107,6 +108,15 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	}
 	if digest.When != when(at.Add(-15*time.Minute), at) || digest.Tree[1].When != when(at.Add(-18*time.Minute), at) {
 		t.Errorf("an ended line and its tree give the times %q and %+v, not when each ended", digest.When, digest.Tree)
+	}
+	long := []*client.Run{run("a-client/1", "chat", "statechart", "running", time.Hour, 0, nil)}
+	for i, m := range []string{"message", "answer", "helper", "ask", "question"} {
+		parent := long[i].ID
+		long = append(long, run(fmt.Sprintf("a-client/%d", i+2), m, "flow", "running", time.Hour, 0, func(r *client.Run) { r.Parent = parent }))
+	}
+	l := listOf(long, nil, narrowingOf(url.Values{}), at, "").Busy.Lines[0]
+	if len(l.Front) != 1 || l.Between != "message › answer › helper" || len(l.Back) != 2 || l.Back[1].Machine != "question" {
+		t.Errorf("a chain of six is shown as %v, %q and %v", l.Front, l.Between, l.Back)
 	}
 	if got := v.Idle.Lines[0].Waits; got != "timer" {
 		t.Errorf("an idle line keyed slack:C1/3 waits on %q: events at its key repeat its title", got)
