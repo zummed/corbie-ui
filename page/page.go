@@ -8,7 +8,6 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -53,16 +52,11 @@ func Write(w http.ResponseWriter, s Shell) error {
 // name, its arguments, its flags, and what it reads on its standard input.
 // An argument is a value from the page, and none begins with "-". A flag
 // is written whole, as --name=value, or alone where it takes no value.
-//
-// A call with Lines is given each line the command prints, as it prints
-// it, in the words a person reads at the command line: it runs without
-// --json.
 type Call struct {
 	Words []string
 	Args  []string
 	Flags []string
 	Stdin string
-	Lines io.Writer
 }
 
 // String is the command as a person would type it.
