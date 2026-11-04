@@ -12,8 +12,6 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 **C-serve-02** With both parties, the client must trust the config's controller, or the UI refuses to start. A client may trust another controller, and the list and the Controller page would then act on two stores. *Test:* `serve_client_must_trust_the_configs_controller`
 
-**C-serve-03** The program's `main` runs a job's process before anything else, as Corbie's does. A runner starts each job by running the program with `run-one-job`, and a main that hands that to the UI's command line fails every job. *Test:* `serve_main_runs_a_jobs_process`
-
 ## What each party opens
 
 **R-serve-02** Every UI but `none` opens Machines and Parts to read; no party opens Runs and /metrics where there is a store; the controller opens the Controller page; a page the UI may not offer answers that there is no such page. *Test:* `serve_each_party_opens_its_pages`

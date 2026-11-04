@@ -1,10 +1,12 @@
 {{define "problem"}}<div class="problem">{{if .Top}}<p><code>{{.File}}/</code> is the top of a project, and its machines read their paths from there: start the UI in <code>{{.File}}/</code>.</p>{{else}}<a class="at" href="/machines?file={{.File}}&amp;view=text" title="{{.File}}">{{.File}}{{if .Line}}:{{.Line}}{{end}}</a><p>{{if .Place}}<span class="place">{{.Place}}</span> {{end}}{{.Text}}</p>{{end}}{{if .Breaks}}<small title="{{join .Breaks}}">breaks {{plural (len .Breaks) "machine"}}</small>{{end}}</div>{{end}}
 
-{{define "found"}}{{if .}}<section class="found"><h2>{{plural (len .) "problem"}}</h2>{{range .}}{{template "problem" .}}{{end}}</section>{{end}}{{end}}
+{{define "problems"}}{{if .}}<div class="problems"><h2>{{plural (len .) "problem"}}</h2>{{range .}}{{template "problem" .}}{{end}}</div>{{end}}{{end}}
+
+{{define "code"}}{{range .}}<span class="l{{if .Bad}} err{{end}}">{{range .Spans}}{{if .Class}}<span class="{{.Class}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</span>{{end}}{{end}}
 
 {{define "secrets"}}{{if .Secrets}}<section class="secrets"><h2>Secrets</h2><div class="named">{{range .Secrets}}<span>{{.Name}}</span><span class="dim">{{.State}}</span>{{end}}</div>{{if not .Controller}}<p class="dim">set on the controller's computer: <code>corbie controller secret set NAME</code></p>{{end}}</section>{{end}}{{end}}
 
-{{define "files"}}<div class="filelist list" id="files">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{if .Problems}}<section class="problems"><h2>{{plural (len .Problems) "problem"}}</h2>{{range .Problems}}{{template "problem" .}}{{end}}</section>{{end}}{{range .Groups}}{{if ne .Dir "."}}<h2 class="group" title="{{.Dir}}">{{.Dir}}/</h2>{{end}}{{range .Entries}}<a href="/machines?file={{.Path}}"{{if eq .Path $.Open}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="{{or .Type "file"}}"><title>{{or .Type "file"}}</title><use href="#g-{{or .Type "file"}}"/></svg><span class="name" title="{{.Path}}">{{base .Path}}</span>{{if .Problems}}<span class="bad" title="{{plural .Problems "problem"}}">{{.Problems}}</span>{{end}}<small>{{.First}}</small></a>{{end}}{{else}}<p class="dim">no machines here</p>{{end}}</div>{{end}}
+{{define "files"}}<div class="filelist list" id="files">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{template "problems" .Problems}}{{range .Groups}}{{if ne .Dir "."}}<h2 class="group" title="{{.Dir}}">{{.Dir}}/</h2>{{end}}{{range .Entries}}<a href="/machines?file={{.Path}}"{{if eq .Path $.Open}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="{{or .Type "file"}}"><title>{{or .Type "file"}}</title><use href="#g-{{or .Type "file"}}"/></svg><span class="name" title="{{.Path}}">{{base .Path}}</span>{{if .Problems}}<span class="bad" title="{{plural .Problems "problem"}}">{{.Problems}}</span>{{end}}<small>{{.First}}</small></a>{{end}}{{else}}<p class="dim">no machines here</p>{{end}}</div>{{end}}
 
 {{define "disk"}}<span id="disk" data-base="{{.Base}}" hidden></span>{{end}}
 
@@ -21,9 +23,9 @@
   <div class="panel view" data-file="{{.Open}}" data-base="{{.Base}}">
     <div class="head"><svg class="g m" role="img" aria-label="{{or .Kind "file"}}"><use href="#g-{{or .Kind "file"}}"/></svg><span>{{.Open}}</span><span class="facts">{{.First}}</span></div>
     {{if .Drawable}}<nav class="tabs"><a href="/machines?file={{.Open}}"{{if not .ShowText}} aria-current="page"{{end}}>Drawing</a><a href="/machines?file={{.Open}}&amp;view=text"{{if .ShowText}} aria-current="page"{{end}}>Text</a></nav>{{end}}
-    {{template "found" .Found}}
+    {{template "problems" .Found}}
     {{template "secrets" .}}
-    {{if .ShowText}}<pre class="code" aria-label="{{.Open}}">{{range .Text}}<span class="l{{if .Bad}} err{{end}}">{{range .Spans}}{{if .Class}}<span class="{{.Class}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</span>{{end}}</pre>{{else}}<section class="drawn" id="drawing">{{.Drawing}}</section>{{end}}
+    {{if .ShowText}}<pre class="code" aria-label="{{.Open}}">{{template "code" .Text}}</pre>{{else}}<section class="drawn" id="drawing">{{.Drawing}}</section>{{end}}
   </div>
   {{end}}
 </div>

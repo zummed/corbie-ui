@@ -20,7 +20,6 @@ type index struct {
 	Groups   []group
 	Problems []problem
 	Unread   string
-	Broken   int
 	parts    []part
 }
 
@@ -89,11 +88,6 @@ func (d *dir) index() *index {
 	}
 	for _, at := range sortedKeys(groups) {
 		ix.Groups = append(ix.Groups, group{Dir: at, Entries: groups[at]})
-	}
-	for file := range ix.own {
-		if !dotted(file) {
-			ix.Broken++
-		}
 	}
 	ix.parts = d.partsOf(ix)
 	return ix
@@ -194,9 +188,10 @@ func (d *dir) topOf(file string) string {
 	return ""
 }
 
-// at gives the problems found in a file: a machine's own, or the one problem
-// of the directory that is the top of its project, or for any other file
-// those found in it by the machines that read it.
+// at gives the problems found in a file: a machine's own, each with the
+// machines it breaks as the list gives them, or the one problem of the
+// directory that is the top of its project, or for any other file those
+// found in it by the machines that read it.
 func (ix *index) at(file string) []problem {
 	for _, p := range ix.Problems {
 		if p.Top && slices.Contains(p.Breaks, file) {
@@ -204,7 +199,16 @@ func (ix *index) at(file string) []problem {
 		}
 	}
 	if _, ok := ix.machines[file]; ok {
-		return ix.own[file]
+		var out []problem
+		for _, p := range ix.own[file] {
+			for _, listed := range ix.Problems {
+				if listed.File == p.File && listed.Place == p.Place && listed.Text == p.Text {
+					p.Breaks = listed.Breaks
+				}
+			}
+			out = append(out, p)
+		}
+		return out
 	}
 	var out []problem
 	for _, p := range ix.Problems {

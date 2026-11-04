@@ -73,19 +73,20 @@ func New(c Config) http.Handler {
 	return mux
 }
 
-// listOf reads the Runs page: the runs, and the latest step of each
-// running run the UI's client started.
+// listOf reads the Runs page: the runs, and the latest step of each run of
+// the UI's client that it shows.
 func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	runs, err := h.List.Runs()
 	if runs == nil && err != nil {
 		return listView{}, err
 	}
-	steps, stepErr := h.steps.of(ctx, h.Client, runs)
 	mine := ""
 	if h.Client != nil && h.Client.ID != nil {
 		mine = h.Client.ID.Name
 	}
-	return listOf(runs, steps, n, time.Now(), mine), errors.Join(err, stepErr)
+	read := h.steps.reader(ctx, h.Client, runs)
+	v := listOf(runs, read.of, n, time.Now(), mine)
+	return v, errors.Join(err, read.done())
 }
 
 func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, error) {

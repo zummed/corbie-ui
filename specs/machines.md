@@ -28,7 +28,7 @@ Each machine has its type's icon, its file's name, its first line, and the count
 
 ## Problems
 
-Above the list, each problem of the project's machines is listed once, at the file Corbie names, with how many machines it breaks:
+Above the list of Machines and of Parts, each problem of the project's machines is listed once, at the file Corbie names, with how many machines it breaks:
 
 ```
 2 PROBLEMS
@@ -42,6 +42,7 @@ breaks 3 machines
 
 - The place is given as the file writes it, with the line where the text writes it. A place in a file that a machine includes is found in that file.
 - Paths in a problem's text are written from the directory.
+- A problem is drawn the same way above a list, above a file's text and above a part: a box with a rowan border, holding each problem's place, its text and the machines it breaks.
 - A file an `include:` names that cannot be read is one problem at that file, breaking each machine that includes it, however each writes its path. The other problems of those machines are not listed, and the file is not listed as a machine.
 - A machine with problems that reads without any from a directory below this one is listed under one problem for that directory: `slackbot/ is the top of a project, and its machines read their paths from there: start the UI in slackbot/`. The machine's own problems are not listed, here or at its text.
 
@@ -76,7 +77,8 @@ Acting as the controller, the UI reads which are set as the Controller page read
 A part is a group of tools under an agent's `open:`. The Parts page lists every part in the directory, with its `does:` and its count of tools, and shows the one chosen:
 
 ```
-messages                                parts/messages/part.yaml       Text
+messages                                parts/messages/part.yaml
+Drawing   Text
 
 Messages to the people this bot knows.
 
@@ -98,4 +100,4 @@ machine tell.yaml
 - Opening a part with `approve: true` is shown as `opening it needs approval`.
 - A file with `does:` and `tools:` at its top level that no agent opens, outside directories whose names begin with a dot, is listed under the name of its directory, with a grey `not opened`, and its page says `not opened`. A new part therefore shows before anything uses it.
 - A part's file with problems shows them above the part, as the text does.
-- The list says how many of the project's machines have problems, with a link to Machines.
+- The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the part's file as the text view does. A part written in place in a machine has no tabs.

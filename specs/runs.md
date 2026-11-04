@@ -23,11 +23,29 @@ running  slack:D0CFF1XQXLY  chat › … › ask › question [open, waiting]  t
 
 - The title is the root's key, or its machine's name where it has none. A long title is cut in its middle, since keys differ at their end.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
-- A chain of more than four machines shows the first, `…` and the last two, and the `…` gives the names between in its tooltip.
+- A chain of more than three machines shows the first, `…` and the last, and the `…` gives the whole chain in its tooltip.
 - The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
 - Then come what the deepest run waits on and when the root started. Events at the root's key are left out, since the title is that key.
 
-A line unfolds to the root's running tree, one line for each run, indented under its parent, each with what it waits on and when it started. An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took, and unfolds to those runs, each with when it ended.
+An ended line holds its status, title, machine, the number of runs under it, when it ended and how long it took.
+
+A line unfolds to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
+
+```
+running  chat [waiting]                                   timer quiet due 20:36         3 Nov 20:34
+done       message  message › … › attend               done from attend · 8 runs     3 Nov 20:36  1.7s
+done       message  message › say › slack-say          done from say · 14 runs       3 Nov 20:34  4.1s
+```
+
+```
+name         the run's key, or its machine's name where it has none
+chain        the runs below it as a line's chain: the running ones, or for an ended run the newest at each level
+ended with   the error it failed with or the last event it took, as its record writes it; for a running run, what the deepest waits on
+runs         how many runs are under it
+when         when it started, and how long it took
+```
+
+A line shows at most 20 such rows, then `N more`, which opens the root's page. A run another client started shows nothing it ended with.
 
 What a run waits on is written as:
 

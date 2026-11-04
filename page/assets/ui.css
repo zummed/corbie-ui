@@ -140,7 +140,8 @@ div.list { font: 400 13px/1.3 var(--mono); }
 div.list > a { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; column-gap: 9px; row-gap: 3px; min-height: 31px; padding: 6px 16px; border-bottom: 1px solid var(--line); transition: background .15s; }
 div.list > a > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 div.list > a > small { grid-column: 2 / -1; font-size: 11.5px; color: var(--ink2); }
-div.list > a:hover, div.list > a[aria-current] { background: var(--hover); }
+div.list > a:hover { background: var(--hover); }
+div.list > a[aria-current] { background: color-mix(in srgb, var(--ink) 9%, var(--plate)); }
 div.list > a[aria-current] .name { font-weight: 500; }
 
 /* .tabs: which view */
@@ -169,18 +170,26 @@ div.list > a[aria-current] .name { font-weight: 500; }
 /* runs */
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
-.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 52px 100px; gap: 18px; align-items: center;
+.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 100px 100px; gap: 18px; align-items: center;
   height: 31px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); white-space: nowrap; transition: background .15s; }
 .req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .req > summary > :first-child, .req .node > :first-child { overflow: visible; }
-.req > summary { cursor: pointer; list-style: none; }
+.req > summary { position: relative; cursor: pointer; list-style: none; }
+.req > summary::before { content: "▸"; position: absolute; left: 5px; top: 9px; font-size: 11px; color: var(--ink2); }
+.req[open] > summary::before { content: "▾"; }
 .req > summary::-webkit-details-marker { display: none; }
 .req > summary:hover, .req .node:hover { background: var(--hover); }
 .req[open] > summary { background: color-mix(in srgb, var(--hover) 60%, transparent); }
 .reqs > .req:last-child:not([open]) > summary, .reqs > .req:last-child .node:last-child { border-bottom: 0; }
 .req .tree { background: color-mix(in srgb, var(--paper) 55%, var(--plate)); }
-.req .node .name { grid-column: 2 / 4; padding-left: calc(var(--d) * 20px); }
-.req .chain a:hover, .req .node:hover .name { color: var(--accent); }
+.req .node .name { padding-left: 20px; }
+.req .node.own .name { grid-column: 2 / 4; padding-left: 0; }
+.req .node.more .name { color: var(--ink2); }
+.req .says { display: flex; }
+.req .says > * { flex: none; }
+.req .says > .waits { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.req .says i { margin: 0 6px; font-style: normal; color: var(--ink2); }
+.req .chain a:hover, .req .node .name:hover { color: var(--accent); }
 .req .chain { display: flex; align-items: center; }
 .req .chain > a { flex: none; }
 .req .chain > .dim { flex: 0 1 auto; min-width: 0; margin-left: 7px; overflow: hidden; text-overflow: ellipsis; }
@@ -298,7 +307,7 @@ svg.machine { flex: none; max-width: 100%; height: auto; }
 .files h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files .bad { min-width: 19px; height: 19px; padding: 0 6px; border-radius: 999px; font: 500 11px/19px var(--mono); text-align: center; color: var(--rowan); background: color-mix(in srgb, var(--rowan) 15%, transparent); }
 .files .chip { height: 19px; padding: 0 8px; border-radius: 999px; font: 500 11px/19px var(--sans); color: var(--ink2); background: var(--hover); white-space: nowrap; }
-.files .problems { margin: 10px 12px; padding: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--rowan) 35%, var(--line)); border-radius: 6px; }
+.problems { flex: none; margin: 10px 12px; padding: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--rowan) 35%, var(--line)); border-radius: 6px; }
 .problem { display: grid; gap: 3px; padding: 6px 0; font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
 .problem + .problem { border-top: 1px solid var(--line); }
 .problem p { margin: 0; }
@@ -341,7 +350,7 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 }
 
 /* controller */
-.cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 18px; align-items: start; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 18px; align-items: stretch; }
 @media (max-width: 1200px) { .cols { grid-template-columns: minmax(0, 1fr); } }
 .contents { display: contents; }
 .list td.row-acts { overflow: visible; text-align: right; }

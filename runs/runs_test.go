@@ -49,6 +49,8 @@ func run(id, machine, kind, status string, started, ended time.Duration, more fu
 	return r
 }
 
+func noSteps(*client.Run) *instance.Step { return nil }
+
 func titles(s section) []string {
 	var out []string
 	for _, l := range s.Lines {
@@ -76,7 +78,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 		run("b-client/13", "digest", "flow", "done", 30*time.Hour, 29*time.Hour, nil),
 		run("b-client/14", "fetch", "flow", "done", 19*time.Minute, 18*time.Minute, func(r *client.Run) { r.Parent = "b-client/12" }),
 	}
-	v := listOf(runs, nil, narrowingOf(url.Values{}), at, "a-client")
+	v := listOf(runs, noSteps, narrowingOf(url.Values{}), at, "a-client")
 	for _, c := range []struct {
 		s    section
 		want string
@@ -93,9 +95,6 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	if strings.Join(chain, " ") != "chat message question" || busy.Chain[2].ID != "a-client/07" || busy.Waits != "timer" {
 		t.Errorf("the chain to the deepest running run is %v, waiting on %q", busy.Chain, busy.Waits)
 	}
-	if len(busy.Tree) != 4 || busy.Tree[2].ID != "a-client/06" || busy.Tree[2].Depth != 2 || busy.Tree[1].Waits != "child question, child question" || busy.Tree[2].Waits != "timer, events at key question:06" {
-		t.Errorf("the line unfolds to %+v", busy.Tree)
-	}
 	if !busy.Old || !v.Idle.Lines[1].Old || v.Idle.Lines[0].Old || v.Services.Lines[0].Old {
 		t.Errorf("the runs on old versions are not the ones marked")
 	}
@@ -106,20 +105,67 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	if digest.Status != "failed" || digest.Failure != "error" || digest.Took != "5m 0s" || digest.Under != 1 {
 		t.Errorf("an ended run is listed as %+v", digest)
 	}
-	if digest.When != when(at.Add(-15*time.Minute), at) || digest.Tree[1].When != when(at.Add(-18*time.Minute), at) {
-		t.Errorf("an ended line and its tree give the times %q and %+v, not when each ended", digest.When, digest.Tree)
+	if digest.When != page.When(at.Add(-15*time.Minute), at) {
+		t.Errorf("an ended line gives the time %q, not when it ended", digest.When)
 	}
 	long := []*client.Run{run("a-client/1", "chat", "statechart", "running", time.Hour, 0, nil)}
 	for i, m := range []string{"message", "answer", "helper", "ask", "question"} {
 		parent := long[i].ID
 		long = append(long, run(fmt.Sprintf("a-client/%d", i+2), m, "flow", "running", time.Hour, 0, func(r *client.Run) { r.Parent = parent }))
 	}
-	l := listOf(long, nil, narrowingOf(url.Values{}), at, "").Busy.Lines[0]
-	if len(l.Front) != 1 || l.Between != "message › answer › helper" || len(l.Back) != 2 || l.Back[1].Machine != "question" {
+	l := listOf(long, noSteps, narrowingOf(url.Values{}), at, "").Busy.Lines[0]
+	if len(l.Front) != 1 || l.Between != "chat › message › answer › helper › ask › question" || len(l.Back) != 1 || l.Back[0].Machine != "question" {
 		t.Errorf("a chain of six is shown as %v, %q and %v", l.Front, l.Between, l.Back)
 	}
 	if got := v.Idle.Lines[0].Waits; got != "timer" {
 		t.Errorf("an idle line keyed slack:C1/3 waits on %q: events at its key repeat its title", got)
+	}
+}
+
+func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
+	runs := []*client.Run{run("a-client/00", "chat", "statechart", "running", 9*time.Hour, 0, func(r *client.Run) { r.Key, r.Timers = "slack:C1", 1 })}
+	// Thirty messages, one each quarter of an hour: the oldest six ended before
+	// the window, and the newest runs.
+	for i := range 30 {
+		id := fmt.Sprintf("a-client/%02d", i+1)
+		ago := time.Duration(30-i) * 15 * time.Minute
+		ended := ago - time.Minute
+		if i == 29 {
+			ended = 0
+		}
+		status := map[bool]string{true: "running", false: "done"}[ended == 0]
+		runs = append(runs, run(id, "message", "flow", status, ago, ended, func(r *client.Run) { r.Parent = "a-client/00" }))
+	}
+	runs = append(runs,
+		run("a-client/40", "answer", "flow", "running", 5*time.Minute, 0, func(r *client.Run) { r.Parent = "a-client/30" }),
+		run("a-client/41", "question", "statechart", "running", 4*time.Minute, 0, func(r *client.Run) { r.Parent, r.Tickets = "a-client/40", []string{"verdict"} }),
+		run("a-client/42", "attend", "flow", "done", 25*time.Minute, 24*time.Minute, func(r *client.Run) { r.Parent = "a-client/28" }),
+		run("a-client/43", "helper", "agent", "done", 24*time.Minute, 23*time.Minute, func(r *client.Run) { r.Parent = "a-client/42" }),
+	)
+	steps := map[string]*instance.Step{
+		"a-client/28": {Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "attend"}}}},
+		"a-client/27": {State: instance.State{Error: &machine.Error{Error: "the model refused"}}},
+	}
+	l := listOf(runs, func(r *client.Run) *instance.Step { return steps[r.ID] }, narrowingOf(url.Values{}), at, "a-client").Busy.Lines[0]
+	if len(l.Rows) != 21 || !l.Rows[0].Own || l.Rows[0].Says != "child message, timer" || l.More != 4 {
+		t.Fatalf("the line unfolds to %d rows, the first %+v, with %d more", len(l.Rows), l.Rows[0], l.More)
+	}
+	var ids []string
+	for _, r := range l.Rows[1:] {
+		ids = append(ids, r.ID[len("a-client/"):])
+	}
+	if got := strings.Join(ids, " "); got != "30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11" {
+		t.Errorf("the rows are %s, not the newest twenty", got)
+	}
+	newest, attended, failed := l.Rows[1], l.Rows[3], l.Rows[4]
+	if newest.Name != "message" || len(newest.Front) != 3 || newest.Front[2].Machine != "question" || newest.Says != "ticket verdict" || newest.Under != 2 || newest.Took != "" {
+		t.Errorf("a running message is the row %+v", newest)
+	}
+	if len(attended.Front) != 3 || attended.Front[2].Machine != "helper" || attended.Says != "done from attend" || attended.Under != 2 || attended.Took != "1m 0s" || attended.When != page.When(at.Add(-45*time.Minute), at) {
+		t.Errorf("an ended message is the row %+v", attended)
+	}
+	if failed.Says != "the model refused" {
+		t.Errorf("a failed message ended with %q", failed.Says)
 	}
 }
 
@@ -142,14 +188,14 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 		run("ci-client/3", "prices", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Jobs = 1 }),
 		run("laptop-client/4", "review", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels = data; r.Tickets = []string{"verdict"} }),
 	}
-	v := listOf(runs, nil, narrowingOf(url.Values{"client": {"ci-client"}, "label": {"team=data"}}), at, "")
+	v := listOf(runs, noSteps, narrowingOf(url.Values{"client": {"ci-client"}, "label": {"team=data"}}), at, "")
 	if got := titles(v.Busy); len(got) != 1 || v.Busy.Lines[0].ID != "ci-client/1" || len(v.Ended.Lines) != 1 || len(v.Idle.Lines) != 0 {
 		t.Errorf("the page holds %v and %v", got, titles(v.Ended))
 	}
 	if len(v.Clients) != 2 || !v.Clients[0].Current {
 		t.Errorf("the clients offered are %+v", v.Clients)
 	}
-	v = listOf(runs, nil, narrowingOf(url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
+	v = listOf(runs, noSteps, narrowingOf(url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
 	if got := strings.Join(titles(v.Busy), " "); got != "review digest" || len(v.Ended.Lines) != 1 {
 		t.Errorf("narrowed to team in the last hour, the page holds %s and %v", got, titles(v.Ended))
 	}
@@ -166,12 +212,12 @@ func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
 		run("lab-client/4", "chat", "statechart", "running", 6*time.Hour, 0, func(r *client.Run) { r.Tickets, r.Labels = []string{"go"}, was }),
 		run("ci-client/5", "chat", "statechart", "running", 6*time.Hour, 0, func(r *client.Run) { r.Timers, r.Labels = 1, was }),
 	}
-	v := listOf(runs, nil, narrowingOf(url.Values{}), at, "lab-client")
+	v := listOf(runs, noSteps, narrowingOf(url.Values{}), at, "lab-client")
 	c := v.Idle.Cancel
 	if c == nil || strings.Join(c.IDs, " ") != "lab-client/3 lab-client/2" || c.Commands != "corbie run cancel lab-client/3\n$ corbie run cancel lab-client/2" {
 		t.Fatalf("Cancel on the idle runs on old versions is %+v", c)
 	}
-	if v = listOf(runs, nil, narrowingOf(url.Values{}), at, ""); v.Idle.Cancel != nil {
+	if v = listOf(runs, noSteps, narrowingOf(url.Values{}), at, ""); v.Idle.Cancel != nil {
 		t.Errorf("with no client the page offers %+v", v.Idle.Cancel)
 	}
 
@@ -185,7 +231,7 @@ func Test_runs_cancel_idle_runs_on_old_versions(t *testing.T) {
 		run("ci-client/20261015T090100.000Z-cc", "talk", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels, r.Timers = ci, 1 }),
 		run("lab-client/20261015T080100.000Z-dd", "talk", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Labels, r.Timers = lab, 1 }),
 	}
-	v = listOf(two, nil, narrowingOf(url.Values{}), at, "ci-client")
+	v = listOf(two, noSteps, narrowingOf(url.Values{}), at, "ci-client")
 	for _, l := range append(v.Services.Lines, v.Idle.Lines...) {
 		if l.Old {
 			t.Errorf("%s is marked as on an old version of its own client's path", l.ID)

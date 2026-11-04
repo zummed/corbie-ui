@@ -287,18 +287,7 @@ func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*cl
 // chainOf gives a run and the running runs below it down to the deepest,
 // by the newest running child at each level.
 func chainOf(r *client.Run, under map[string][]*client.Run) []link {
-	var chain []link
-	for r != nil {
-		chain = append(chain, link{ID: r.ID, Machine: r.Machine, Type: r.Type})
-		var next *client.Run
-		for _, k := range under[r.ID] {
-			if !k.HasEnded() && (next == nil || k.ID > next.ID) {
-				next = k
-			}
-		}
-		r = next
-	}
-	return chain
+	return descent(r, under, running)
 }
 
 // running gives the runs among kids that have not ended.

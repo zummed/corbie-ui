@@ -4,12 +4,17 @@
 
 {{define "machine"}}<a href="/run/{{.ID}}" title="{{.Machine}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}
 
+{{define "chain"}}<span class="chain">{{range $i, $l := .Front}}{{if $i}}<i>›</i>{{end}}{{template "machine" $l}}{{end}}{{with .Between}}<i>›</i><span class="between" title="{{.}}">…</span>{{end}}{{range .Back}}<i>›</i>{{template "machine" .}}{{end}}{{if .Shown}}<span class="dim">[{{.Shown}}]</span>{{end}}</span>{{end}}
+
+{{define "row"}}{{if .Own}}<div class="node own"><span>{{template "status" .}}</span><a class="name" href="/run/{{.ID}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}{{if .Shown}} <span class="dim">[{{.Shown}}]</span>{{end}}</a><span class="waits" title="{{.Says}}">{{.Says}}</span><span class="dim">{{.When}}</span><span></span></div>
+{{- else}}<div class="node"><span>{{template "status" .}}</span><a class="name" href="/run/{{.ID}}" title="{{.Name}}">{{.Name}}</a>{{template "chain" .}}<span class="says">{{with .Says}}<span class="waits" title="{{.}}">{{.}}</span><i>·</i>{{end}}<span class="dim">{{.Under}} {{word .Under "run"}}</span></span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span></div>{{end}}{{end}}
+
 {{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}">
 <span>{{template "status" .}}</span><span class="title" title="{{.Title}}">{{middle .Title}}</span>
 {{- if .Ended}}<span class="chain">{{template "machine" .}}</span><span class="dim">{{.Under}} {{word .Under "run"}} under it</span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span>
-{{- else}}<span class="chain">{{range $i, $l := .Front}}{{if $i}}<i>›</i>{{end}}{{template "machine" $l}}{{end}}{{with .Between}}<i>›</i><span class="between" title="{{.}}">…</span>{{end}}{{range .Back}}<i>›</i>{{template "machine" .}}{{end}}{{if .Shown}}<span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
+{{- else}}{{template "chain" .}}<span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
 </summary>
-<div class="tree">{{range .Tree}}<a class="node" href="/run/{{.ID}}"><span>{{template "status" .}}</span><span class="name" style="--d: {{.Depth}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}{{if .Shown}} <span class="dim">[{{.Shown}}]</span>{{end}}</span><span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span></span></a>{{end}}</div>
+<div class="tree">{{range .Rows}}{{template "row" .}}{{end}}{{if .More}}<a class="node more" href="/run/{{.ID}}"><span></span><span class="name">{{.More}} more</span></a>{{end}}</div>
 </details>{{end}}
 
 {{define "section"}}<section class="panel reqs" id="{{.ID}}"{{if and (not .Lines) (not .Windows)}} hidden{{end}}>
