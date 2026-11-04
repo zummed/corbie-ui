@@ -210,9 +210,68 @@ main > .head form.narrow input { width: 220px; }
 .path a { display: inline-flex; align-items: center; gap: 5px; }
 .path a:hover { color: var(--accent); }
 .path a[aria-current] { color: var(--ink); font-weight: 600; }
-.split { flex: 1; min-height: 360px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; }
+.path a.sel { color: var(--ink); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); border-radius: 6px; padding: 1px 6px; margin: 0 -6px; }
+.path .sep.send { color: var(--accent); font-size: 15px; }
+.split { flex: 1; min-height: 360px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
 .split > * { min-height: 0; }
-.stack { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 18px; }
+.side { display: flex; flex-direction: column; gap: 18px; }
+.side > .asof { flex: 1 1 260px; min-height: 200px; display: flex; flex-direction: column; }
+.side > .asof > .drawn { flex: 1; min-height: 0; }
+.side > #waits { flex: none; max-height: 30%; overflow: auto; }
+.side > .details { flex: 0 1 auto; max-height: 45%; min-height: 160px; }
+.side > .details[hidden] { display: none; }
+/* Steps: one row for each thing that happened, coloured by its machine's type, a child's rows under the row that started it */
+.steps { display: flex; flex-direction: column; height: 100%; }
+.steps .legend { display: flex; gap: 14px; font: 11.5px var(--mono); color: var(--ink2); }
+.steps .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.steps .legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--c); }
+.steps .statechart { --c: var(--s1); } .steps .flow { --c: var(--s2); } .steps .agent { --c: var(--s3); }
+ol.steplist, ol.steplist ol { list-style: none; margin: 0; padding: 0; }
+ol.steplist { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+ol.steplist .none { padding: 6px 16px; font: 12.5px var(--mono); }
+.step { display: grid; grid-template-columns: 46px 14px 190px minmax(0, 1fr); align-items: center; gap: 8px; height: 28px; padding: 0 14px 0 10px;
+  font: 12.5px var(--mono); white-space: nowrap; cursor: pointer; border-left: 3px solid var(--c); transition: background .15s; }
+.dated .step { grid-template-columns: 92px 14px 190px minmax(0, 1fr); }
+.step:hover { background: var(--hover); }
+.step > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.step .t { color: var(--ink2); }
+.step .who { display: flex; align-items: center; gap: 6px; padding-left: calc(min(var(--d), 4) * 14px); color: var(--c); font-weight: 500;
+  background: repeating-linear-gradient(to right, transparent 0 6px, var(--line) 6px 7px, transparent 7px 14px) left / calc(min(var(--d), 4) * 14px) 100% no-repeat; }
+.step .who svg.g { flex: none; stroke: var(--c); }
+.step .who > span { overflow: hidden; text-overflow: ellipsis; }
+.step .what b { font-weight: 500; }
+.step .sum { color: var(--ink2); }
+.step .sum .st::before { display: none; }
+.step .fold { flex: none; width: 14px; height: 14px; margin: 0 -2px 0 -4px; padding: 0; border: 0; background: none; color: var(--ink2); cursor: pointer; font: 10px var(--sans); }
+.step .fold::before { content: "▾"; }
+.steplist .folded > .step .fold::before { content: "▸"; }
+.steplist .folded > ol { display: none; }
+.step.sel { background: color-mix(in srgb, var(--c) 16%, var(--plate)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
+.step.held .what { color: var(--amber); }
+.step.failed .what, .step.failed .what b { color: var(--rowan); }
+.step.done .what { color: var(--moss); }
+.step.cancelled .what { color: var(--ink2); }
+.step.send .what, .step.got .what, .step.send .what b, .step.got .what b { color: var(--accent); }
+.step.new { animation: slide .35s var(--ease); }
+/* a send between runs: a dashed link, not an indent, that opens the run at its other end */
+.step .link { align-self: stretch; position: relative; }
+.step .link a { position: absolute; inset: 0; }
+.step.send .link::before, .step.got .link::before { content: ""; position: absolute; left: 6px; border-left: 2px dashed var(--accent); }
+.step.send .link::before { top: 50%; bottom: 0; }
+.step.got .link::before { top: 0; height: 50%; }
+.step.send .link::after, .step.got .link::after { content: ""; position: absolute; left: 3px; top: calc(50% - 4px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.asof .head .facts { font-size: 11.5px; }
+.details { display: flex; flex-direction: column; }
+.details > .pane { flex: 1; min-height: 0; overflow: auto; }
+.details > .pane > p { margin: 0; padding: 12px 16px; font: 12.5px var(--mono); }
+.details pre.json { padding: 12px 16px; }
+.details .head > .facts { color: var(--ink); }
+.details .record li { grid-template-columns: max-content 90px 18px minmax(0, 1fr); }
+.details .record .t { white-space: nowrap; }
+dl.kv { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 6px 14px; margin: 0; padding: 12px 16px; font: 12.5px var(--mono); }
+dl.kv dt { color: var(--ink2); }
+dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+dl.kv a { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); }
 #waits .waitlist { padding: 6px 0; }
 .wait { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 6px 16px; font: 13px var(--mono); white-space: nowrap; }
 .wait > span { overflow: hidden; text-overflow: ellipsis; }
@@ -225,6 +284,7 @@ dl.labels { display: grid; grid-template-columns: max-content minmax(0, 1fr); ga
 dl.labels dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabbed { display: flex; flex-direction: column; }
 .tabbed > .pane { flex: 1; min-height: 0; overflow: auto; }
+.tabbed > .pane[data-pane=steps] { overflow: hidden; }
 ol.record { list-style: none; margin: 0; padding: 6px 0; font: 12.5px/1.5 var(--mono); }
 .record li { display: grid; grid-template-columns: 64px 124px 26px minmax(0, 1fr); gap: 10px; padding: 3px 16px; }
 .record li:hover { background: var(--hover); }
@@ -251,9 +311,9 @@ table.kids td:nth-child(4) { width: 80px; }
 table.kids svg.g { margin-right: 6px; }
 
 /* drawing */
-.drawn { display: flex; justify-content: center; align-items: flex-start; padding: 22px 16px 48px; overflow: auto; background: var(--paper); }
-svg.machine { flex: none; max-width: 100%; height: auto; }
-.stack > .drawn svg.machine { width: auto; max-height: 100%; }
+.drawn { display: flex; justify-content: safe center; align-items: flex-start; padding: 22px 16px 48px; overflow: auto; background: var(--paper); }
+svg.machine { flex: none; height: auto; }
+.view > .drawn svg.machine { max-width: 100%; }
 .machine a { cursor: pointer; }
 .machine .state > rect.box { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: stroke .4s, fill .4s; }
 .machine .state > rect.behind { fill: var(--plate); stroke: var(--line); stroke-width: 1; }

@@ -17,10 +17,11 @@ import (
 	"github.com/zummed/corbie/statechart"
 )
 
-// A Run is what a run shows of its state, to be marked on its machine's
-// drawing.
+// A Run is what a run shows of its state as of one step, to be marked on
+// its machine's drawing.
 type Run struct {
-	// Steps are the steps of its record, in order.
+	// Steps are the steps of its record, in order, up to the step it is
+	// drawn as of: the latest.
 	Steps []Step
 	// Going are the jobs going after the latest step, and Held those of
 	// them held for the ask. A job is named as the definition names what
@@ -32,8 +33,9 @@ type Run struct {
 	// Machines are the machines its definition names, by the name its jobs
 	// give them.
 	Machines map[string]Machine
-	// Ended says the run has ended: the states it ended in are no longer
-	// lit as current. Failed says it ended with status failed.
+	// Ended says the run had ended by the latest step: the states it ended
+	// in are no longer lit as current. Failed says it ended with status
+	// failed.
 	Ended, Failed bool
 }
 

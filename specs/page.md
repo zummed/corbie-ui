@@ -62,14 +62,14 @@ A part is drawn by one template, on the first load and on every change. When the
 Motion shows a change, and nothing else moves.
 
 ```
-a run that is running      its dot pulses, every 2.4s
-a line that appears        it fades in, lit in blue that fades over 1.6s
-a line that changes        it is lit for 1.2s
-a run that ends            its line is lit in its status's colour, and moves to the ended runs
-a record entry             it slides in from below, in 0.35s
-the state a run is in      its outline pulses, every 2.6s
-a count that changes       it lifts and settles, in 0.5s
-another page               the pages cross-fade, in 0.18s
+a run that is running         its dot pulses, every 2.4s
+a line that appears           it fades in, lit in blue that fades over 1.6s
+a line that changes           it is lit for 1.2s
+a run that ends               its line is lit in its status's colour, and moves to the ended runs
+a row of Steps that appears   it slides in from below, in 0.35s
+the state a run is in         its outline pulses, every 2.6s
+a count that changes          it lifts and settles, in 0.5s
+another page                  the pages cross-fade, in 0.18s
 ```
 
 With the computer's setting for reduced motion, nothing moves.
