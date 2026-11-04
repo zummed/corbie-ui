@@ -2,11 +2,13 @@ package runs
 
 import (
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -317,12 +319,40 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		"tell":  {Job: *tell, Held: true},
 		"ask#1": {Job: machine.Job{Name: "ask"}, ForAsk: []string{"tell"}},
 	}}
-	m := marksOf("a-client/1", entries, &client.Run{ID: "a-client/1", Status: "failed"}, st, byID)
+	m := marksOf("a-client/1", entries, "failed", st, byID)
 	if m.Children["open.messages.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
 		t.Errorf("the asks' runs are known as %+v", m.Children)
 	}
 	if strings.Join(m.Going, " ") != "open.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
+	}
+
+	// A child's rows are under the row that started it, and an ended child
+	// is folded.
+	now := at
+	tree := []client.Entry{
+		{ID: "a-client/1", Step: 1, Time: now, Shown: map[string]any{"states": []string{"answering"}},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "start"}}},
+			Asks:   []instance.Ask{{Kind: instance.AskChild, Name: "answering", Child: "a-client/2"}}},
+		{ID: "a-client/2", Step: 1, Time: now, Shown: map[string]any{"stages": map[string]any{"who": "running"}}},
+		{ID: "a-client/2", Step: 2, Time: now, Status: "done", Shown: map[string]any{"stages": map[string]any{"who": "done"}},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "who"}}}},
+	}
+	byID = map[string]*client.Run{
+		"a-client/1": {ID: "a-client/1", Machine: "chat", Type: "statechart", Status: "running"},
+		"a-client/2": {ID: "a-client/2", Machine: "message", Type: "flow", Status: "done", Parent: "a-client/1", Started: now, Ended: now.Add(time.Second)},
+	}
+	rows := rowsOf("a-client/1", tree, byID, now)
+	var said []string
+	for _, r := range rows {
+		said = append(said, r.Said())
+	}
+	if strings.Join(said, "; ") != "started; entered answering; state answering started message" {
+		t.Fatalf("the run's rows are %q", said)
+	}
+	g := rows[2].Group
+	if g == nil || !g.Ended || g.Steps != 2 || len(g.Rows) != 2 || g.Rows[0].Said() != "stage who done" || g.Rows[0].Depth != 1 || g.Rows[1].Said() != "done" {
+		t.Errorf("the child's rows are not under the row that started it: %+v", g)
 	}
 
 	l, viewer, id := local(t)
@@ -332,10 +362,59 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{tickets["verdict"], "<span>timer too_long due ", "<b>&lt;-</b> start", "<b>-&gt;</b> job drafting: a script, on runner", `<span class="i" title="review">review</span>`, `class="state now"`, `class="edge taken"`, `action="/run/` + id + `/send"`} {
+	for _, want := range []string{tickets["verdict"], "<span>timer too_long due ", "entered <b>drafting</b>", "left <b>drafting</b>, entered <b>waiting</b>", "<b>&lt;-</b> done from drafting", `<span class="i" title="review">review</span>`, `class="state now"`, `class="edge taken"`, `action="/run/` + id + `/send"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the run's own page does not show %s", want)
 		}
+	}
+	if strings.Contains(body, "events at key") {
+		t.Errorf("the run's page lists events at its own key")
+	}
+}
+
+func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
+	// The drawing of the first step has the run in drafting, and no
+	// transition taken.
+	l, viewer, id := local(t)
+	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
+	var parts []map[string]string
+	if err := json.Unmarshal([]byte(get(t, h, "/run/"+id+"/at?row="+url.QueryEscape(id+"/1/0"))), &parts); err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 2 || parts[0]["id"] != "view" || parts[1]["id"] != "details" {
+		t.Fatalf("the step is answered with %v", parts)
+	}
+	view, details := parts[0]["html"], parts[1]["html"]
+	now := regexp.MustCompile(`<g class="state now">.*?<text class="title"[^>]*>([^<]*)</text>`).FindStringSubmatch(view)
+	if !strings.Contains(view, "as of step 1") || now == nil || now[1] != "drafting" || strings.Contains(view, "edge taken") {
+		t.Errorf("the run is not drawn as of its first step: %v\n%s", now, view)
+	}
+	if !strings.Contains(details, "entered drafting") || !strings.Contains(details, "<b>&lt;-</b> start") || strings.Contains(details, "done from drafting") {
+		t.Errorf("the details are not those of the first step:\n%s", details)
+	}
+
+	// A send to a key links to the run that held the key when it was
+	// sent, and the path begins with the run whose send started the root.
+	sent := at.Add(-time.Hour)
+	byID := map[string]*client.Run{
+		"a-client/1": {ID: "a-client/1", Machine: "listen", Type: "statechart", Status: "running"},
+		"a-client/2": {ID: "a-client/2", Machine: "question", Type: "statechart", Status: "done", Key: "question:1", Started: sent.Add(-time.Hour), Ended: sent.Add(time.Minute)},
+		"a-client/3": {ID: "a-client/3", Machine: "question", Type: "statechart", Status: "running", Key: "question:1", Started: sent.Add(time.Hour)},
+		"a-client/4": {ID: "a-client/4", Machine: "chat", Type: "statechart", Status: "running", StartedBy: "a-client/1"},
+		"a-client/5": {ID: "a-client/5", Machine: "message", Type: "flow", Status: "running", Parent: "a-client/4"},
+	}
+	rows := rowsOf("a-client/1", []client.Entry{{ID: "a-client/1", Step: 3, Time: sent,
+		Asks: []instance.Ask{{Kind: instance.AskEvent, Key: "question:1", Event: &machine.Event{Name: "answer"}}}}}, byID, at)
+	if len(rows) != 1 || rows[0].Kind != "send" || rows[0].To == nil || rows[0].To.ID != "a-client/2" || rows[0].Said() != "⇢ sent answer to the key question:1 · question" {
+		t.Errorf("the send is %+v", rows)
+	}
+	under := map[string][]*client.Run{"a-client/4": {byID["a-client/5"]}}
+	var path []string
+	for _, l := range pathOf(byID["a-client/5"], byID, under) {
+		path = append(path, fmt.Sprintf("%s %v", l.Machine, l.Sent))
+	}
+	if strings.Join(path, ", ") != "listen false, chat true, message false" {
+		t.Errorf("the path is %v", path)
 	}
 }
 
@@ -348,7 +427,7 @@ func Test_runs_other_clients_run_shows_no_record(t *testing.T) {
 	someone := client.New(other, viewer.Controller, viewer.Store)
 	h := New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: someone, Interval: time.Second, Shell: page.Shell{}})
 	body := get(t, h, "/run/"+id)
-	if !strings.Contains(body, "running") || !strings.Contains(body, "only the client that started a run can read its record") {
+	if !strings.Contains(body, "running") || !strings.Contains(body, "a run another client started: only its status can be read") || strings.Contains(body, `id="steps"`) {
 		t.Errorf("another client's run does not show its status alone:\n%s", body)
 	}
 	for _, never := range []string{"<b>&lt;-</b> start", "ticket verdict </span><code", `class="state now"`, "/send"} {

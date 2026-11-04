@@ -55,14 +55,55 @@ The page is narrowed by label, as `--label` narrows `corbie run ls`, and by clie
 A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and key, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
 
 ```
-chat › message › answer › helper › approval › ask › question
+slack-listen ⇢ chat › message › answer › helper › approval › ask › question
 ```
 
-The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. The run itself is in bold.
+The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send to a key started the root, the run that sent it comes first, with `⇢`. The run itself is in bold, and the run of the step selected is lit.
 
-- The drawing of its machine shows the state it is in (see Drawing).
-- What it waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below that.
-- Record lists every entry as it is written, its children's included, in the words `corbie run show --record` prints. Each entry is named by its run's machine, and the line a run ends with is in its status's colour.
+On the left are three tabs: Steps, Output and Children. On the right are the drawing, what the run waits on, and the details of the step selected.
+
+### Steps
+
+Steps lists what happened in the run and in every run under it, one row each, read from the record as `corbie run show --record` reads it. A row holds its time, its run's machine in the colour of the machine's type, and what happened:
+
+```
+statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started message
+flow         stage who started who · stage who done · stage refuse skipped · stage brief failed
+agent        turn 2 to claude-sonnet-5-5 · turn 2 called tell(person: “zummed”, text: “The…”) · open done · held tell for approval · ask started approval
+any run      started · done · failed (denied) · cancelled
+a send       ⇢ sent answer to the key question:1d3473b2cc · question       in the run that sent it
+             ⇠ message from slack-listen                                  in the run it reached
+```
+
+- A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
+- A send to a key has a dashed mark and links to the run that held the key when it was sent. The row in the run it reached links to the sender.
+- The row that started a child ends with the child's status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
+- An ended child is folded, and a running one open. Open all and Fold all fold every group.
+- On the page of a run another client started, there are no Steps.
+
+One row is selected. On a running run it is the newest row until the person selects another; on an ended run it is the last.
+
+```
+↑ ↓      selects the row above or below, of those shown
+←        folds the group the row starts, or the group it is in
+→        opens the group the row starts
+click    selects the row and shows its details
+```
+
+The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls.
+
+The details of a row have four tabs, and Open opens the row's run's page:
+
+```
+What happened   the row's facts: the job and its machine or script, a tool's arguments, the run a tool is held for, the turn, the error
+Input           what the row's job, call or event was given
+Output          what it gave back
+Record          the entries of the row's step, in the words corbie run show --record prints, each named by its run's machine
+```
+
+### Waiting on, Output and Children
+
+- What the run waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below. Events at the run's own key are left out, since its title line gives the key.
 - Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
 - Children lists the runs it started, with each one's status and when it started or ended.
 

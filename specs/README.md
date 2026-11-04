@@ -50,7 +50,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Pages](page.md).** What every page shares: the header, the look, motion, and how a page follows the store.
 
-**[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its record, its drawing, what it waits on, and what can be sent to it.
+**[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its steps, its drawing as of each step, what it waits on, and what can be sent to it.
 
 **[Machines](machines.md).** The machines in a directory, read only: the list, the problems Corbie finds in them, each machine's drawing and text, and the secrets it names. The parts in the directory, and what opens and starts each.
 
