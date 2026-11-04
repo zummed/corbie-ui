@@ -4,7 +4,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## The list
 
-**R-runs-01** Each root, a running run whose parent is not running, is one line in Services, Busy or Idle by its key and its head, with the chain of running runs from it to the deepest through the newest running child at each level, and what the deepest waits on, by name from its latest step where the UI's client started it; below them, each run with no parent that ended in the window. *Test:* `runs_list_roots_by_section`, `runs_own_runs_wait_by_name`
+**R-runs-01** Each root, a running run whose parent is not running, is one line in Busy, Idle or Services by its key, its status, its jobs, its tickets and its running children, with the chain of running runs from it to the deepest through the newest running child at each level, and what the deepest waits on, by name from its latest step where the UI's client started it; below them, each run with no parent that ended in the window. *Test:* `runs_list_roots_by_section`, `runs_own_runs_wait_by_name`
 
 **R-runs-02** The page is narrowed by label as `corbie run ls --label` reads it, and by client; a root or ended run the narrowing leaves is listed with the runs under it. *Test:* `runs_narrowing_holds_for_the_whole_page`
 

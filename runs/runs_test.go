@@ -104,6 +104,12 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	if digest.Status != "failed" || digest.Failure != "error" || digest.Took != "5m 0s" || digest.Under != 1 {
 		t.Errorf("an ended run is listed as %+v", digest)
 	}
+	if digest.When != when(at.Add(-15*time.Minute), at) || digest.Tree[1].When != when(at.Add(-18*time.Minute), at) {
+		t.Errorf("an ended line and its tree give the times %q and %+v, not when each ended", digest.When, digest.Tree)
+	}
+	if got := v.Idle.Lines[0].Waits; got != "timer" {
+		t.Errorf("an idle line keyed slack:C1/3 waits on %q: events at its key repeat its title", got)
+	}
 }
 
 func Test_runs_own_runs_wait_by_name(t *testing.T) {

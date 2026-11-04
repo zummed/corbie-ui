@@ -205,7 +205,7 @@ func listOf(runs []*client.Run, steps map[string]*instance.Step, n narrowing, at
 		l.Chain = chainOf(r, under)
 		deepest := byID[l.Chain[len(l.Chain)-1].ID]
 		l.Shown = shownOf(steps[deepest.ID])
-		l.Waits = inWords(waitsOf(deepest, stateOf(steps[deepest.ID]), running(under[deepest.ID]), at))
+		l.Waits = inWords(listed(waitsOf(deepest, stateOf(steps[deepest.ID]), running(under[deepest.ID]), at), r.Key))
 		l.Tree = treeOf(r, under, running, steps, at)
 		switch {
 		case strings.HasPrefix(r.Key, client.KeyFile):
@@ -252,19 +252,29 @@ func lineOf(r *client.Run, at time.Time) rootLine {
 	return l
 }
 
+// listed gives waits as a root's line lists them: events at the root's key
+// are left out, since the line's title is that key.
+func listed(waits []wait, key string) []wait {
+	return slices.DeleteFunc(waits, func(w wait) bool { return key != "" && w.Text == "events at key "+key })
+}
+
 // treeOf gives a root and the runs under it that kids leaves, each under
-// its parent, oldest first.
+// its parent, oldest first: a running run with when it started, and an
+// ended one with when it ended.
 func treeOf(root *client.Run, under map[string][]*client.Run, kids func([]*client.Run) []*client.Run, steps map[string]*instance.Step, at time.Time) []node {
 	var tree []node
 	var add func(r *client.Run, depth int)
 	add = func(r *client.Run, depth int) {
 		n := node{ID: r.ID, Status: r.Status, Failure: r.Failure, Machine: r.Machine, Type: r.Type, Depth: depth}
+		switch {
+		case r.HasEnded():
+			n.When = when(r.Ended, at)
+		case !r.Started.IsZero():
+			n.When = when(r.Started, at)
+		}
 		if !r.HasEnded() {
 			n.Shown = shownOf(steps[r.ID])
-			n.Waits = inWords(waitsOf(r, stateOf(steps[r.ID]), running(under[r.ID]), at))
-		}
-		if !r.Started.IsZero() {
-			n.When = when(r.Started, at)
+			n.Waits = inWords(listed(waitsOf(r, stateOf(steps[r.ID]), running(under[r.ID]), at), root.Key))
 		}
 		tree = append(tree, n)
 		for _, k := range kids(under[r.ID]) {
