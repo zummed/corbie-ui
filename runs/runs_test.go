@@ -173,6 +173,18 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 	if failed.Says != "the model refused" {
 		t.Errorf("a failed message ended with %q", failed.Says)
 	}
+
+	// On the page, a click on the line opens its root's page, and the
+	// button at its start unfolds it.
+	lc, viewer, _ := local(t)
+	body := get(t, New(Config{List: &fixed{from: viewer}, Lister: viewer, Client: lc.Client, Interval: time.Second, Shell: page.Shell{}}), "/runs")
+	m := regexp.MustCompile(`<summary class="line" data-key="([^"]+)"[^>]*data-href="([^"]+)">`).FindStringSubmatch(body)
+	if m == nil || m[2] != "/run/"+m[1] {
+		t.Errorf("a line does not open its root's page:\n%s", body)
+	}
+	if !regexp.MustCompile(`<button class="unfold" type="button"[^>]*></button></summary>`).MatchString(body) {
+		t.Errorf("a line has no button that unfolds it:\n%s", body)
+	}
 }
 
 func Test_runs_own_runs_wait_by_name(t *testing.T) {
