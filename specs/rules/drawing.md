@@ -24,6 +24,8 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-03** A run is marked on its drawing: a flow's stages by their status; a statechart's states as current, entered before or never entered, a state passed through within one step being entered; and an agent's model, and each tool and ask as going, held, used at an earlier step or never used; a run that ended is marked by how it ended, a failed run at the states it ended in and at the card of the job whose failure ended it. *Test:* `drawing_run_is_marked_on_the_drawing`
 
+**R-drawing-08** On a run's page, a part of an agent whose tools and ask the run has not asked for by the step drawn is folded to its name and how many tools it has, and the folded parts are drawn one below another after the others; on the Machines page every part is drawn in full. *Test:* `drawing_unused_part_is_folded`
+
 **R-drawing-04** The transition the step drawn took is marked on its arrow or in its card, and no other. *Test:* `drawing_transition_just_taken_is_marked`
 
 ## Interfaces

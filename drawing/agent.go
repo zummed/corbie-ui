@@ -16,6 +16,7 @@ import (
 type partBox struct {
 	name, file string
 	part       bool
+	folded     bool
 	tools      []string
 	items      map[string]item
 	ask        *item
@@ -25,8 +26,15 @@ type partBox struct {
 // askAt is where a part's ask is written, as a run names it.
 func askAt(part string) string { return "open." + part + ".ask" }
 
+// foldedH is how high a folded part is: its name and how many tools it has.
+const foldedH = 52.0
+
 func (g *partBox) size() {
 	g.at.h, g.at.w = 0, cardW
+	if g.folded {
+		g.at.h = foldedH
+		return
+	}
 	if g.part {
 		g.at.h, g.at.w = innerTop+inner, cardW+2*inner
 	}
@@ -49,7 +57,7 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 	if name == "" {
 		name = "model"
 	}
-	groups := groupsOf(agentName, a, w)
+	columns := columnsOf(groupsOf(agentName, a, w), run)
 	var askItem *item
 	if ask != nil {
 		it := item{name: "ask"}
@@ -57,10 +65,11 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 		askItem = &it
 	}
 
-	across, high := float64(max(len(groups)-1, 0))*sideGap, 0.0
-	for _, g := range groups {
-		across += g.at.w
-		high = math.Max(high, g.at.h)
+	across, high := float64(max(len(columns)-1, 0))*sideGap, 0.0
+	for _, c := range columns {
+		w, h := c.size()
+		across += w
+		high = math.Max(high, h)
 	}
 	if askItem != nil {
 		across = math.Max(across, askItem.size().w)
@@ -92,12 +101,17 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 			num(tools.x), num(tools.y), num(tools.w), num(tools.h), num(tools.x+14), num(tools.y+22))
 		d.reach(tools)
 		x, ty := tools.x+inner+(tools.w-2*inner-across)/2, tools.y+innerTop
-		for _, g := range groups {
-			g.at.x, g.at.y = x, ty
-			x += g.at.w + sideGap
-			if d.paintGroup(g, run) {
-				class = "taken"
+		for _, c := range columns {
+			y, w := ty, 0.0
+			for _, g := range c {
+				g.at.x, g.at.y = x, y
+				y += g.at.h + 12
+				w = math.Max(w, g.at.w)
+				if d.paintGroup(g, run) {
+					class = "taken"
+				}
 			}
+			x += w + sideGap
 		}
 		if askItem != nil {
 			b := askItem.size()
@@ -181,12 +195,60 @@ func groupsOf(agentName string, a *agent.Agent, w *walker) []*partBox {
 	return groups
 }
 
+// A column is what is drawn one below another in the holder of an agent's
+// tools: one part, the tools in no part, or the parts folded.
+type column []*partBox
+
+func (c column) size() (w, h float64) {
+	for _, g := range c {
+		w = math.Max(w, g.at.w)
+		h += g.at.h + 12
+	}
+	return w, h - 12
+}
+
+// columnsOf gives each group a column of its own, but on a run's page a
+// part whose tools and ask the run has not asked for is folded, and the
+// parts folded are one column after the others.
+func columnsOf(groups []*partBox, run *Run) []column {
+	var columns []column
+	var folded column
+	for _, g := range groups {
+		if run != nil && g.part && !g.used(run) {
+			g.folded = true
+			g.size()
+			folded = append(folded, g)
+			continue
+		}
+		columns = append(columns, column{g})
+	}
+	if folded != nil {
+		columns = append(columns, folded)
+	}
+	return columns
+}
+
+// used says a run has asked for a part's ask or one of its tools.
+func (g *partBox) used(run *Run) bool {
+	if g.ask != nil && jobMark(run, askAt(g.name)) != "never" {
+		return true
+	}
+	return slices.ContainsFunc(g.tools, func(t string) bool { return jobMark(run, t) != "never" })
+}
+
 // paintGroup draws a column of what the model can call, and says whether a
 // tool in it is one the agent waits on. A part's name is cut to its holder,
 // and on the Machines page its tooltip gives the file it is included from.
 func (d *drawn) paintGroup(g *partBox, run *Run) bool {
 	b := g.at
 	y := b.y
+	if g.folded {
+		fmt.Fprintf(&d.holders, `<g class="state holder part folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
+			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))),
+			num(b.x+14), num(b.y+39), len(g.tools), word(len(g.tools), "tool"), esc(strings.Join(g.tools, ", ")))
+		d.reach(b)
+		return false
+	}
 	if g.part {
 		title := ""
 		if g.file != "" {
@@ -231,6 +293,13 @@ func jobMark(run *Run, name string) string {
 		return "done"
 	}
 	return "never"
+}
+
+func word(n int, one string) string {
+	if n == 1 {
+		return one
+	}
+	return one + "s"
 }
 
 // spark is the mark of a model: a star of four points.
