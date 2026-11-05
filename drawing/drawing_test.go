@@ -551,3 +551,69 @@ func must(svg template.HTML, err error) template.HTML {
 	}
 	return svg
 }
+
+func Test_drawing_unused_part_is_folded(t *testing.T) {
+	def := definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+tools:
+  look: { does: looks, job: ./w.js }
+open:
+  bins:
+    does: bins
+    tools:
+      days: { does: bin days, job: ./w.js }
+      put: { does: puts out, job: ./w.js }
+  home:
+    does: home
+    tools:
+      lights: { does: lights, job: ./w.js }
+  net:
+    does: net
+    tools:
+      ping: { does: pings, job: ./w.js }
+  servers:
+    does: servers
+    tools:
+      disk: { does: disks, job: ./w.js }
+`, map[string]string{"w.js": script})
+	svg := draw(t, def, &Run{Steps: []Step{{Asked: []string{"lights"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"ping"}}}, Going: []string{"ping"}})
+	for name, want := range map[string]string{"bins": "state holder part folded", "servers": "state holder part folded", "home": "state holder part", "net": "state holder part"} {
+		if got := group(t, svg, name); got != want {
+			t.Errorf("part %s is drawn as %q, not %q", name, got, want)
+		}
+	}
+	for _, hidden := range []string{">days</text>", ">put</text>", ">disk</text>"} {
+		if strings.Contains(svg, hidden) {
+			t.Errorf("a tool of a folded part is drawn as a card: %s", hidden)
+		}
+	}
+	if !strings.Contains(svg, ">2 tools<") || !strings.Contains(svg, "<title>days, put</title>") {
+		t.Errorf("a folded part does not give how many tools it has and name them")
+	}
+	at := func(part string) (float64, float64) {
+		m := regexp.MustCompile(`<rect x="([0-9.]+)" y="([0-9.]+)"[^>]*/><text class="name"[^>]*>` + part + `<`).FindStringSubmatch(svg)
+		if m == nil {
+			t.Fatalf("part %s has no holder", part)
+		}
+		x, _ := strconv.ParseFloat(m[1], 64)
+		y, _ := strconv.ParseFloat(m[2], 64)
+		return x, y
+	}
+	bx, by := at("bins")
+	sx, sy := at("servers")
+	hx, _ := at("home")
+	nx, _ := at("net")
+	lx, _ := centre(t, template.HTML(svg), "look")
+	if bx != sx || sy <= by {
+		t.Errorf("the folded parts are not one below another: bins at %v,%v and servers at %v,%v", bx, by, sx, sy)
+	}
+	if !(hx < nx && nx < lx && lx < bx) {
+		t.Errorf("the folded parts are not after the others: home %v, net %v, look %v, folded %v", hx, nx, lx, bx)
+	}
+
+	page, _ := Draw(def, nil)
+	if strings.Contains(string(page), "folded") || !strings.Contains(string(page), ">disk</text>") {
+		t.Errorf("a drawing of no run folds a part")
+	}
+}

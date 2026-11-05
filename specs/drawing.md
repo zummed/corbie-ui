@@ -64,4 +64,6 @@ A statechart's run is followed through its steps: from the states it was in befo
 
 The transition the step drawn took is drawn in petrol, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. The states a run that did not fail ended in are outlined in moss, as states it was in.
 
+A part of an agent is folded where the run has not asked for its tools or its ask by the step drawn. A folded part is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded parts are one below another, in one column after the others, so the parts the run uses are drawn side by side and in view together.
+
 An agent's ask is going while a tool waits for its approval. The tool is outlined in amber, as held, and the ask as going now: a part's ask where the tool is in that part, and the agent's otherwise. A run knows each ask by where it is written, so the run an ask started is linked from that ask's card alone.
