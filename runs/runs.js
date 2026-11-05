@@ -1,5 +1,6 @@
-// The Runs pages: a line stays unfolded as the store changes, a row opens
-// its run, and a panel shows one tab at a time.
+// The Runs pages: a line stays unfolded as the store changes, a line or a
+// row opens its run, the button at a line's start unfolds it, and a panel
+// shows one tab at a time.
 const unfolded = new Set();
 
 document.addEventListener('toggle', e => {
@@ -14,8 +15,17 @@ document.addEventListener('part', e => {
 });
 
 document.addEventListener('click', e => {
-  const row = e.target.closest('tr[data-href]');
-  if (row && !e.target.closest('a, button, input, form')) location = row.dataset.href;
+  const unfold = e.target.closest('.req > summary > button.unfold');
+  if (unfold) {
+    e.preventDefault();
+    unfold.closest('details').toggleAttribute('open');
+    return;
+  }
+  const row = e.target.closest('[data-href]');
+  if (row && !e.target.closest('a, button, input, form')) {
+    e.preventDefault();
+    location = row.dataset.href;
+  }
   const tab = e.target.closest('.tabs a');
   if (tab) {
     e.preventDefault();

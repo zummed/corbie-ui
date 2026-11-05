@@ -9,11 +9,11 @@
 {{define "row"}}{{if .Own}}<div class="node own"><span>{{template "status" .}}</span><a class="name" href="/run/{{.ID}}" title="{{.Tip}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}{{if .Shown}} <span class="dim">[{{.Shown}}]</span>{{end}}</a><span class="waits" title="{{.Says}}">{{.Says}}</span><span class="dim">{{.When}}</span><span></span></div>
 {{- else}}<div class="node"><span>{{template "status" .}}</span><a class="name" href="/run/{{.ID}}" title="{{.Tip}}">{{.Name}}</a>{{template "chain" .}}<span class="says">{{with .Says}}<span class="waits" title="{{.}}">{{.}}</span><i>·</i>{{end}}<span class="dim">{{.Under}} {{word .Under "run"}}</span></span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span></div>{{end}}{{end}}
 
-{{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}">
+{{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="/run/{{.ID}}">
 <span>{{template "status" .}}</span><span class="title" title="{{.Tip}}">{{if .Titled}}{{.Name}}{{else}}{{middle .Name}}{{end}}</span>
 {{- if .Ended}}<span class="chain">{{template "machine" .}}</span><span class="dim">{{.Under}} {{word .Under "run"}} under it</span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span>
 {{- else}}{{template "chain" .}}<span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
-</summary>
+<button class="unfold" type="button" aria-label="unfold the runs under {{.Name}}"></button></summary>
 <div class="tree">{{range .Rows}}{{template "row" .}}{{end}}{{if .More}}<a class="node more" href="/run/{{.ID}}"><span></span><span class="name">{{.More}} more</span></a>{{end}}</div>
 </details>{{end}}
 

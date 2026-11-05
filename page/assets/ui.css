@@ -175,8 +175,10 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .req > summary > :first-child, .req .node > :first-child { overflow: visible; }
 .req > summary { position: relative; cursor: pointer; list-style: none; }
-.req > summary::before { content: "▸"; position: absolute; left: 5px; top: 9px; font-size: 11px; color: var(--ink2); }
-.req[open] > summary::before { content: "▾"; }
+.req > summary > button.unfold { position: absolute; left: 0; top: 0; width: 16px; height: 30px; padding: 0; border: 0; background: none; color: var(--ink2); cursor: pointer; }
+.req > summary > button.unfold:hover { color: var(--accent); }
+.req > summary > button.unfold::before { content: "▸"; font-size: 11px; }
+.req[open] > summary > button.unfold::before { content: "▾"; }
 .req > summary::-webkit-details-marker { display: none; }
 .req > summary:hover, .req .node:hover { background: var(--hover); }
 .req[open] > summary { background: color-mix(in srgb, var(--hover) 60%, transparent); }

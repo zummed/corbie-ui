@@ -43,7 +43,7 @@ running  Zummed in DM: Please tell zummed…  chat › … › ask › question 
 
 An ended line holds its status, name, machine, the number of runs under it, when it ended and how long it took.
 
-A line unfolds to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
+A click on a line opens its root's page, whose Steps follow the newest row. The `▸` at the line's start unfolds it to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
 
 ```
 running  chat [waiting]                                   timer quiet due 20:36         3 Nov 20:34
