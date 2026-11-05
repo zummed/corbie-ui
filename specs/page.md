@@ -34,10 +34,13 @@ title line   one line, 46px, at the top of a page or a panel: icon, name, dim fa
 panel        the plate colour with a thin border, corners of 10px
 list         one line for each thing, 31px high, with a thin rule between lines, cut short with "…", and an optional dim second line
 tabs         an underlined bar of names, to choose a view
+handle       the gap between two panels, which resizes them when dragged
 pills        a small group of choices, such as a time window
 button       30px high, corners of 6px; one that starts or adds something is filled in ink, one that cancels or removes has rowan text
 label        a section's name, in capitals
 ```
+
+A handle is between Steps and the drawing on a run's page, between the drawing and the details, and between the list and the view on the Machines and Parts pages. The browser keeps each size in its local storage, for every page of the UI.
 
 ## Commands
 

@@ -93,3 +93,30 @@ document.addEventListener('submit', async e => {
     if (button) button.disabled = false;
   }
 });
+
+// A handle between two panels resizes them as a person drags it. It sets
+// the size of the panel before it, or for a row the panel after it, on the
+// element that holds both, and the browser keeps the size for every page.
+const sizeOf = name => `--${name}`;
+for (const h of document.querySelectorAll('.handle[data-size]')) {
+  const kept = localStorage.getItem('size:' + h.dataset.size);
+  if (kept) h.parentElement.style.setProperty(sizeOf(h.dataset.size), kept);
+}
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('.handle[data-size]');
+  if (!h || e.button !== 0) return;
+  e.preventDefault();
+  const holder = h.parentElement, row = h.classList.contains('row');
+  h.setPointerCapture(e.pointerId);
+  h.classList.add('dragging');
+  const move = m => {
+    const r = holder.getBoundingClientRect();
+    const whole = row ? r.height : r.width;
+    const at = row ? r.bottom - m.clientY : m.clientX - r.left;
+    const size = Math.round(Math.min(Math.max(at, 160), whole - 160)) + 'px';
+    holder.style.setProperty(sizeOf(h.dataset.size), size);
+    localStorage.setItem('size:' + h.dataset.size, size);
+  };
+  h.addEventListener('pointermove', move);
+  h.addEventListener('lostpointercapture', () => { h.removeEventListener('pointermove', move); h.classList.remove('dragging'); }, { once: true });
+});
