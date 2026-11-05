@@ -17,6 +17,7 @@
     {{template "files" .}}
     {{template "disk" .}}
   </nav>
+  <div class="handle" data-size="files" aria-hidden="true"></div>
   {{if not .Open}}
   <div class="panel view"><p class="dim body">no machines in this directory</p></div>
   {{else}}

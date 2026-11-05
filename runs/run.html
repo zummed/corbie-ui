@@ -78,8 +78,10 @@
     <div class="scroll pane" data-pane="output" hidden>{{template "output" .}}</div>
     <div class="scroll pane" data-pane="children" hidden>{{template "children" .}}</div>
   </div>
+  <div class="handle" data-size="steps" aria-hidden="true"></div>
   <div class="side">
     {{template "view" .Shown}}
+    <div class="handle row" data-size="details" aria-hidden="true"></div>
     {{template "details" .Shown}}
   </div>
 </div>
