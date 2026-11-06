@@ -212,8 +212,8 @@ states:
 
 // Every arrow of a statechart has a line of its own, from the card it
 // leaves to the card it goes to, behind no card, and each chip is clear of
-// other chips, cards and other arrows. Arrows from one card share the line
-// they leave it by.
+// other chips and cards, and 12 from other arrows. Arrows from one card
+// share the line they leave it by.
 func Test_drawing_arrows_and_chips_are_apart(t *testing.T) {
 	files, _ := filepath.Glob("testdata/*.yaml")
 	sources := map[string]string{"review": review}
@@ -269,10 +269,13 @@ func Test_drawing_arrows_and_chips_are_apart(t *testing.T) {
 				}
 			}
 			mid := point{c.x + c.w/2, c.y + c.h/2}
-			for _, a := range lines {
+			for j, a := range lines {
 				for _, s := range a {
-					if passes(c, s, 0) && !on(mid, s) {
-						t.Errorf("%s: the chip at %v is on the arrow %v", name, c, a)
+					if j == i && passes(c, s, 0) && !on(mid, s) {
+						t.Errorf("%s: the chip at %v is on its arrow %v twice", name, c, a)
+					}
+					if j != i && passes(c, s, 11.5) {
+						t.Errorf("%s: the chip at %v is within 12 of the arrow %v", name, c, a)
 					}
 				}
 			}

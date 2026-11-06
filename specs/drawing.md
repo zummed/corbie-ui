@@ -29,14 +29,14 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 ## A statechart
 
 - A state is a card, and a state that holds states is a holder drawn around them. A state with no job has no icon.
-- States are placed top to bottom by how many transitions each is from the state its level starts in. In a row, states joined by transitions are placed side by side.
+- States are placed top to bottom by how many transitions each is from the state its level starts in. In a row, states joined by transitions are placed side by side, so that a chain reads left to right.
 - States in different holders are in the rows of the states that hold them, at the level that holds both.
 - The state each level starts in has a short arrow into it.
 - A final state is a narrow card with a double border, drawn in rowan for `end: failed`.
 - An arrow goes from a state to each state its `on:` names in a row below or in its own row, one arrow for all the rules between the two, with their events and conditions as written on a chip, shortened to fit, and whole in its tooltip: `verdict, when event.data.ok`. A timer's arrow is dashed and its chip gives its time: `too_long, 48h`.
 - A rule to a state in a row above, or to the same state, has no arrow. It is written in the card: `done, failed ↩ waiting`, or `done ↻`.
 - A state's ticket and timers are written in its card.
-- Each arrow has a line of its own, and its chip is on that line, clear of every other line, chip and card. The arrows from one state share the line they leave it by.
+- Each arrow has a line of its own, and its chip is on that line, clear of every other chip and card, and 12 pixels from every other line. The arrows from one state share the line they leave it by.
 - An arrow to a row below runs along a track in the gap above that row. Tracks that would overlap are drawn one below another.
 - An arrow to the state beside it runs straight across, one line each way. An arrow to a state further along the row runs on a track below the row and up into the state.
 - An arrow leaving a holder from a state with states below it runs down the side of the holder. An arrow into a state with states above it runs down the holder's right side.

@@ -20,7 +20,11 @@ import (
 //     holder runs down a line of its own at the side of the holder. An arrow
 //     into a state with states above it runs down the holder's right side,
 //     clear of the holder's name.
-//   - Each chip is on its own arrow, clear of other arrows, chips and cards.
+//   - Each chip is on its own arrow, clear of chips and cards, and 12 from
+//     other arrows.
+
+// lineApart is how far a chip is from every arrow but its own.
+const lineApart = 12.0
 
 // A pt is a point on the drawing.
 type pt struct{ x, y float64 }
@@ -222,7 +226,8 @@ func (ch *chart) assign() {
 // entries settles where each arrow from above enters its state: in the
 // middle where it is the only one, and otherwise side by side in the order
 // they come from, clear of the start's arrow and of lines that pass through.
-// Where it can, the set moves so that one arrow goes straight down.
+// Where it can, a set of more than one moves so that one arrow goes straight
+// down.
 func (ch *chart) entries() {
 	into := map[string][]int{}
 	for i, a := range ch.list {
@@ -274,7 +279,7 @@ func (ch *chart) entries() {
 		// Far enough apart for a chip on a line straight down between two.
 		apart := 20.0
 		for _, i := range list {
-			apart = math.Max(apart, chipWidth(ch.list[i].label())/2+8)
+			apart = math.Max(apart, chipWidth(ch.list[i].label())/2+lineApart+2)
 		}
 		if len(list) > 1 {
 			apart = math.Min(apart, (hi-lo)/float64(len(list)-1))
@@ -294,7 +299,7 @@ func (ch *chart) entries() {
 		var straight []float64
 		for n, i := range list {
 			shift := from[i] - xs[n]
-			if from[i] < lo || from[i] > hi || math.Abs(shift) >= math.Abs(best) {
+			if len(list) == 1 || from[i] < lo || from[i] > hi || math.Abs(shift) >= math.Abs(best) {
 				continue
 			}
 			moved := make([]float64, len(xs))
@@ -542,17 +547,32 @@ func (ch *chart) chips(routes [][]pt) []pt {
 				boxes = append(boxes, b)
 			}
 		}
-		var others [][2]pt
-		for k, l := range append(lines, walls...) {
-			if (k >= len(owner) || owner[k] != i) && math.Max(l[0].x, l[1].x) >= near.x && math.Min(l[0].x, l[1].x) <= near.right() &&
-				math.Max(l[0].y, l[1].y) >= near.y && math.Min(l[0].y, l[1].y) <= near.bottom() {
+		isNear := func(l [2]pt) bool {
+			return math.Max(l[0].x, l[1].x) >= near.x && math.Min(l[0].x, l[1].x) <= near.right() &&
+				math.Max(l[0].y, l[1].y) >= near.y && math.Min(l[0].y, l[1].y) <= near.bottom()
+		}
+		var others, sides [][2]pt
+		for k, l := range lines {
+			if owner[k] != i && isNear(l) {
 				others = append(others, l)
 			}
 		}
-		free := func(c pt) bool {
-			r := box{x: c.x - w/2 - 2, y: c.y - 11, w: w + 4, h: 22}
-			return !slices.ContainsFunc(boxes, func(b box) bool { return meets(r, b) }) &&
-				!slices.ContainsFunc(others, func(l [2]pt) bool { return crosses(r, l[0], l[1]) })
+		for _, l := range walls {
+			if isNear(l) {
+				sides = append(sides, l)
+			}
+		}
+		// A chip is 2 apart from cards, holders and other chips, and further
+		// from other arrows, so that it is read as on its own arrow; where no
+		// place is that far, 2 apart from them too.
+		free := func(apart float64) func(pt) bool {
+			return func(c pt) bool {
+				r := box{x: c.x - w/2 - 2, y: c.y - 11, w: w + 4, h: 22}
+				l := box{x: c.x - w/2 - apart, y: c.y - 9 - apart, w: w + 2*apart, h: 18 + 2*apart}
+				return !slices.ContainsFunc(boxes, func(b box) bool { return meets(r, b) }) &&
+					!slices.ContainsFunc(sides, func(o [2]pt) bool { return crosses(r, o[0], o[1]) }) &&
+					!slices.ContainsFunc(others, func(o [2]pt) bool { return crosses(l, o[0], o[1]) })
+			}
 		}
 		var spotsOf []pt
 		for _, across := range []bool{true, false} {
@@ -567,7 +587,9 @@ func (ch *chart) chips(routes [][]pt) []pt {
 			spotsOf = []pt{{(p.x + q.x) / 2, (p.y + q.y) / 2}}
 		}
 		at[i] = spotsOf[0]
-		if k := slices.IndexFunc(spotsOf, free); k >= 0 {
+		if k := slices.IndexFunc(spotsOf, free(lineApart)); k >= 0 {
+			at[i] = spotsOf[k]
+		} else if k := slices.IndexFunc(spotsOf, free(2)); k >= 0 {
 			at[i] = spotsOf[k]
 		}
 		placed = append(placed, box{x: at[i].x - w/2, y: at[i].y - 9, w: w, h: 18})

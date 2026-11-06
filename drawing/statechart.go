@@ -426,7 +426,7 @@ func (ch *chart) order(level string) {
 		}
 	}
 	for r := range rows {
-		rows[r] = arrange(rows[r], next)
+		rows[r] = arrange(rows[r], members, next)
 		for i, n := range rows[r] {
 			ch.row[n], ch.col[n] = r, i
 		}
@@ -436,9 +436,14 @@ func (ch *chart) order(level string) {
 
 // arrange orders a row so that its states joined by transitions are side by
 // side: first as few transitions as can be to states not beside, then as few
-// lines below the row at any place, then as few states passed. Of orders as
-// good, the one nearest the order found is taken.
-func arrange(row []string, next map[string][]string) []string {
+// lines below the row at any place, then as few states passed, then as few
+// transitions to the left between states side by side, so that a chain reads
+// left to right. Of orders as good, the one nearest the order of the level's
+// states, by name, is taken. A row with no transitions in it stays in the
+// order found.
+func arrange(found, members []string, next map[string][]string) []string {
+	row := slices.Clone(found)
+	slices.SortStableFunc(row, func(a, b string) int { return slices.Index(members, a) - slices.Index(members, b) })
 	var pairs [][2]int
 	for i, a := range row {
 		for j, b := range row {
@@ -448,19 +453,22 @@ func arrange(row []string, next map[string][]string) []string {
 		}
 	}
 	n := len(row)
-	if len(pairs) == 0 || n < 3 {
-		return row
+	if len(pairs) == 0 {
+		return found
 	}
-	cost := func(seq []int) [3]int {
+	cost := func(seq []int) [4]int {
 		at := make([]int, n)
 		for p, i := range seq {
 			at[i] = p
 		}
 		cover := make([]int, n)
-		var c [3]int
+		var c [4]int
 		for _, pr := range pairs {
 			lo, hi := min(at[pr[0]], at[pr[1]]), max(at[pr[0]], at[pr[1]])
 			if hi-lo < 2 {
+				if at[pr[1]] < at[pr[0]] {
+					c[3]++
+				}
 				continue
 			}
 			c[0]++
