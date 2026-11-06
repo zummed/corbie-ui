@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -228,28 +227,34 @@ func (ch *chart) index(holder string, states map[string]*statechart.State) {
 	}
 }
 
-// sent lays out each send that names a machine as a state below the one that
-// sends it.
+// sent lays out each send to an address as a card below the state that
+// sends it, named by the address.
 func (ch *chart) sent(holder, name, event string, sends []statechart.Send) {
 	for _, send := range sends {
-		if send.Machine == "" {
+		if send.Address == nil {
 			continue
 		}
 		key := fmt.Sprintf("%s.%s.%d", name, event, len(ch.sends))
-		ch.states[key] = &statechart.State{Job: &machine.JobSpec{Machine: send.Machine}}
+		ch.states[key] = &statechart.State{}
 		ch.parent[key] = holder
 		ch.kids[holder] = append(ch.kids[holder], key)
-		it := item{name: path.Base(send.Machine), icon: "file", lines: []string{"send " + send.Event}}
-		if m, ok := ch.walker.machines[send.Machine]; ok {
-			it.icon = m.Type
-		}
-		if w := ch.walker; w.draft != nil && w.draft.Children[send.Machine] != nil {
-			it.icon = w.draft.Children[send.Machine].Definition.Type
-			it.href, it.in = w.open(key, send.Machine)
-		}
-		ch.items[key] = it
+		ch.items[key] = item{name: addressOf(send.Address), icon: "statechart", lines: []string{"send " + send.Event}}
 		ch.sends = append(ch.sends, rule{from: name, event: event, to: key, send: true})
 	}
+}
+
+// addressOf writes an address as the command line does: the location, with
+// #key or a run's ID after it, or the one expression that gives it.
+func addressOf(a *machine.AddressSpec) string {
+	switch {
+	case a.Expr != "":
+		return a.Expr
+	case a.Key != "":
+		return a.At + "#" + a.Key
+	case a.Run != "":
+		return a.At + " run " + a.Run
+	}
+	return a.At
 }
 
 // itemOf gives what a state's box says.

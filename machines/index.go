@@ -57,10 +57,12 @@ func (c *indexed) current() *index {
 
 // index reads every machine in the directory with Corbie's own reader.
 func (d *dir) index() *index {
-	found, err := client.ReadMachines(d.root)
 	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}}
-	if err != nil {
+	var found []*client.Machine
+	if tree, err := client.ReadTree(d.root, ""); err != nil {
 		ix.Unread = err.Error()
+	} else {
+		found = tree.Machines
 	}
 	for _, m := range found {
 		ix.machines[m.Path] = m
@@ -181,7 +183,7 @@ func byPlace(a, b problem) int {
 func (d *dir) topOf(file string) string {
 	for at := path.Dir(file); at != "."; at = path.Dir(at) {
 		rel := strings.TrimPrefix(file, at+"/")
-		if _, _, err := client.ReadMachine(filepath.Join(d.root, filepath.FromSlash(at)), rel); err == nil {
+		if _, err := client.ReadMachine(filepath.Join(d.root, filepath.FromSlash(at)), rel); err == nil {
 			return at
 		}
 	}

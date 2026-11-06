@@ -26,7 +26,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 - An arrow goes from a state to each later state its `on:` names, one arrow for all the rules between the two, with their events and conditions as written on a chip, shortened to fit, and whole in its tooltip: `verdict, when event.data.ok`. A timer's arrow is dashed and its chip gives its time: `too_long, 48h`.
 - A rule to an earlier state, or to the same state, has no arrow. It is written in the card: `done, failed ↩ waiting`, or `done ↻`.
 - A state's ticket and timers are written in its card.
-- A `send:` that names a machine is a card of its own, below the state, with a dashed arrow whose chip gives the event.
+- A `send:` to an address is a card of its own, below the state, named by the address, such as `rooms/thermostat#kitchen`, with a dashed arrow whose chip gives the event.
 
 ## An agent
 
@@ -42,7 +42,7 @@ A tool with `approve: true` says so in its card. Tools that are Corbie's own, wh
 
 On a run's page, a card whose job started a run links to that run's page.
 
-On the Machines page, a card whose job names a machine is a link, and so is the card of a `send:`. The link unfolds that machine's drawing inside the card, and the card then has the link that folds it again. Any number can be unfolded at once, at any depth, and the address names them, so a person can send the address to another.
+On the Machines page, a card whose job names a machine is a link. The link unfolds that machine's drawing inside the card, and the card then has the link that folds it again. Any number can be unfolded at once, at any depth, and the address names them, so a person can send the address to another.
 
 A job whose machine is an expression is known only when it runs, and has no link.
 

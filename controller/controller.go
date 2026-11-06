@@ -75,10 +75,15 @@ func (h *handler) read(ctx context.Context) (view, error) {
 			Tags: t.Tags, Ceiling: t.Ceiling.Allow, Deny: t.Ceiling.Deny, Removed: t.Removed})
 	}
 	slices.SortFunc(v.Parties, func(a, b party) int { return strings.Compare(a.Kind+a.Name, b.Kind+b.Name) })
-	if v.Secrets, err = secret.List(ctx, h.Store, h.Controller.Name); err != nil {
+	entries, err := secret.List(ctx, h.Store, h.Controller.Name)
+	if err != nil {
 		return v, err
 	}
+	for _, e := range entries {
+		v.Secrets = append(v.Secrets, e.Name)
+	}
 	slices.Sort(v.Secrets)
+	v.Secrets = slices.Compact(v.Secrets)
 	return v, nil
 }
 

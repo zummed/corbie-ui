@@ -2,22 +2,24 @@
   {{template "icon" .Run.Type}}<span>{{.Run.Machine}}</span><span class="dim">{{.Run.Type}}</span>
   {{template "status" .Run}}
   {{with .Run.Title}}<span class="title" title="{{.}}">{{.}}</span>{{end}}
-  {{if .Run.Key}}<span class="key" title="key {{.Run.Key}}">{{.Run.Key}}</span>{{end}}
+  {{if .Address}}<a class="key" href="{{.At}}" title="the runs at {{.Run.Location}}">{{.Address}}</a>{{end}}
   <span class="facts"><span title="{{.Run.ID}}">{{.Run.ID}}</span><span>started {{.Started}}</span>{{if .Ended}}<span>ended {{.Ended}}</span><span>took {{.Took}}</span>{{end}}</span>
   <span class="acts">{{if .Cancel}}<form data-act method="post" action="/run/{{.Run.ID}}/cancel"><span class="said"></span><button class="btn stop" data-cmd="{{cmd .Cancel}}">Cancel</button></form>{{end}}</span>
 </div>{{end}}
 
-{{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}{{if .Sent}}<span class="sep send" title="a send of the run before started it">⇢</span>{{else}}<span class="sep">›</span>{{end}}{{end}}<a href="/run/{{.ID}}" data-run="{{.ID}}" title="{{.Tip}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
+{{define "path"}}<nav class="path" id="path">{{range $i, $r := .Path}}{{if $i}}{{if .Sent}}<span class="sep send" title="{{.Sent}} of the run before started it">⇢</span>{{else}}<span class="sep">›</span>{{end}}{{end}}<a href="/run/{{.ID}}" data-run="{{.ID}}" title="{{.Tip}}"{{if .This}} aria-current="page"{{end}}>{{if .Type}}{{template "icon" .Type}}{{end}}{{.Machine}}</a>{{end}}</nav>{{end}}
 
 {{define "words"}}{{range .}}{{if .Run}}<a href="/run/{{.Run.ID}}" title="{{.Run.Tip}}"><b>{{.Text}}</b></a>{{else if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
 
 {{define "steprow"}}<div class="step {{.Run.Type}}{{with .Kind}} {{.}}{{end}}" data-row="{{.Key}}" data-run="{{.Run.ID}}" data-at="{{.Unix}}" style="--d: {{.Depth}}">
 <span class="t" title="{{.Exact}}">{{.Time}}</span><span class="link"></span>
-<span class="who" title="{{.Run.Tip}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{else}}<span class="fold"></span>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
-<span class="what" title="{{.Said}}">{{template "words" .What}}{{with .Group}}<span class="sum">{{with .Run.Title}} · <span class="name">{{.}}</span>{{end}} · <span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span> · {{.Steps}} {{word .Steps "step"}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}</span>
+<span class="who" title="{{.Run.Tip}}">{{if .Group}}<button class="fold" type="button" aria-label="fold or open {{.Group.Run.Machine}}"></button>{{else if .Trace}}<button class="fold" type="button" aria-label="fold or open the rows of {{.Trace.Run.Machine}}"></button>{{else}}<span class="fold"></span>{{end}}{{if .Run.Type}}{{template "icon" .Run.Type}}{{end}}<span>{{.Run.Machine}}</span></span>
+<span class="what" title="{{.Said}}">{{template "words" .What}}{{with .Group}}<span class="sum">{{with .Run.Title}} · <span class="name">{{.}}</span>{{end}} · <span class="st {{.Status}}">{{.Status}}{{if .Failure}} ({{.Failure}}){{end}}</span> · {{.Steps}} {{word .Steps "step"}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}{{with .Trace}}<span class="sum">{{with .Status}} · <span class="st {{.}}">{{.}}{{if $.Trace.Failure}} ({{$.Trace.Failure}}){{end}}</span>{{end}}{{if .Took}} · {{.Took}}{{end}}</span>{{end}}</span>
 </div>{{end}}
 
-{{define "steprows"}}{{range .}}{{if .Group}}<li class="group" data-group="{{.Group.Run.ID}}" data-machine="{{.Group.Run.Machine}}" data-tip="{{.Group.Run.Tip}}" data-type="{{.Group.Run.Type}}"{{if .Group.Ended}} data-ended{{end}}>{{template "steprow" .}}<ol>{{template "steprows" .Group.Rows}}</ol></li>{{else}}<li>{{template "steprow" .}}</li>{{end}}{{end}}{{end}}
+{{define "steprows"}}{{range .}}{{if .Group}}<li class="group" data-group="{{.Group.Run.ID}}" data-run="{{.Group.Run.ID}}" data-machine="{{.Group.Run.Machine}}" data-tip="{{.Group.Run.Tip}}" data-type="{{.Group.Run.Type}}"{{if .Group.Ended}} data-ended{{end}}>{{template "steprow" .}}<ol>{{template "steprows" .Group.Rows}}</ol></li>
+{{- else if .Trace}}<li class="group trace" data-group="{{.Key}}" data-run="{{.Trace.Run.ID}}" data-machine="{{.Trace.Run.Machine}}" data-tip="{{.Trace.Run.Tip}}" data-type="{{.Trace.Run.Type}}" data-load="/run/{{.Run.ID}}/group?row={{urlquery .Key}}" data-ended>{{template "steprow" .}}<ol></ol></li>
+{{- else}}<li>{{template "steprow" .}}</li>{{end}}{{end}}{{end}}
 
 {{define "steps"}}<div class="steps" id="steps">
   <div class="head"><h2>Steps</h2><span class="facts" data-count="steps">{{.Count}}</span>
@@ -29,7 +31,7 @@
 
 {{define "view"}}<section class="panel asof" id="view"{{with .Row}} data-row="{{.Key}}"{{end}}>
   {{if .Row}}<div class="head">{{template "icon" .Type}}<span>{{.Row.Run.Machine}}</span><span class="dim">{{.Type}}</span><span class="facts">as of step {{.Row.Step}}, {{.Time}}</span></div>{{end}}
-  <div class="drawn">{{if .Drawing}}{{.Drawing}}{{else if .Row}}<p class="dim">no drawing</p>{{else}}<p class="dim">a run another client started: only its status can be read</p>{{end}}</div>
+  <div class="drawn">{{if .Drawing}}{{.Drawing}}{{else if .Row}}<p class="dim">no drawing</p>{{else}}<p class="dim">a run in another client's tree: only its status can be read</p>{{end}}</div>
 </section>{{end}}
 
 {{define "details"}}<section class="panel tabbed details" id="details" hidden>{{with .Row}}

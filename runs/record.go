@@ -14,7 +14,6 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
-	"github.com/zummed/corbie/store"
 )
 
 // A line is one line of a run's record, in the words `corbie run show
@@ -48,7 +47,12 @@ func lines(e client.Entry, name string, day time.Time) []line {
 	}
 	for _, event := range e.Events {
 		text := event.Name
-		if event.From != "" {
+		switch from := event.Sender; {
+		case from != nil && from.Client != "":
+			text += " from client:" + from.Client
+		case from != nil:
+			text += " from " + senderOf(event.Event) + " " + from.Run
+		case event.From != "":
 			text += " from " + event.From
 		}
 		if failed, _ := event.Data.(map[string]any); failed["refused"] != nil {
@@ -70,15 +74,20 @@ func lines(e client.Entry, name string, day time.Time) []line {
 			text = "cancel " + ask.Name
 		case instance.AskEvent:
 			to := "its parent"
-			if ask.Name != "" {
+			switch {
+			case ask.Location != "":
+				to = sentTo(&ask)
+			case ask.Name != "":
 				to = ask.Name
 			}
-			if ask.Key != "" || ask.Text != "" {
-				to = fmt.Sprintf("the key %q", ask.Key)
-			}
 			text = fmt.Sprintf("send %s to %s", ask.Event.Name, to)
-			if ask.Undelivered {
-				text += " (undelivered: " + cmp.Or(ask.Text, "it is not running") + ")"
+			switch {
+			case ask.Undelivered:
+				text += " · undelivered: " + cmp.Or(ask.Text, "it is not running")
+			case ask.Run != "":
+				text += " · started " + ask.Run
+			case ask.Location != "":
+				text += " · " + ask.To
 			}
 		case instance.AskFail:
 			text = fmt.Sprintf("%s fails: %s", ask.Name, ask.Error.Error)
@@ -108,9 +117,35 @@ func clip(text string) string {
 	return text
 }
 
+// senderOf gives the address of the run or client that sent an event, as
+// the command line writes it, or nothing for an event from within the run.
+func senderOf(ev machine.Event) string {
+	from := ev.Sender
+	switch {
+	case from == nil:
+		return ""
+	case from.Client != "":
+		return "client:" + from.Client
+	case from.Key != nil:
+		return from.At + "#" + *from.Key
+	}
+	return from.At
+}
+
+// sentTo gives the address a send went to: its location, with #key where it
+// went to a key.
+func sentTo(a *instance.Ask) string {
+	if a.Key != "" {
+		return a.Location + "#" + a.Key
+	}
+	return a.Location
+}
+
 // A stepRow is one thing that happened in a run, as Steps lists it: when,
 // which run, and what, in words. A row that started a child holds the
-// child's rows, and a send links to the run it reached.
+// child's rows, and a send links to the run it reached. A send or a call to
+// a run in a tree of the UI's client has a trace, whose rows are read when
+// its group is opened.
 type stepRow struct {
 	Key   string
 	Run   link
@@ -124,6 +159,7 @@ type stepRow struct {
 	// failed, and the status a run ended with.
 	Kind  string
 	Group *group
+	Trace *trace
 	// What the row's details show: its facts, and what went in and came
 	// out.
 	Facts   []fact
@@ -156,6 +192,22 @@ type group struct {
 	Rows            []stepRow
 }
 
+// A trace is the run a send or a call reached in a tree of the UI's
+// client, as the row's group shows it before its rows are read: its status
+// and how long it took. A send's trace names what the receiving run's
+// record is matched by: the sending run, the event, its message, when it
+// was sent, and whether it started the run.
+type trace struct {
+	Run             link
+	Status, Failure string
+	Ended           bool
+	Took            string
+	Call, Started   bool
+	From, Event     string
+	Message         string
+	At              time.Time
+}
+
 // Unix is when a row happened, as the page orders rows.
 func (r stepRow) Unix() int64 { return r.At.UnixMilli() }
 
@@ -184,22 +236,31 @@ func linkOf(id string, byID map[string]*client.Run) link {
 }
 
 // rowsOf gives a run's rows, from its record and its children's, each
-// child's under the row that started it. A row's time has its date where it
-// is not on day's date.
-func rowsOf(id string, entries []client.Entry, byID map[string]*client.Run, now, day time.Time) []stepRow {
+// child's under the row that started it. A send or a call to a run that
+// readable says the UI may read has a trace. A row's time has its date
+// where it is not on day's date.
+func rowsOf(id string, entries []client.Entry, byID map[string]*client.Run, readable func(string) bool, now, day time.Time) []stepRow {
+	return rowsAt(id, entries, byID, readable, now, day, 0)
+}
+
+// rowsAt gives a run's rows as rowsOf does, the run's own at depth.
+func rowsAt(id string, entries []client.Entry, byID map[string]*client.Run, readable func(string) bool, now, day time.Time, depth int) []stepRow {
 	of := map[string][]client.Entry{}
 	for _, e := range entries {
 		if e.Step > 0 {
 			of[e.ID] = append(of[e.ID], e)
 		}
 	}
-	b := &rowBuilder{of: of, byID: byID, now: now, day: day}
-	return b.rows(id, 0)
+	b := &rowBuilder{of: of, byID: byID, readable: readable, top: id, now: now, day: day}
+	return b.rows(id, depth)
 }
 
 type rowBuilder struct {
 	of       map[string][]client.Entry
 	byID     map[string]*client.Run
+	readable func(string) bool
+	// top is the run whose rows these are, which has a row for its start.
+	top      string
 	now, day time.Time
 }
 
@@ -235,8 +296,16 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			out = append(out, r)
 			return &out[len(out)-1]
 		}
-		if e.Step == 1 && depth == 0 {
+		if e.Step == 1 && id == b.top {
 			r := stepRow{Key: e.ID + "/started", What: say("started")}
+			if h := b.byID[id]; h != nil && h.StartedBy != "" {
+				by := linkOf(h.StartedBy, b.byID)
+				if s := b.byID[h.StartedBy]; s != nil {
+					by.Machine = cmp.Or(addressOf(s, ""), s.Location, s.Machine)
+				}
+				r.What = say("started by ", linked(&by))
+				r.Facts = []fact{{Name: "started by", Text: h.StartedBy, Run: &by}}
+			}
 			for _, ev := range e.Events {
 				if ev.Name == machine.Start {
 					r.In = ev.Data
@@ -250,10 +319,8 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 		for _, ev := range e.Events {
 			switch {
 			case ev.Name == machine.Start:
-			case store.CheckInstance(ev.From) == nil:
-				from := linkOf(ev.From, b.byID)
-				add(stepRow{What: say("⇠ ", bold(ev.Name), " from ", linked(&from)), Kind: "got", In: ev.Data,
-					Facts: []fact{{Name: "event", Text: ev.Name}, {Name: "from", Text: from.ID, Run: &from}}})
+			case ev.Sender != nil:
+				add(b.gotOf(ev))
 			case ev.Name == machine.Timer:
 				r := stepRow{What: say("timer ", bold(jobOf(ev.From)), " fired"), Facts: []fact{{Name: "timer", Text: jobOf(ev.From)}}}
 				if s, _ := ev.Data.(string); s != "" {
@@ -338,7 +405,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 		}
 		for k := range e.Asks {
 			a := &e.Asks[k]
-			if a.Name != "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild || a.Kind == instance.AskHold) {
+			if a.Name != "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild || a.Kind == instance.AskHold || a.Kind == instance.AskCall) {
 				jobs[named(a.Name)] = a
 			}
 			switch a.Kind {
@@ -369,6 +436,15 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				}
 				r.Group = g
 				add(r)
+			case instance.AskCall:
+				called := linkOf(a.Run, b.byID)
+				r := stepRow{Kind: "send", What: say("⇢ called ", bold(a.Location), " · ", linked(&called)),
+					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name)}
+				if a.Job != nil {
+					r.In = a.Job.Input
+				}
+				r.Trace = b.traceOf(called, &trace{Call: true})
+				add(r)
 			case instance.AskScript:
 				if run.Type == "agent" && isTurn(a) {
 					turn++
@@ -381,7 +457,11 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 					add(stepRow{What: say("timer ", bold(name), " set, due "+page.When(a.At, b.now)), Facts: []fact{{Name: "timer", Text: name}, {Name: "due", Text: page.When(a.At, b.now)}}})
 				}
 			case instance.AskEvent:
-				add(b.sendOf(a))
+				r := b.sendOf(a)
+				if r.Trace != nil {
+					r.Trace.From, r.Trace.At = id, e.Time
+				}
+				add(r)
 			case instance.AskHold:
 				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID)}
 				if a.Job != nil {
@@ -421,6 +501,9 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				if h.Error != "" {
 					r.Facts = append(r.Facts, fact{Name: "error", Text: h.Error})
 				}
+				if h.Refused != "" {
+					r.Facts = append(r.Facts, fact{Name: "refused", Text: h.Refused}, fact{Name: "by", Text: h.Layer}, fact{Name: "fix", Text: h.Fix})
+				}
 			}
 			add(r)
 		}
@@ -429,8 +512,23 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 	return out
 }
 
-// sendOf is the row of an event a run sent: to a key, to a job's child, or
-// to the run that started it, linked to the run it went to.
+// gotOf is the row of an event a run or a client sent to the run by its
+// address, linked to the run that sent it.
+func (b *rowBuilder) gotOf(ev instance.Arrived) stepRow {
+	from := senderOf(ev.Event)
+	r := stepRow{Kind: "got", In: ev.Data, Facts: []fact{{Name: "event", Text: ev.Name}, {Name: "from", Text: from}}}
+	if ev.Sender.Run == "" {
+		r.What = say("⇠ ", bold(ev.Name), " from ", bold(from))
+		return r
+	}
+	by := linkOf(ev.Sender.Run, b.byID)
+	r.What = say("⇠ ", bold(ev.Name), " from ", word{Text: from, Bold: true, Run: &by})
+	r.Facts = append(r.Facts, fact{Name: "run", Text: by.ID + statusOf(b.byID[by.ID]), Run: &by})
+	return r
+}
+
+// sendOf is the row of an event a run sent: to an address, to a job's
+// child, or to the run that started it, linked to the run it went to.
 func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	event := ""
 	var data any
@@ -439,19 +537,22 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	}
 	r := stepRow{In: data, Facts: []fact{{Name: "event", Text: event}}}
 	var to *link
-	if a.To != "" {
-		l := linkOf(a.To, b.byID)
+	if id := cmp.Or(a.Run, a.To); id != "" {
+		l := linkOf(id, b.byID)
 		to = &l
 	}
 	switch {
-	case a.Key != "" || a.Text != "":
+	case a.Location != "":
 		r.Kind = "send"
-		r.What = say("⇢ sent ", bold(event), " to the key ", bold(a.Key))
-		if to != nil {
-			r.What[3].Run = to
+		r.What = say("⇢ sent ", bold(event), " to ", bold(sentTo(a)))
+		r.Facts = append(r.Facts, fact{Name: "to", Text: sentTo(a)})
+		switch {
+		case a.Undelivered:
+		case a.Run != "" && to != nil:
+			r.What = append(r.What, word{Text: " · started "}, linked(to))
+		case to != nil:
 			r.What = append(r.What, word{Text: " · "}, linked(to))
 		}
-		r.Facts = append(r.Facts, fact{Name: "key", Text: a.Key})
 	case to != nil:
 		r.What = say("sent ", bold(event), " to ", linked(to))
 	case a.Name != "":
@@ -459,14 +560,79 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	default:
 		r.What = say("sent ", bold(event), " to its parent")
 	}
-	if to != nil {
-		r.Facts = append(r.Facts, fact{Name: "reached", Text: to.ID + statusOf(b.byID[to.ID]), Run: to})
+	if to != nil && !a.Undelivered {
+		name := "reached"
+		if a.Run != "" {
+			name = "started"
+		}
+		r.Facts = append(r.Facts, fact{Name: name, Text: to.ID + statusOf(b.byID[to.ID]), Run: to})
+		if a.Location != "" {
+			r.Trace = b.traceOf(*to, &trace{Started: a.Run != "", Event: event, Message: a.Message})
+		}
 	}
 	if a.Undelivered {
 		r.What = append(r.What, word{Text: " · undelivered"})
 		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: cmp.Or(a.Text, "it is not running")})
 	}
 	return r
+}
+
+// traceOf fills in a trace of the run a send or a call reached, with its
+// status, where the UI may read that run; it gives none where it may not.
+func (b *rowBuilder) traceOf(run link, t *trace) *trace {
+	if b.readable == nil || !b.readable(run.ID) {
+		return nil
+	}
+	t.Run = run
+	if h := b.byID[run.ID]; h != nil {
+		t.Status, t.Failure, t.Ended = h.Status, h.Failure, h.HasEnded()
+		if t.Ended {
+			t.Took = took(h.Ended.Sub(h.Started))
+		}
+	}
+	return t
+}
+
+// traced gives the rows of a trace's group, from the record of the run it
+// reached: for a call every row of the run, and for a send the rows from
+// the step that took the event up to the next step that took another sent
+// event. Its rows are at depth.
+func traced(t *trace, entries []client.Entry, byID map[string]*client.Run, readable func(string) bool, now, day time.Time, depth int) []stepRow {
+	rows := rowsAt(t.Run.ID, entries, byID, readable, now, day, depth)
+	if t.Call {
+		return rows
+	}
+	from, to := 0, 0
+	if t.Started {
+		from = 1
+	}
+	for _, e := range entries {
+		if e.ID != t.Run.ID || e.Step == 0 {
+			continue
+		}
+		for _, ev := range e.Events {
+			switch {
+			case from == 0 && tookSent(t, e, ev):
+				from = e.Step
+			case from != 0 && e.Step > from && to == 0 && ev.Sender != nil:
+				to = e.Step
+			}
+		}
+	}
+	if from == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(rows, func(r stepRow) bool { return r.Step < from || to != 0 && r.Step >= to })
+}
+
+// tookSent says whether an event a run took is the one a trace's send
+// sent: by the message it came from, or by its sender and its name at or
+// after the time it was sent.
+func tookSent(t *trace, e client.Entry, ev instance.Arrived) bool {
+	if t.Message != "" && strings.HasSuffix(ev.Source, t.Message) {
+		return true
+	}
+	return ev.Sender != nil && ev.Sender.Run == t.From && ev.Name == t.Event && !e.Time.Before(t.At)
 }
 
 // resultOf gives what a job gave, from the first of entries that took its
@@ -507,9 +673,9 @@ func jobFacts(a *instance.Ask, byID map[string]*client.Run) []fact {
 	if a.Runner != "" {
 		facts = append(facts, fact{Name: "runner", Text: a.Runner})
 	}
-	if a.Child != "" {
-		child := linkOf(a.Child, byID)
-		facts = append(facts, fact{Name: "run", Text: a.Child + statusOf(byID[a.Child]), Run: &child})
+	if id := cmp.Or(a.Child, callee(*a)); id != "" {
+		child := linkOf(id, byID)
+		facts = append(facts, fact{Name: "run", Text: id + statusOf(byID[id]), Run: &child})
 	}
 	return facts
 }

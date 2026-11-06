@@ -154,7 +154,9 @@ func (h *handler) opened(v *view) ([]byte, error) {
 	}
 	v.Found = v.index.at(v.Open)
 	if m := v.index.machines[v.Open]; m != nil {
-		base += m.Hash
+		if m.Draft != nil {
+			base += m.Draft.Hash()
+		}
 		var name string
 		v.Kind, name = firstLine(src)
 		if m.Draft != nil {
@@ -182,7 +184,7 @@ func (h *handler) secretsOf(ctx context.Context, src []byte) ([]secretView, erro
 	}
 	for i := range out {
 		out[i].State = "not set"
-		if slices.Contains(set, out[i].Name) {
+		if slices.ContainsFunc(set, func(e secret.Entry) bool { return e.Name == out[i].Name }) {
 			out[i].State = "set"
 		}
 	}

@@ -36,12 +36,10 @@ document.addEventListener('click', e => {
   }
 });
 
-const client = document.getElementById('client');
-if (client) client.addEventListener('change', () => { location = client.value; });
-
 // A run's Steps. Each child run is a group under the row that started it:
 // an ended child is folded and a running one open, until the person folds
-// or opens it. One row is selected; the drawing and the details beside the
+// or opens it. A send or a call to a run the UI may read is a group too,
+// folded, whose rows are asked for when it is opened. One row is selected; the drawing and the details beside the
 // list show its run as of its step. The selection follows the newest row,
 // or the row of the folded group it is in, until the person moves it.
 const split = document.querySelector('.split[data-page]');
@@ -62,6 +60,29 @@ function applyFolds() {
   for (const g of listOf()?.querySelectorAll('li.group') ?? []) {
     const open = folds.has(g.dataset.group) ? folds.get(g.dataset.group) : !g.hasAttribute('data-ended');
     g.classList.toggle('folded', !open);
+    if (open) load(g);
+  }
+}
+
+// load asks the UI for the rows of a send's or a call's group, once each
+// time the group is drawn.
+async function load(g) {
+  if (!g.dataset.load || g.dataset.loaded) return;
+  g.dataset.loaded = '1';
+  const ol = g.querySelector(':scope > ol');
+  try {
+    const res = await fetch(`${g.dataset.load}&page=${encodeURIComponent(split.dataset.page)}`);
+    const t = document.createElement('template');
+    t.innerHTML = res.ok ? (await res.text()).trim() : '';
+    if (!t.content.firstElementChild) t.innerHTML = '<li class="dim none">nothing yet</li>';
+    ol.replaceChildren(t.content);
+    for (const r of ol.querySelectorAll('.step')) seen.add(r.dataset.row);
+    applyFolds();
+    const row = rowOf(selected);
+    if (row && ol.contains(row)) select(row, false);
+  } catch (err) {
+    delete g.dataset.loaded;
+    console.error(err);
   }
 }
 
@@ -73,9 +94,14 @@ function shownOf(row) {
   return at;
 }
 
+// newestRow gives the newest row of the run and the runs under it; the rows
+// of a send's or a call's group are of other runs, and are left out.
 function newestRow() {
   let last = null;
-  for (const r of listOf()?.querySelectorAll('.step') ?? []) if (!last || +r.dataset.at >= +last.dataset.at) last = r;
+  for (const r of listOf()?.querySelectorAll('.step') ?? []) {
+    if (r.parentElement.parentElement.closest('li.trace')) continue;
+    if (!last || +r.dataset.at >= +last.dataset.at) last = r;
+  }
   return last;
 }
 
@@ -94,11 +120,11 @@ function showPath(row) {
     for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) chain.unshift(g);
     for (const g of chain) {
       const sep = document.createElement('span');
-      sep.className = 'sep';
-      sep.textContent = '›';
+      sep.className = g.matches('.trace') ? 'sep send' : 'sep';
+      sep.textContent = g.matches('.trace') ? '⇢' : '›';
       const link = document.createElement('a');
-      link.href = '/run/' + g.dataset.group;
-      link.dataset.run = g.dataset.group;
+      link.href = '/run/' + g.dataset.run;
+      link.dataset.run = g.dataset.run;
       link.title = g.dataset.tip;
       const icon = g.querySelector(':scope > ol .step svg.g');
       link.append(g.dataset.machine);
@@ -148,7 +174,7 @@ function showMarked(view) {
 
 function select(row, fetchToo = true) {
   if (!row) return;
-  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) { folds.set(g.dataset.group, true); g.classList.remove('folded'); }
+  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) fold(g, true);
   for (const r of listOf().querySelectorAll('.step.sel')) r.classList.remove('sel');
   row.classList.add('sel');
   const changed = selected !== row.dataset.row;
@@ -161,6 +187,7 @@ function select(row, fetchToo = true) {
 function fold(group, open) {
   folds.set(group.dataset.group, open);
   group.classList.toggle('folded', !open);
+  if (open) load(group);
 }
 
 if (split && listOf()) {

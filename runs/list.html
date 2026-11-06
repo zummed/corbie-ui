@@ -12,7 +12,7 @@
 {{define "line"}}<details class="req"><summary class="line" data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="/run/{{.ID}}">
 <span>{{template "status" .}}</span><span class="title" title="{{.Tip}}">{{if .Titled}}{{.Name}}{{else}}{{middle .Name}}{{end}}</span>
 {{- if .Ended}}<span class="chain">{{template "machine" .}}</span><span class="dim">{{.Under}} {{word .Under "run"}} under it</span><span class="dim">{{.When}}</span><span class="dim">{{.Took}}</span>
-{{- else}}{{template "chain" .}}<span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span>{{if .Old}}<span class="old">old version</span>{{end}}</span>{{end}}
+{{- else}}{{template "chain" .}}<span class="waits" title="{{.Waits}}">{{.Waits}}</span><span class="dim">{{.When}}</span><span></span>{{end}}
 <button class="unfold" type="button" aria-label="unfold the runs under {{.Name}}"></button></summary>
 <div class="tree">{{range .Rows}}{{template "row" .}}{{end}}{{if .More}}<a class="node more" href="/run/{{.ID}}"><span></span><span class="name">{{.More}} more</span></a>{{end}}</div>
 </details>{{end}}
@@ -20,7 +20,6 @@
 {{define "section"}}<section class="panel reqs" id="{{.ID}}"{{if and (not .Lines) (not .Windows)}} hidden{{end}}>
   <div class="head"><h2>{{.Name}}</h2><span class="facts" data-count="{{.ID}}">{{len .Lines}}</span>
     <span class="acts">
-      {{- with .Cancel}}<form data-act method="post" action="/runs/cancel">{{range .IDs}}<input type="hidden" name="id" value="{{.}}">{{end}}<span class="said"></span><button class="btn sm stop" data-cmd="{{.Commands}}">Cancel the {{len .IDs}} idle {{word (len .IDs) "run"}} on old versions</button></form>{{end}}
       {{- if .Windows}}<span class="pills">{{range .Windows}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</span>{{end}}
     </span>
   </div>
@@ -29,25 +28,44 @@
 
 {{define "busy"}}{{template "section" .Busy}}{{end}}
 {{define "idle"}}{{template "section" .Idle}}{{end}}
-{{define "services"}}{{template "section" .Services}}{{end}}
+{{define "singletons"}}{{template "section" .Singletons}}{{end}}
+
+{{define "locations"}}<nav class="panel locs" id="locations" aria-label="Locations">
+  <div class="head"><h2>Locations</h2></div>
+  <div class="list">{{with .Every}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name">{{.Name}}</span><span></span></a>{{end}}
+  {{range .Clients}}<h2 class="group" title="the trees of the client {{.Name}}">{{.Name}}</h2>
+    {{range .Trees}}{{$tree := .}}{{if .Prefix}}<a class="tree" href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name" title="{{.Prefix}}">{{.Prefix}}</span><span class="dim">tree</span></a>{{end}}
+      {{range .Places}}<a class="loc{{if $tree.Prefix}} in{{end}}" href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name" title="{{.Location}}">{{.Name}}</span><span class="dim">{{if .Status}}<span class="st {{.Status}}">{{.Status}}</span>{{else}}{{.Says}}{{end}}</span>{{with .Lifetime}}<small>{{.}}</small>{{end}}</a>{{end}}
+    {{end}}
+  {{else}}<p class="none dim">no runs at any location</p>{{end}}</div>
+</nav>{{end}}
+
+{{define "here"}}<section class="panel here" id="here"{{if not .Here}} hidden{{end}}>{{with .Here}}
+  <div class="head"><span title="{{.Location}}">{{.Location}}</span><span class="facts">{{with .Lifetime}}<span>{{.}}</span>{{end}}{{with .Tree}}<span>tree {{.}}</span>{{end}}<span>{{.Client}}</span></span>
+    <span class="acts">{{with .Cancel}}<form data-act method="post" action="/runs/at/cancel"><input type="hidden" name="at" value="{{$.Here.Location}}"><span class="said"></span><button class="btn sm stop" data-cmd="{{cmd .}}">Cancel every run here</button></form>{{end}}</span></div>
+  {{if .Send}}<form class="send" data-act="reset" method="post" action="/runs/at/send"><input type="hidden" name="at" value="{{.Location}}"><input name="key" placeholder="key" size="14" required><input name="event" placeholder="event" size="12" required><input name="data" placeholder="data, as JSON" size="18"><button class="btn" data-cmd="corbie run send {{.Location}}#&lt;key&gt; &lt;event&gt; &lt;data&gt;">Send</button><span class="said"></span></form>{{end}}
+  {{if .Start}}<form class="send" data-act="reset" method="post" action="/runs/at/start"><input type="hidden" name="at" value="{{.Location}}"><input name="input" placeholder="input, as JSON" size="30"><button class="btn" data-cmd="corbie run submit {{.Location}} --input &lt;input&gt;">Start</button><span class="said"></span></form>{{end}}
+{{end}}</section>{{end}}
 {{define "ended"}}{{template "section" .Ended}}{{end}}
 
 {{define "list"}}
 <div class="head">
   <span>Runs</span>
   <span class="acts">
-    {{if or (gt (len .Clients) 1) .Narrowing.Client}}<select id="client" aria-label="Only the runs of this client">
-      <option value="{{.Narrowing.WithClient ""}}">every client</option>
-      {{range .Clients}}<option value="{{.Href}}"{{if .Current}} selected{{end}}>{{.Name}}</option>{{end}}
-    </select>{{end}}
     <form class="narrow" method="get" action="/runs">
-      {{with .Narrowing}}{{if .Client}}<input type="hidden" name="client" value="{{.Client}}">{{end}}{{if ne .Window "6h"}}<input type="hidden" name="window" value="{{.Window}}">{{end}}{{end}}
+      {{with .Narrowing}}{{if .At}}<input type="hidden" name="at" value="{{.At}}">{{end}}{{if ne .Window "6h"}}<input type="hidden" name="window" value="{{.Window}}">{{end}}{{end}}
       <input name="label" value="{{.Narrowing.LabelText}}" size="22" placeholder="label k=v" aria-label="Only the runs with these labels">
     </form>
   </span>
 </div>
+<div class="byloc">
+{{template "locations" .}}
+<div class="sections">
+{{template "here" .}}
 {{template "busy" .}}
 {{template "idle" .}}
-{{template "services" .}}
+{{template "singletons" .}}
 {{template "ended" .}}
+</div>
+</div>
 {{end}}

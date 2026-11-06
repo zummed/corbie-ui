@@ -168,6 +168,16 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .btn.stop { color: var(--rowan); }
 
 /* runs */
+/* the Runs page: Locations on the left, the sections beside it */
+.byloc { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
+.byloc > .sections { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+@media (max-width: 1000px) { .byloc { grid-template-columns: minmax(0, 1fr); } }
+.locs { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; }
+.locs h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2); }
+.locs a.loc.in .name, .locs a.loc.in small { padding-left: 14px; }
+.locs a.tree .name { font-weight: 500; }
+.locs .none { margin: 0; padding: 9px 16px; font: 12.5px var(--mono); }
+.here form.send { display: flex; gap: 8px; padding: 10px 16px 12px; }
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
 .req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 100px 100px; gap: 18px; align-items: center;
@@ -199,7 +209,6 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .req .chain i { flex: none; margin: 0 5px; font-style: normal; color: var(--ink2); }
 .req svg.g { margin-right: 6px; vertical-align: -2px; }
 .req .waits { color: var(--ink2); }
-.req .old { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); }
 .req > summary.new { animation: arrive 1.6s var(--ease); }
 .req > summary.ended { animation: settle 1.4s var(--ease); }
 .req > summary.moved { animation: moved 1.2s var(--ease); }
@@ -258,6 +267,9 @@ ol.steplist .none { padding: 6px 16px; font: 12.5px var(--mono); }
 .step button.fold::before { content: ""; width: 5px; height: 5px; margin-top: -3px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 .steplist .folded > .step .fold::before { margin: 0 0 0 -3px; transform: rotate(-45deg); }
 .steplist .folded > ol { display: none; }
+/* a send's or a call's group: the rows it caused in the run it reached, behind a dashed line */
+.steplist li.trace > ol { border-left: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent); margin-left: 6px; }
+.steplist li.trace > ol > .none { padding: 4px 16px; font: 12.5px var(--mono); }
 .step.sel { background: color-mix(in srgb, var(--c) 16%, var(--plate)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
 .step.held .what { color: var(--amber); }
 .step.failed .what, .step.failed .what b { color: var(--rowan); }

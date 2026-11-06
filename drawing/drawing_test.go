@@ -382,21 +382,21 @@ states:
   hearing:
     job: ./w.js
     on:
-      message: { send: { to: { machine: ./chat.yaml, key: "a" }, event: said } }
+      message: { send: { to: { at: chat, key: "a" }, event: said } }
       again: hearing
       done: over
   over: { end: done }
-`, map[string]string{"w.js": script, "chat.yaml": "flow: chat\nstages:\n  a: { job: ./w.js }\n"})
+`, map[string]string{"w.js": script})
 	svg, _ := Draw(chart, nil)
 	_, hearing := centre(t, svg, "hearing")
-	_, box := centre(t, svg, "chat.yaml")
+	_, box := centre(t, svg, "chat#a")
 	if box <= hearing {
 		t.Errorf("the send's box at %v is not below the state at %v", box, hearing)
 	}
 	if !regexp.MustCompile(`<path class="edge send" d="[^"]*"[^>]*/><rect class="chip"[^>]*/><text class="on"[^>]*>message</text>`).MatchString(string(svg)) {
 		t.Errorf("the send's arrow is not dashed and labelled with the event:\n%s", svg)
 	}
-	if !strings.Contains(group(t, string(svg), "chat.yaml"), "sends") {
+	if !strings.Contains(group(t, string(svg), "chat#a"), "sends") {
 		t.Errorf("the send's box is not marked as one")
 	}
 	if !strings.Contains(string(svg), ">again ↻<") || strings.Contains(string(svg), `>again</text>`) {

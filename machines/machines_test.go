@@ -122,8 +122,11 @@ states:
   hearing:
     job: ./hear.js
     on:
-      message: { send: { to: { machine: ./chat.yaml, key: "a" }, event: said } }
-      done: hearing
+      message: { send: { to: { at: .kit/chat, key: "a" }, event: said } }
+      done: talking
+  talking:
+    job: { machine: ./chat.yaml }
+    on: { done: hearing }
 `,
 		".kit/chat.yaml": `# one conversation
 statechart: chat
@@ -373,12 +376,15 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := do(h, "GET", "/machines?file=.kit/listen.yaml", nil).Body.String()
-	if !strings.Contains(body, ">hearing<") || !strings.Contains(body, ">chat.yaml<") {
+	if !strings.Contains(body, ">hearing<") || !strings.Contains(body, ">.kit/chat#a<") {
 		t.Fatalf("the machine is not drawn:\n%s", body)
 	}
-	link := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*sends`).FindStringSubmatch(body)
+	if regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*sends`).MatchString(body) {
+		t.Errorf("a send, which starts no child, unfolds:\n%s", body)
+	}
+	link := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*"><rect[^>]*/><text[^>]*>talking<`).FindStringSubmatch(body)
 	if link == nil {
-		t.Fatalf("a send that names a machine has no link:\n%s", body)
+		t.Fatalf("a job that names a machine has no link:\n%s", body)
 	}
 	address := strings.ReplaceAll(strings.ReplaceAll(link[1], "&amp;", "&"), "&#43;", "+")
 	unfolded := do(h, "GET", address, nil).Body.String()
@@ -393,7 +399,7 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	if !strings.Contains(deeper, ">flow: message<") || !strings.Contains(deeper, ">answer<") {
 		t.Errorf("a machine written in place does not unfold:\n%s", deeper)
 	}
-	folded := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*sends[^"]*unfolded`).FindStringSubmatch(deeper)
+	folded := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*unfolded[^"]*"><rect[^>]*/><text[^>]*>talking<`).FindStringSubmatch(deeper)
 	if folded == nil {
 		t.Fatalf("the unfolded box has no link:\n%s", deeper)
 	}
