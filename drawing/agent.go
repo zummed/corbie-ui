@@ -52,14 +52,14 @@ func (g *partBox) size() {
 
 // drawAgent draws three things, one below another: the model, what it can
 // call, and its reply.
-func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run, w *walker) drawn {
+func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) drawn {
 	name := a.Model.Name
 	if name == "" {
 		name = "model"
 	}
-	columns := columnsOf(groupsOf(agentName, a, w), run)
+	columns := columnsOf(groupsOf(def, a, w), run)
 	var askItem *item
-	if ask != nil {
+	if ask := def.Ask; ask != nil {
 		it := item{name: "ask"}
 		w.describe(&it, "ask", ask)
 		askItem = &it
@@ -153,11 +153,11 @@ func drawAgent(agentName string, a *agent.Agent, ask *machine.JobSpec, run *Run,
 }
 
 // groupsOf gives each part of an agent, then the tools in no part.
-func groupsOf(agentName string, a *agent.Agent, w *walker) []*partBox {
+func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*partBox {
 	var groups []*partBox
 	byName := map[string]*partBox{}
 	for _, part := range sortedKeys(a.Parts) {
-		g := &partBox{name: part, file: w.part(agentName, part, a.Parts[part].Does), part: true, items: map[string]item{}}
+		g := &partBox{name: part, file: PartFile(def, part), part: true, items: map[string]item{}}
 		if ask := a.Parts[part].Ask; ask != nil {
 			it := item{name: "ask"}
 			w.describe(&it, askAt(part), ask)
@@ -238,7 +238,7 @@ func (g *partBox) used(run *Run) bool {
 
 // paintGroup draws a column of what the model can call, and says whether a
 // tool in it is one the agent waits on. A part's name is cut to its holder,
-// and on the Machines page its tooltip gives the file it is included from.
+// and its tooltip gives the file it is included from.
 func (d *drawn) paintGroup(g *partBox, run *Run) bool {
 	b := g.at
 	y := b.y

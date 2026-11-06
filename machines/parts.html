@@ -1,4 +1,4 @@
-{{define "partlist"}}<div class="filelist list" id="partlist">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{template "problems" .Problems}}{{range .Parts}}<a href="/parts?part={{.ID}}"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if not .Opened}}<span class="chip">not opened</span>{{end}}<small>{{plural (len .Tools) "tool"}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}</div>{{end}}
+{{define "partlist"}}<div class="filelist list" id="partlist">{{if .Unread}}<p class="unread">not read to its end: {{.Unread}}</p>{{end}}{{template "problems" .Problems}}{{range .Parts}}<a href="/parts?part={{.ID}}"{{if and $.Open (eq .ID $.Open.ID)}} aria-current="page"{{end}}><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span class="name" title="{{.File}}">{{.Name}}</span>{{if .Broken}}<span class="chip">has problems</span>{{else if not .Opened}}<span class="chip">not opened</span>{{end}}<small>{{plural (len .Tools) "tool"}} · {{.Does}}</small></a>{{else}}<p class="dim">no parts here</p>{{end}}</div>{{end}}
 
 {{define "partview"}}<div class="panel view part" id="partview">{{with .Open}}
   <div class="head"><svg class="g m" role="img" aria-label="part"><use href="#g-part"/></svg><span>{{.Name}}</span><span class="facts">{{.File}}</span>{{if .Opening}}<span class="approve">opening it needs approval</span>{{end}}</div>
@@ -8,8 +8,8 @@
     <p class="does">{{.Does}}</p>
     {{if .Opened}}<table class="list opened"><thead><tr><th>Opened by</th><th>Started by</th></tr></thead><tbody>{{range .Opened}}<tr>
       <td><a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="agent"><use href="#g-agent"/></svg>{{.Name}}</a> <small>{{.File}}</small></td>
-      <td class="wrap">{{if .Problems}}<span class="broken">has problems</span>{{else}}{{range .Starts}}<a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="{{.Type}}"><use href="#g-{{.Type}}"/></svg>{{.Name}}</a>{{else}}<span class="dim">by hand</span>{{end}}{{end}}</td>
-    </tr>{{end}}</tbody></table>{{else}}<p class="dim">not opened</p>{{end}}
+      <td class="wrap">{{range .Starts}}<a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="{{.Type}}"><use href="#g-{{.Type}}"/></svg>{{.Name}}</a>{{end}}{{if .Lifetime}}<span class="dim">{{.Lifetime}}: {{.Started}}</span>{{end}}</td>
+    </tr>{{end}}</tbody></table>{{else if .Broken}}<p class="dim">opened only by machines with problems, which the problems above name</p>{{else}}<p class="dim">not opened</p>{{end}}
     <h2>Tools</h2>
     <div class="toolcards">{{range .Tools}}<section class="tool">
       <div class="bar"><span class="tname">{{.Name}}</span>{{if .Approve}}<span class="approve">needs approval</span>{{end}}</div>

@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"html/template"
+	"maps"
 	"math"
 	"path"
 	"slices"
@@ -96,17 +97,14 @@ type Unfold struct {
 	Open map[string]bool
 	// Href gives the address of a card's link.
 	Href func(path string) string
-	// Part gives the file a part of an agent in a file is included from, or
-	// nothing: the agent by its name, the part by its name and its `does:`.
-	Part func(file, name, part, does string) string
 }
 
-// Unfolded gives the drawing of the machine in a file, with a link on each
-// card whose job names a machine, and the machines of the cards unfolded
-// drawn inside them.
-func Unfolded(draft *machine.Draft, file string, u Unfold) (template.HTML, error) {
+// Unfolded gives the drawing of a machine read from its file, with a link
+// on each card whose job names a machine, and the machines of the cards
+// unfolded drawn inside them.
+func Unfolded(draft *machine.Draft, u Unfold) (template.HTML, error) {
 	def := draft.Definition
-	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft, file: file})
+	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft})
 	if err != nil {
 		return "", err
 	}
@@ -132,14 +130,13 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 		if err := json.Unmarshal(def.Body, &a); err != nil {
 			return drawn{}, err
 		}
-		return drawAgent(def.Name, &a, def.Ask, run, w), nil
+		return drawAgent(def, &a, run, w), nil
 	}
 	return drawn{}, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 }
 
 // A walker is what a drawing knows of the machines its jobs name. On the
-// Machines page it is a machine's draft, the file it is in, or for one
-// written in place the file that writes it, and the path of the card it is
+// Machines page it is a machine's draft and the path of the card it is
 // drawn in. On a run's page it is the machines its definition names and
 // the runs its jobs started.
 type walker struct {
@@ -147,7 +144,6 @@ type walker struct {
 	draft    *machine.Draft
 	machines map[string]Machine
 	children map[string]Child
-	file     string
 	path     string
 }
 
@@ -159,10 +155,7 @@ func (w *walker) open(at, job string) (string, *drawn) {
 	if !w.unfold.Open[at] {
 		return href, nil
 	}
-	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], file: w.file, path: at}
-	if !inPlace(job) {
-		sub.file = path.Clean(job)
-	}
+	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], path: at}
 	d, err := drawOf(sub.draft.Definition, nil, sub)
 	if err != nil {
 		return href, nil
@@ -174,12 +167,31 @@ func (w *walker) open(at, job string) (string, *drawn) {
 // machine written in place.
 func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
-// part gives the file a part is included from.
-func (w *walker) part(name, part, does string) string {
-	if w.file == "" || w.unfold.Part == nil {
+// PartFile gives the file a part of an agent is included from, as Corbie
+// writes out the agent: the file its tools are written in, or its `does:`
+// where it has no tools, when that is not the file of the agent's own
+// first line. A part written in place gives nothing.
+func PartFile(def *machine.Definition, part string) string {
+	at := "open." + part + "."
+	file := fileOf(def.Lines[at+"does"])
+	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
+		if strings.HasPrefix(place, at+"tools.") {
+			file = fileOf(def.Lines[place])
+			break
+		}
+	}
+	if file == fileOf(def.Lines[def.Type]) {
 		return ""
 	}
-	return w.unfold.Part(w.file, name, part, does)
+	return file
+}
+
+// fileOf gives the file of a value's file and line, as base.yaml:3.
+func fileOf(line string) string {
+	if i := strings.LastIndexByte(line, ':'); i >= 0 {
+		return line[:i]
+	}
+	return line
 }
 
 // describe writes what a card's job is into it: its icon and its line, and
@@ -194,6 +206,15 @@ func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 		return
 	case job.Script != "":
 		it.icon, it.lines = "script", []string{fit("script: " + job.Script)}
+		return
+	case job.Send != nil:
+		it.icon, it.lines = "statechart", []string{fit("send: " + job.Send.Event), fit("to: " + addressOf(&job.Send.To))}
+		return
+	case job.Call != nil:
+		it.icon, it.lines = "file", []string{fit("call: " + addressOf(job.Call))}
+		if c, ok := w.children[at]; ok {
+			it.icon, it.lines, it.href = c.Type, append(it.lines, fit(c.Type+": "+c.Machine)), "/run/"+c.ID
+		}
 		return
 	case job.Machine == "":
 		return

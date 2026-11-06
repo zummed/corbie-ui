@@ -478,7 +478,7 @@ stages:
 		for _, p := range open {
 			u.Open[p] = true
 		}
-		svg, err := Unfolded(draft, "dir/a.yaml", u)
+		svg, err := Unfolded(draft, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -615,5 +615,35 @@ open:
 	page, _ := Draw(def, nil)
 	if strings.Contains(string(page), "folded") || !strings.Contains(string(page), ">disk</text>") {
 		t.Errorf("a drawing of no run folds a part")
+	}
+}
+
+func Test_drawing_call_and_send_jobs_are_cards(t *testing.T) {
+	def := definition(t, `flow: trip
+stages:
+  weather: { job: { call: { at: services/weather }, input: { days: 2 } } }
+  heat:
+    job:
+      send: { to: { at: devices/boiler }, event: set, data: { target: "${stages.weather.output.celsius}" } }
+  room:
+    job:
+      send: { to: { at: rooms/hall, key: "${input.k}" }, event: set }
+`, nil)
+	svg := draw(t, def, nil)
+	for _, want := range []string{">call: services/weather<", ">send: set<", ">to: devices/boiler<", ">to: rooms/hall#${input.k}<"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("the drawing does not hold %s:\n%s", want, svg)
+		}
+	}
+	if _, weather := centre(t, template.HTML(svg), "weather"); func() bool { _, heat := centre(t, template.HTML(svg), "heat"); return heat <= weather }() {
+		t.Errorf("a send whose data reads a stage is not drawn below it:\n%s", svg)
+	}
+	if strings.Contains(svg, "<a href") {
+		t.Errorf("a call that started no run, or a send, has a link:\n%s", svg)
+	}
+	// On a run's page, a call's card links to the run it called.
+	run := draw(t, def, &Run{Children: map[string]Child{"weather": {ID: "lab/7", Machine: "weather", Type: "flow"}}})
+	if !strings.Contains(run, `<a href="/run/lab/7">`) || !strings.Contains(run, ">flow: weather<") || !strings.Contains(run, ">call: services/weather<") {
+		t.Errorf("a call's card does not link to the run it called:\n%s", run)
 	}
 }

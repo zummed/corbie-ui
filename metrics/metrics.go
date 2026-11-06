@@ -28,10 +28,10 @@ type series struct {
 }
 
 var help = []struct{ name, help string }{
-	{"corbie_runs", "Runs, running or ended and still kept, by status, failure, type and machine."},
-	{"corbie_waiting", "What running runs wait on: jobs on runners, timers and tickets, by type and machine."},
-	{"corbie_oldest_running_seconds", "How long the oldest running run of each machine has run."},
-	{"corbie_last_ended_timestamp_seconds", "When a run of each machine last ended, by status."},
+	{"corbie_runs", "Runs, running or ended and still kept, by status, failure, type, machine and location."},
+	{"corbie_waiting", "What running runs wait on: jobs on runners, timers and tickets, by type, machine and location."},
+	{"corbie_oldest_running_seconds", "How long the oldest running run of each machine at each location has run."},
+	{"corbie_last_ended_timestamp_seconds", "When a run of each machine at each location last ended, by status."},
 }
 
 // Handler answers a scrape from the list. When the store could not be
@@ -65,7 +65,7 @@ func Text(runs []*client.Run, at time.Time) string {
 	sum := func(old, v float64) float64 { return old + v }
 	most := func(old, v float64) float64 { return max(old, v) }
 	for _, r := range runs {
-		kind := [][2]string{{"type", r.Type}, {"machine", r.Machine}}
+		kind := [][2]string{{"type", r.Type}, {"machine", r.Machine}, {"location", r.Location}}
 		status := [][2]string{{"status", r.Status}}
 		if r.Failure != "" {
 			status = append(status, [2]string{"failure", r.Failure})

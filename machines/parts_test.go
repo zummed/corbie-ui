@@ -124,16 +124,18 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	for _, p := range v.Parts {
 		ids = append(ids, p.ID)
 	}
-	if got := strings.Join(ids, " "); got != "kept messages messages-2 new yml zed" {
+	if got := strings.Join(ids, " "); got != ".kit kept messages messages-2 new yml zed" {
 		t.Fatalf("the parts are %q: %+v", got, v.Unread)
 	}
-	if v.Open == nil || v.Open.ID != "kept" {
+	if v.Open == nil || v.Open.ID != ".kit" {
 		t.Errorf("the first part is not open: %+v", v.Open)
 	}
 
-	var shared, own, unopened, zed, yml *part
+	var kept, shared, own, unopened, zed, yml *part
 	for i := range v.Parts {
 		switch v.Parts[i].ID {
+		case "kept":
+			kept = &v.Parts[i]
 		case "new":
 			unopened = &v.Parts[i]
 		case "zed":
@@ -151,31 +153,31 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	if shared == nil || own == nil {
 		t.Fatalf("a part is missing: %+v", v.Parts)
 	}
-	if v.Parts[0].File != "parts/kept/part.yaml" {
-		t.Errorf("a part under an `open:` in an included file has the file %q", v.Parts[0].File)
+	if kept.File != "parts/kept/part.yaml" {
+		t.Errorf("a part under an `open:` in an included file has the file %q", kept.File)
 	}
 	if got := strings.Join(openedBy(*shared), " "); got != "helper looker" || shared.File != "parts/part.yaml" {
 		t.Errorf("the shared part in %q is opened by %q", shared.File, got)
 	}
 	helper, looker := shared.Opened[0], shared.Opened[1]
-	if got := strings.Join(startsOf(helper), " "); got != "bridge" || helper.Starts[0].File != "telegram.yaml" {
-		t.Errorf("helper is started by %q: %+v", got, helper.Starts)
+	if got := strings.Join(startsOf(helper), " "); got != "chat" || helper.Starts[0].File != ".kit/chat.yaml" || helper.Lifetime != "transient" {
+		t.Errorf("helper is started by %q: %+v", got, helper)
 	}
-	if looker.File != "timed.yaml" || len(looker.Starts) != 1 || looker.Starts[0].File != "timed.yaml" {
+	if looker.File != "timed.yaml" || len(looker.Starts) != 1 || looker.Starts[0].File != "timed.yaml" || looker.Lifetime != "" {
 		t.Errorf("an agent written in place is not started by the machine it is written in: %+v", looker)
 	}
 	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/say.yaml" {
 		t.Errorf("the tool is %+v", shared.Tools)
 	}
 
-	if len(own.Opened) != 1 || own.File != "" || len(own.Opened[0].Starts) != 0 {
+	if len(own.Opened) != 1 || own.File != "" || len(own.Opened[0].Starts) != 0 || own.Opened[0].Lifetime != "transient" {
 		t.Errorf("an agent in its own file that nothing names is %+v", own)
 	}
 	if tool := own.Tools[0]; tool.Job != "script" || tool.File != "own.js" {
 		t.Errorf("the tool is %+v", tool)
 	}
-	if s := zed.Opened[0].Starts; len(s) != 0 {
-		t.Errorf("a machine in a dotted directory is listed as a start: %+v", s)
+	if s := zed.Opened[0].Starts; len(s) != 1 || s[0].File != ".kit/dead.yaml" {
+		t.Errorf("a machine in a dotted directory is not listed as a start: %+v", s)
 	}
 	if s := yml.Opened[0].Starts; len(s) != 1 || s[0].File != "side.yaml" {
 		t.Errorf("the machine above a .yml file is %+v", s)
@@ -195,8 +197,8 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := do(h, "GET", "/parts?part=zed", nil).Body.String(); !strings.Contains(body, ">by hand<") {
-		t.Errorf("an agent no machine starts does not say so:\n%s", body)
+	if body := do(h, "GET", "/parts?part=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, or corbie run submit /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
+		t.Errorf("an agent does not say what starts it:\n%s", body)
 	}
 	body := do(h, "GET", "/parts?part=new", nil).Body.String()
 	for _, want := range []string{`<span class="chip">not opened</span>`, `<p class="dim">not opened</p>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/parts?part=new&amp;view=text">Text</a>`} {
@@ -210,7 +212,7 @@ func Test_machines_parts_show_what_opens_each(t *testing.T) {
 		}
 	}
 	text := do(h, "GET", "/parts?part=new&view=text", nil).Body.String()
-	if !strings.Contains(text, `<pre class="code" aria-label="parts/new/part.yaml"><span class="l"><span class="k">does</span>`) || strings.Contains(text, `class="toolcards"`) {
+	if !strings.Contains(text, `<pre class="code" aria-label="parts/new/part.yaml"><span class="l" id="L1"><span class="k">does</span>`) || strings.Contains(text, `class="toolcards"`) {
 		t.Errorf("the part's Text tab does not show its file:\n%s", text)
 	}
 	if w := do(h, "GET", "/parts?part=gone", nil); w.Code != http.StatusNotFound {
@@ -230,15 +232,23 @@ func Test_machines_parts_show_the_problems_in_their_file(t *testing.T) {
 		"parts/net/part.yaml": "does: the network\ntools:\n  r:\n    description: r\n    job: { script: r.js }\n",
 	})
 	v := partsView_(t, dir, "net")
-	// The agent that opens the part has problems, and still opens it.
-	if v.Open == nil || len(v.Open.Opened) != 1 || v.Open.Opened[0].File != "a.yaml" || !v.Open.Opened[0].Problems {
+	// The agent that opens the part has problems, so it opens nothing, and
+	// the part's file is marked as having problems, not as unopened.
+	if v.Open == nil || len(v.Open.Opened) != 0 || !v.Open.Broken || v.Open.File != "parts/net/part.yaml" {
 		t.Fatalf("the part is %+v", v.Open)
 	}
 	if len(v.Found) == 0 || v.Found[0].File != "parts/net/part.yaml" || len(v.Found[0].Breaks) != 2 || v.Found[0].Line == 0 {
 		t.Errorf("the problems in the part's file are %+v", v.Found)
 	}
 	if !slices.EqualFunc(v.Problems, v.Found, func(a, b problem) bool { return a.File == b.File && a.Line == b.Line && a.Text == b.Text }) {
-		t.Errorf("the Parts list gives the problems %+v, and not the project's", v.Problems)
+		t.Errorf("the Parts list gives the problems %+v, and not the directory's", v.Problems)
+	}
+	h, err := New(Config{Dir: dir, Interval: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := do(h, "GET", "/parts?part=net", nil).Body.String(); !strings.Contains(body, `<span class="chip">has problems</span>`) || !strings.Contains(body, "opened only by machines with problems") || strings.Contains(body, "not opened") {
+		t.Errorf("a part opened only by machines with problems is shown as\n%s", body)
 	}
 }
 

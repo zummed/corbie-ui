@@ -36,7 +36,7 @@ The program links Corbie's packages, and carries the machine types and the plugi
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 
 - Corbie's command line opens a config's parties to read the store.
-- An `include:` names a file from the file that writes it when it begins `./`, and from the top of the project otherwise.
+- An `include:` names a file from the file that writes it when it begins `./`, and from the top of the tree otherwise.
 - `corbie run show` prints the words of a run and of its record.
 - The flow package has the rule by which a stage waits for others (see Drawing).
 
@@ -52,7 +52,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its steps, its drawing as of each step, what it waits on, and what can be sent to it.
 
-**[Machines](machines.md).** The machines in a directory, read only: the list, the problems Corbie finds in them, each machine's drawing and text, and the secrets it names. The parts in the directory, and what opens and starts each.
+**[Machines](machines.md).** The machines and pieces in a directory, read as a tree, read only: the list, the problems Corbie finds in them, and each machine's location, lifetime, who may send to it, the secrets and values it uses, its drawing, its text and its definition written out. The parts in the directory, and what opens and starts each.
 
 **[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
 

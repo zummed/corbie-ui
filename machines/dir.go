@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
-	"go.yaml.in/yaml/v3"
 )
 
 // A dir is the directory of machines: every path a request names is inside
@@ -98,10 +97,27 @@ func (d *dir) stamp() string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
-// dotted says a file is in a directory whose name begins with a dot.
-func dotted(rel string) bool {
-	parts := strings.Split(rel, "/")
-	return slices.ContainsFunc(parts[:len(parts)-1], func(p string) bool { return strings.HasPrefix(p, ".") })
+// files gives every file in the directory and below it, but for .git, by
+// its path from the directory, as Corbie reads a tree.
+func (d *dir) files() ([]string, error) {
+	var found []string
+	err := filepath.WalkDir(d.real, func(full string, e fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case e.IsDir() && e.Name() == ".git":
+			return filepath.SkipDir
+		case e.IsDir():
+			return nil
+		}
+		rel, err := filepath.Rel(d.real, full)
+		if err != nil {
+			return err
+		}
+		found = append(found, filepath.ToSlash(rel))
+		return nil
+	})
+	return found, err
 }
 
 // fromFile gives a path as a file writes it, from the directory of machines: one
@@ -129,155 +145,6 @@ func firstLine(src []byte) (string, string) {
 		return strings.TrimSpace(kind), strings.TrimSpace(name)
 	}
 	return "", ""
-}
-
-// partFile gives the file a part of an agent in a file is included from, or
-// nothing. The agent may be written in place, and its `open:` in a file it
-// includes. Where one file writes several agents of that name, the part's
-// `does:` tells them apart.
-func (d *dir) partFile(file, name, part, does string) string {
-	var files []string
-	var walk func(v any)
-	walk = func(v any) {
-		switch v := v.(type) {
-		case map[string]any:
-			if fmt.Sprint(v["agent"]) == name {
-				files = append(files, d.openedIn(v, file, part)...)
-			}
-			for _, k := range sortedKeys(v) {
-				walk(v[k])
-			}
-		case []any:
-			for _, each := range v {
-				walk(each)
-			}
-		}
-	}
-	src, _, err := d.read(file)
-	if err != nil {
-		return ""
-	}
-	written, err := machine.Written(src)
-	if err != nil {
-		return ""
-	}
-	walk(written)
-	for _, f := range files {
-		data, _, err := d.read(f)
-		if err != nil {
-			continue
-		}
-		var part struct{ Does string }
-		if yaml.Unmarshal(data, &part) == nil && part.Does == does {
-			return f
-		}
-	}
-	if len(files) == 1 {
-		return files[0]
-	}
-	return ""
-}
-
-// openedIn gives the files a part is included from in the `open:` of a
-// mapping. A part written in place gives one empty name.
-func (d *dir) openedIn(m map[string]any, file, part string) []string {
-	open, at := d.openOf(m, file, map[string]bool{})
-	entry, ok := open[part].(map[string]any)
-	if !ok {
-		return nil
-	}
-	names := includes(entry)
-	if len(names) == 0 {
-		return []string{""}
-	}
-	for i := range names {
-		names[i] = fromFile(at, names[i])
-	}
-	return names
-}
-
-// openOf gives the `open:` of a mapping, or of the first file it includes that
-// writes one, as Corbie reads them, and the file it is written in: a
-// mapping's own field stands before a file's.
-func (d *dir) openOf(m map[string]any, file string, seen map[string]bool) (map[string]any, string) {
-	if open, ok := m["open"].(map[string]any); ok {
-		return open, file
-	}
-	for _, name := range includes(m) {
-		next := fromFile(file, name)
-		if seen[next] {
-			continue
-		}
-		seen[next] = true
-		src, _, err := d.read(next)
-		if err != nil {
-			continue
-		}
-		written, err := machine.Written(src)
-		if err != nil {
-			continue
-		}
-		if open, at := d.openOf(written, next, seen); open != nil {
-			return open, at
-		}
-	}
-	return nil, ""
-}
-
-// agentsIn gives each agent a machine's file writes, by its name, with the
-// files of the parts its `open:` includes, by the part's name. It reads the
-// text alone, as for a machine Corbie cannot read.
-func (d *dir) agentsIn(file string) map[string]map[string][]string {
-	src, _, err := d.read(file)
-	if err != nil {
-		return nil
-	}
-	written, err := machine.Written(src)
-	if err != nil {
-		return nil
-	}
-	agents := map[string]map[string][]string{}
-	var walk func(v any)
-	walk = func(v any) {
-		switch v := v.(type) {
-		case map[string]any:
-			if name, ok := v["agent"].(string); ok {
-				open, _ := d.openOf(v, file, map[string]bool{})
-				for _, part := range sortedKeys(open) {
-					if agents[name] == nil {
-						agents[name] = map[string][]string{}
-					}
-					agents[name][part] = d.openedIn(v, file, part)
-				}
-			}
-			for _, k := range sortedKeys(v) {
-				walk(v[k])
-			}
-		case []any:
-			for _, each := range v {
-				walk(each)
-			}
-		}
-	}
-	walk(written)
-	return agents
-}
-
-// includes gives the files a mapping's `include:` names: one, or a list.
-func includes(m map[string]any) []string {
-	switch v := m["include"].(type) {
-	case string:
-		return []string{v}
-	case []any:
-		var names []string
-		for _, each := range v {
-			if name, ok := each.(string); ok {
-				names = append(names, name)
-			}
-		}
-		return names
-	}
-	return nil
 }
 
 // sortedKeys gives a map's keys in order.

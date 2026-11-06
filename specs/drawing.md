@@ -6,6 +6,15 @@ Every card has one width and one corner radius: an icon for what its job is, its
 
 A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./who.yaml`.
 
+A job that sends or calls is a card with these lines:
+
+```
+a job that sends   send: set, to: devices/boiler
+a job that calls   call: services/weather, and on a run's page the called run's type: name
+```
+
+A send's card has a statechart's icon, since only a statechart takes an event. On a run's page a call's card links to the run it called.
+
 An arrow goes straight down. Arrows from one card, or into one row, run along a rail above the row, so a branch is one line that divides. A drawing has as few arrows as say what it does.
 
 ## A flow
@@ -33,14 +42,14 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one holder. Each part is a holder inside it, with its name, its tools and its ask, and on the Machines page its tooltip gives the file it is included from. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
+2. Its tools are in one holder. Each part is a holder inside it, with its name, its tools and its ask. Its tooltip gives the file its tools are written in, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
 A tool with `approve: true` says so in its card. Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.
 
 ## A machine inside a machine
 
-On a run's page, a card whose job started a run links to that run's page.
+On a run's page, a card whose job started or called a run links to that run's page.
 
 On the Machines page, a card whose job names a machine is a link. The link unfolds that machine's drawing inside the card, and the card then has the link that folds it again. Any number can be unfolded at once, at any depth, and the address names them, so a person can send the address to another.
 
