@@ -24,7 +24,7 @@ Acting as no party, it is a viewer, which needs no identity: only the controller
 ```
 --listen host:port    where it listens; default 127.0.0.1:8373
 --token-file <file>   a file holding the token every request must show; by default it makes one and prints it
---dir <directory>     the directory of machines; default the directory it was started in
+--dir <directory>     the directory of machines, read as a tree; default the directory it was started in
 --interval <time>     how often it reads the store again; default 1s, or 10s for a bucket
 ```
 
@@ -43,7 +43,7 @@ A UI listens on this computer only, and refuses a `--listen` address of any othe
 the directory   Machines and Parts, to read; every UI but none
 no party        Runs, with every run's status; /metrics
 client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value
-controller      Controller; cancelling any run
+controller      Controller, with its trees, secrets and values; cancelling any run
 ```
 
 With nothing named after `corbie ui`, a store that cannot be opened leaves the directory alone: the UI prints why, and offers Machines and Parts. A party or `none` named needs the store, and the UI refuses to start without it.

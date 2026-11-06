@@ -10,7 +10,7 @@ What the UI shows and does follows from the parties it is started as, and from w
 corbie ui                      the machines in a directory, and every party the config holds
 corbie ui none                 no party: the status of every run, and /metrics
 corbie ui client               the config's client: its runs in full, and the machines in a directory
-corbie ui client controller    the controller as well: its runners, clients and secrets
+corbie ui client controller    the controller as well: its runners, clients, trees, secrets and values
 ```
 
 Three uses follow from this.
@@ -40,6 +40,7 @@ Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Eac
 - `corbie run show` prints the words of a run and of its record.
 - The flow package has the rule by which a stage waits for others (see Drawing).
 - The names of the secrets a machine written out uses, which Corbie reads for a submit's reminder.
+- The controller's record of a tree: its client, the directory last submitted there, and each location's lifetime.
 
 ## Reading these specs
 
@@ -57,6 +58,6 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
 
-**[Controller](controller.md).** The runners and clients the controller trusts, and its secrets.
+**[Controller](controller.md).** The runners and clients the controller trusts, its trees, and the secrets and values set at each location.
 
 **[Metrics](metrics.md).** The counts Prometheus reads, from the status of every run.

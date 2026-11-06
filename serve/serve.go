@@ -42,8 +42,8 @@ config holds: it shows only the status of every run the store lets it read.
   --listen host:port    where it listens; default 127.0.0.1:8373
   --token-file <file>   a file holding the token every request must show;
                         by default it makes one and prints it
-  --dir <directory>     the directory of machines; default the directory it
-                        was started in
+  --dir <directory>     the directory of machines, read as a tree; default
+                        the directory it was started in
   --interval <time>     how often it reads the store again; default 1s, or
                         10s for a bucket
 
