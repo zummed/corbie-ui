@@ -37,7 +37,8 @@ people.yaml               included by none
 
 - A machine has its type's icon, its file's name, its first line, its lifetime, and the count of the problems shown at its text. Its name's tooltip gives its location.
 - A piece has its path and how many machines include it: those whose definition written out takes a value from it.
-- When a directory cannot be read, or the tree's files cannot all have locations, Corbie gives no tree. The page then lists no machine, piece or part, only Corbie's error, as `boiler.yaml is beside a directory of the same name`.
+- A file beside a directory of the same name, and the files below it, have no location. Each is listed with Corbie's problem: `it is beside a directory of the same name, which holds the machine at /house/boiler/x: a location has nothing below it`.
+- When a directory cannot be read, Corbie gives no tree. The page then lists no machine, piece or part, only Corbie's error.
 
 ## Problems
 

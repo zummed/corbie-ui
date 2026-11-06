@@ -265,13 +265,16 @@ func Test_machines_list_says_what_it_could_not_read(t *testing.T) {
 	}
 }
 
-func Test_machines_list_is_empty_when_a_location_has_one_below_it(t *testing.T) {
+func Test_machines_a_location_with_one_below_it_is_a_problem_of_its_files(t *testing.T) {
 	dir := project(t)
 	write(t, dir, map[string]string{"helper/x.yaml": "flow: x\nstages:\n  a: { job: ./x.js }\n"})
 	d, _ := newDir(dir)
 	ix := d.index()
-	if !strings.Contains(ix.Unread, "helper.yaml is beside a directory of the same name") || len(ix.Groups) != 0 || len(ix.Pieces) != 0 || len(ix.parts) != 0 {
-		t.Errorf("a tree whose files cannot all have locations lists %+v, %+v, %d parts, and says %q", ix.Groups, ix.Pieces, len(ix.parts), ix.Unread)
+	if ix.Unread != "" || len(ix.at("helper.yaml")) == 0 || len(ix.at("helper/x.yaml")) == 0 || len(ix.at("later.yaml")) != 0 {
+		t.Errorf("a file beside a directory of the same name is not a problem of it and the files below it: %+v, says %q", ix.Groups, ix.Unread)
+	}
+	if !strings.Contains(fmt.Sprint(ix.Problems), "beside a directory of the same name") {
+		t.Errorf("the problems do not say why: %+v", ix.Problems)
 	}
 }
 
