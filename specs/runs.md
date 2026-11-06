@@ -113,7 +113,7 @@ Start                   a run, with input; transient locations             corbi
 ```
 
 - Cancel is offered at a location in a tree of the UI's client. The command cancels each root running there, one after another, and a run that starts in between is not cancelled.
-- Send is offered at any keyed location, and Start at a transient location in a tree of the UI's client. The page shows the answer: for Send the receipt, whether the controller took it; for Start the ID of the run it started, or why it was refused.
+- Send is offered at any keyed location, and Start at a transient location in a tree of the UI's client. The page shows the answer: for Send the receipt, whether the controller took it; for Start the ID of the run it started, a link to its page, or why it was refused.
 
 ## One run
 

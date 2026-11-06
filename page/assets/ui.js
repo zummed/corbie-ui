@@ -73,7 +73,8 @@ function follow() {
 if (main) follow();
 
 // A form that runs a command shows the command's answer beside its button,
-// or its error, untouched; while the command waits, the form says so.
+// or its error, untouched; while the command waits, the form says so. The
+// ID of a run the command started links to the run's page.
 document.addEventListener('submit', async e => {
   const form = e.target;
   if (!form.matches('form[data-act]')) return;
@@ -86,6 +87,13 @@ document.addEventListener('submit', async e => {
     const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) });
     const text = await res.text();
     if (said) { said.textContent = text.trim(); said.className = res.ok ? 'said' : 'said bad'; }
+    const started = res.ok && said && /^started (\S+\/\S+)$/.exec(text.trim());
+    if (started) {
+      said.textContent = 'started ';
+      const a = said.appendChild(document.createElement('a'));
+      a.href = encodeURI('/run/' + started[1]);
+      a.textContent = started[1];
+    }
     if (res.ok && form.dataset.act === 'reset') for (const f of form.querySelectorAll('input:not([type=hidden]), textarea')) f.value = '';
   } catch (err) {
     if (said) { said.textContent = String(err); said.className = 'said bad'; }

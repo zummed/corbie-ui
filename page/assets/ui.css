@@ -85,6 +85,8 @@ form[data-act] { display: inline-flex; align-items: center; gap: 8px; }
 .said { font: 12px var(--mono); color: var(--ink2); }
 .said:empty { display: none; }
 .said.bad { color: var(--rowan); }
+.said a { color: var(--ink); text-decoration: underline 1px color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; }
+.said a:hover { text-decoration-color: currentColor; }
 .said.waiting { animation: wait 1.2s ease-in-out infinite; }
 @keyframes wait { 50% { opacity: .45; } }
 
@@ -180,6 +182,9 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .locs a .name { white-space: normal; overflow-wrap: break-word; line-height: 1.35; }
 .locs a.tree .name { font-weight: 500; }
 .locs .none { margin: 0; padding: 9px 16px; font: 12.5px var(--mono); }
+/* the head of one location: the command under a button is shown whole */
+.panel.here { overflow: visible; }
+.here form.send [data-cmd]::after { left: 0; right: auto; }
 .here form.send { display: flex; gap: 8px; padding: 10px 16px 12px; }
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
