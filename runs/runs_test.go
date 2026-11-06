@@ -306,6 +306,9 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 		if c.Words[1] == "submit" {
 			return page.Answer{Out: `{"id":"lab-client/4"}`}
 		}
+		if strings.HasSuffix(c.Args[0], "#full") {
+			return page.Answer{Status: 1, Out: `{"taken":false,"refused":"/home/rooms/thermostat is at its limit of 3 runs"}`}
+		}
 		return page.Answer{Out: `{"taken":true,"run":"lab-client/3"}`}
 	}
 	mine, err := identity.New("lab-client", identity.Client)
@@ -330,10 +333,16 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 	if w := post("start", url.Values{"at": {"/home/scenes/away"}, "input": {`{"days": 2}`}}); w.Code != 200 || w.Body.String() != "started lab-client/4" {
 		t.Errorf("Start answered %d %q", w.Code, w.Body.String())
 	}
+	// A send the controller refused fails the command, and the page gives
+	// the reason in words.
+	if w := post("send", url.Values{"at": {"/home/rooms/thermostat"}, "key": {"full"}, "event": {"set"}}); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "refused: /home/rooms/thermostat is at its limit of 3 runs") || strings.Contains(w.Body.String(), "{") {
+		t.Errorf("a refused Send answered %d %q", w.Code, w.Body.String())
+	}
 	want := []string{
 		"corbie run cancel /home/rooms/thermostat",
 		`corbie run send /home/rooms/thermostat#hall set {"target":20}`,
 		`corbie run submit /home/scenes/away --input={"days":2}`,
+		"corbie run send /home/rooms/thermostat#full set",
 	}
 	if strings.Join(calls, "\n") != strings.Join(want, "\n") {
 		t.Errorf("the actions ran\n%s", strings.Join(calls, "\n"))

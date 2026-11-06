@@ -418,11 +418,20 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 	}
 	answer := h.Command(r.Context(), call)
 	if answer.Status != 0 {
-		page.Error(w, http.StatusConflict, answer.Error())
+		page.Error(w, http.StatusConflict, refusal(answer))
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	io.WriteString(w, receipt(answer))
+}
+
+// refusal is what a command that failed answered: the reason its receipt
+// gives, in words, or its error as it printed it.
+func refusal(a page.Answer) string {
+	if said := receipt(a); strings.HasPrefix(said, "refused: ") {
+		return said
+	}
+	return a.Error()
 }
 
 // receipt is an action's answer in words: taken, refused with the reason,

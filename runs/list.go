@@ -619,7 +619,7 @@ func (h *handler) atAct(w http.ResponseWriter, r *http.Request) {
 	}
 	answer := h.Command(r.Context(), call)
 	if answer.Status != 0 {
-		page.Error(w, http.StatusConflict, answer.Error())
+		page.Error(w, http.StatusConflict, refusal(answer))
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
