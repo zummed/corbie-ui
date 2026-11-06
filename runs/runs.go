@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,13 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"cmd":    func(c *page.Call) string { return c.String() },
 	"word":   pluralWord,
 	"middle": middle,
+	"breaks": breaks,
 }).ParseFS(files, "list.html", "run.html"))
+
+// breaks writes a location so that a line may break after each /.
+func breaks(location string) template.HTML {
+	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(location), "/", "/<wbr>"))
+}
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
@@ -279,7 +286,11 @@ func (h *handler) group(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	html, err := render("steprows", traced(row.Trace, reached, byID, h.mine, at, day, row.Depth+1))
+	depth := row.Depth
+	if d, err := strconv.Atoi(r.URL.Query().Get("depth")); err == nil && d >= 0 {
+		depth = d
+	}
+	html, err := render("steprows", traced(row.Trace, reached, byID, h.mine, at, day, depth+1))
 	if err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return

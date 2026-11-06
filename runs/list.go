@@ -423,7 +423,7 @@ type lister struct {
 // it runs, then the runs it started that run or ended in the window,
 // newest first, the first twenty of them.
 func (l lister) line(r *client.Run) rootLine {
-	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
+	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: l.name(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
 	if r.HasEnded() {
 		line.Took = took(r.Ended.Sub(r.Started))
 	} else {
@@ -446,11 +446,20 @@ func (l lister) line(r *client.Run) rootLine {
 	return line
 }
 
+// name gives a run's name on the list: on the page narrowed to its keyed
+// location, its key, which tells its runs apart whatever their titles.
+func (l lister) name(r *client.Run) string {
+	if r.Key != "" && r.Location == l.prefix && r.Parent == "" {
+		return addressOf(r, l.prefix)
+	}
+	return nameOf(r, l.prefix)
+}
+
 // row gives a run a root started: a running one with the chain of running
 // runs below it and what the deepest waits on, an ended one with the chain
 // of the newest run at each level below it and what it ended with.
 func (l lister) row(r *client.Run) row {
-	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
+	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: l.name(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
 	if !r.HasEnded() {
 		chain := descent(r, l.under, running)
 		w.folded = fold(chain)

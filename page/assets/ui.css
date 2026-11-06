@@ -175,12 +175,14 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .locs { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; }
 .locs h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2); }
 .locs a.loc.in .name, .locs a.loc.in small { padding-left: 14px; }
+/* a location is written whole, on as many lines as it needs: two locations may differ only at their end */
+.locs a .name { white-space: normal; overflow-wrap: break-word; line-height: 1.35; }
 .locs a.tree .name { font-weight: 500; }
 .locs .none { margin: 0; padding: 9px 16px; font: 12.5px var(--mono); }
 .here form.send { display: flex; gap: 8px; padding: 10px 16px 12px; }
 .reqs { flex: none; }
 .reqs .none { margin: 0; padding: 9px 16px; font: 13px var(--mono); }
-.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.6fr) 100px 100px; gap: 18px; align-items: center;
+.req > summary, .req .node { display: grid; grid-template-columns: 120px minmax(0, 1.8fr) minmax(0, 1.7fr) minmax(0, 1.5fr) 90px 80px; gap: 18px; align-items: center;
   height: 31px; padding: 0 16px; border-bottom: 1px solid var(--line); font: 13px/1 var(--mono); white-space: nowrap; transition: background .15s; }
 .req > summary > *, .req .node > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .req > summary > :first-child, .req .node > :first-child { overflow: visible; }

@@ -35,7 +35,7 @@
   <div class="list">{{with .Every}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name">{{.Name}}</span><span></span></a>{{end}}
   {{range .Clients}}<h2 class="group" title="the trees of the client {{.Name}}">{{.Name}}</h2>
     {{range .Trees}}{{$tree := .}}{{if .Prefix}}<a class="tree" href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name" title="{{.Prefix}}">{{.Prefix}}</span><span class="dim">tree</span></a>{{end}}
-      {{range .Places}}<a class="loc{{if $tree.Prefix}} in{{end}}" href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name" title="{{.Location}}">{{.Name}}</span><span class="dim">{{if .Status}}<span class="st {{.Status}}">{{.Status}}</span>{{else}}{{.Says}}{{end}}</span>{{with .Lifetime}}<small>{{.}}</small>{{end}}</a>{{end}}
+      {{range .Places}}<a class="loc{{if $tree.Prefix}} in{{end}}" href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}><span></span><span class="name" title="{{.Location}}">{{breaks .Name}}</span><span class="dim">{{if .Status}}<span class="st {{.Status}}">{{.Status}}</span>{{else}}{{.Says}}{{end}}</span>{{with .Lifetime}}<small>{{.}}</small>{{end}}</a>{{end}}
     {{end}}
   {{else}}<p class="none dim">no runs at any location</p>{{end}}</div>
 </nav>{{end}}

@@ -251,8 +251,54 @@ func rowsAt(id string, entries []client.Entry, byID map[string]*client.Run, read
 			of[e.ID] = append(of[e.ID], e)
 		}
 	}
-	b := &rowBuilder{of: of, byID: byID, readable: readable, top: id, now: now, day: day}
+	b := &rowBuilder{of: of, byID: byID, readable: readable, top: id, now: now, day: day, notes: notesOf(entries)}
 	return b.rows(id, depth)
+}
+
+// A sendNote is what the controller noted in a sender's record of an event
+// it sent to an address: why it was not delivered, or the run it went to in
+// place of the run the step named.
+type sendNote struct {
+	undelivered, movedTo string
+}
+
+// notesOf gives the controller's notes of events sent to addresses, by the
+// message that sent each. A note's message is named for the message it is
+// about: <message>.note, or <message>.moved.<the end of the run's ID>.
+func notesOf(entries []client.Entry) map[string]sendNote {
+	notes := map[string]sendNote{}
+	for _, e := range entries {
+		for _, ev := range e.Events {
+			if !ev.Own || ev.Name != instance.KindNote {
+				continue
+			}
+			name := ev.Source[strings.LastIndexByte(ev.Source, '/')+1:]
+			text, _ := ev.Data.(string)
+			if message, ok := strings.CutSuffix(name, ".note"); ok {
+				n := notes[message]
+				_, n.undelivered, _ = strings.Cut(text, " was not delivered: ")
+				n.undelivered = cmp.Or(n.undelivered, text)
+				notes[message] = n
+			} else if message, tail, ok := strings.Cut(name, ".moved."); ok {
+				n := notes[message]
+				n.movedTo = tail
+				notes[message] = n
+			}
+		}
+	}
+	return notes
+}
+
+// noted says whether a note in a run's record is about an event the run
+// sent to an address, which the row of that send says.
+func (b *rowBuilder) noted(e client.Entry, text string) bool {
+	for _, ev := range e.Events {
+		name := ev.Source[strings.LastIndexByte(ev.Source, '/')+1:]
+		if ev.Own && ev.Name == instance.KindNote && ev.Data == text && (strings.HasSuffix(name, ".note") || strings.Contains(name, ".moved.")) {
+			return true
+		}
+	}
+	return false
 }
 
 type rowBuilder struct {
@@ -262,6 +308,7 @@ type rowBuilder struct {
 	// top is the run whose rows these are, which has a row for its start.
 	top      string
 	now, day time.Time
+	notes    map[string]sendNote
 }
 
 // steps counts the steps of a run and of every run under it.
@@ -487,7 +534,9 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			case instance.AskCancel:
 				add(stepRow{What: say("cancelled ", bold(jobOf(a.Name))), Facts: []fact{{Name: "job", Text: a.Name}}})
 			case instance.AskNote:
-				add(stepRow{What: say(a.Text), Facts: []fact{{Name: "note", Text: a.Text}}})
+				if !b.noted(e, a.Text) {
+					add(stepRow{What: say(a.Text), Facts: []fact{{Name: "note", Text: a.Text}}})
+				}
 			}
 		}
 		if e.Status != instance.Running && e.Status != "" {
@@ -536,18 +585,27 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 		event, data = a.Event.Name, a.Event.Data
 	}
 	r := stepRow{In: data, Facts: []fact{{Name: "event", Text: event}}}
+	note := b.notes[a.Message]
+	undelivered := a.Undelivered || note.undelivered != ""
 	var to *link
 	if id := cmp.Or(a.Run, a.To); id != "" {
+		if note.movedTo != "" {
+			id = id[:strings.LastIndexByte(id, '/')+1] + note.movedTo
+		}
 		l := linkOf(id, b.byID)
 		to = &l
 	}
 	switch {
 	case a.Location != "":
+		address := sentTo(a)
+		if h := b.byID[a.To]; a.Key == "" && h != nil && h.Key != "" && h.Location == a.Location {
+			address += "#" + h.Key
+		}
 		r.Kind = "send"
-		r.What = say("⇢ sent ", bold(event), " to ", bold(sentTo(a)))
-		r.Facts = append(r.Facts, fact{Name: "to", Text: sentTo(a)})
+		r.What = say("⇢ sent ", bold(event), " to ", bold(address))
+		r.Facts = append(r.Facts, fact{Name: "to", Text: address})
 		switch {
-		case a.Undelivered:
+		case undelivered:
 		case a.Run != "" && to != nil:
 			r.What = append(r.What, word{Text: " · started "}, linked(to))
 		case to != nil:
@@ -560,19 +618,22 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	default:
 		r.What = say("sent ", bold(event), " to its parent")
 	}
-	if to != nil && !a.Undelivered {
+	if to != nil && !undelivered {
 		name := "reached"
 		if a.Run != "" {
 			name = "started"
+		}
+		if note.movedTo != "" {
+			name = "went to"
 		}
 		r.Facts = append(r.Facts, fact{Name: name, Text: to.ID + statusOf(b.byID[to.ID]), Run: to})
 		if a.Location != "" {
 			r.Trace = b.traceOf(*to, &trace{Started: a.Run != "", Event: event, Message: a.Message})
 		}
 	}
-	if a.Undelivered {
+	if undelivered {
 		r.What = append(r.What, word{Text: " · undelivered"})
-		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: cmp.Or(a.Text, "it is not running")})
+		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: cmp.Or(a.Text, note.undelivered, "it is not running")})
 	}
 	return r
 }

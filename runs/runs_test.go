@@ -270,7 +270,7 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 func Test_runs_keyed_runs_are_listed_by_key(t *testing.T) {
 	runs := []*client.Run{
 		run("lab-client/1", "thermostat", "statechart", "running", 2*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/home/rooms/thermostat", "kitchen", 1 }),
-		run("lab-client/2", "thermostat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/home/rooms/thermostat", "hall", 1 }),
+		run("lab-client/2", "thermostat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers, r.Title = "/home/rooms/thermostat", "hall", 1, "a thermostat" }),
 		run("lab-client/3", "away", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Jobs = "/home/scenes/away", 1 }),
 	}
 	facts := map[string]fixed{"lab-client/1": {Tree: "/home", Lifetime: "keyed"}, "lab-client/2": {Tree: "/home", Lifetime: "keyed"}, "lab-client/3": {Tree: "/home", Lifetime: "transient"}}
@@ -282,7 +282,7 @@ func Test_runs_keyed_runs_are_listed_by_key(t *testing.T) {
 		t.Errorf("the location's head is %+v", v.Here)
 	}
 	v = listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home"}}), at, "lab-client")
-	if got := strings.Join(lineNames(v.Idle), " "); got != "rooms/thermostat#hall rooms/thermostat#kitchen" || v.Here != nil || lineNames(v.Busy)[0] != "scenes/away" {
+	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat rooms/thermostat#kitchen" || v.Here != nil || lineNames(v.Busy)[0] != "scenes/away" {
 		t.Errorf("at /home the runs are named %s and %v, with the head %+v", got, lineNames(v.Busy), v.Here)
 	}
 	if h := listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home/scenes/away"}}), at, "lab-client").Here; h == nil || h.Send || !h.Start {
@@ -596,6 +596,39 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	started := rowsOf("a-client/4", []client.Entry{{ID: "a-client/4", Step: 1, Time: sent, Status: "running"}}, byID, nil, at, sent)
 	if len(started) != 1 || started[0].Said() != "started by /rook/bridges/slack" || linkIn(started[0]) != "a-client/1" {
 		t.Errorf("a run a send started begins with %+v", started)
+	}
+
+	// The controller notes an event that was not delivered, or that went to
+	// another run, in a message named for the send: the send's row says so,
+	// and the note has no row of its own. A send to a keyed run by its ID
+	// gives the run's key.
+	notes := []client.Entry{{ID: "a-client/1", Step: 4, Time: sent, Status: "running", Asks: []instance.Ask{
+		{Kind: instance.AskEvent, Location: "/home/devices/boiler", To: "a-client/3", Event: &machine.Event{Name: "off"}, Message: "a-client.1.00000004.0001.send"},
+		{Kind: instance.AskEvent, Location: "/rook/chat", Key: key, To: "a-client/7", Event: &machine.Event{Name: "message"}, Message: "a-client.1.00000004.0002.send"},
+		{Kind: instance.AskEvent, Location: "/rook/chat", To: "a-client/4", Direct: true, Event: &machine.Event{Name: "pong"}, Message: "a-client.1.00000004.0003.send"},
+	}}}
+	for i, n := range []struct{ message, text string }{
+		{"a-client.1.00000004.0001.send.note", "the event off sent to /home/devices/boiler was not delivered: /home/devices/boiler does not receive off from the run a-client/1 at /rook/bridges/slack"},
+		{"a-client.1.00000004.0002.send.moved.4", "the event message sent to /rook/chat#slack:C1 went to the run a-client/4, not a-client/7"},
+	} {
+		notes = append(notes, client.Entry{ID: "a-client/1", Step: 5 + i, Time: sent, Status: "running",
+			Events: []instance.Arrived{{Event: machine.Event{Name: "note", Data: n.text}, Source: "ctl/inbox/ctl/" + n.message, Own: true}},
+			Asks:   []instance.Ask{{Kind: instance.AskNote, Text: n.text}}})
+	}
+	rows = rowsOf("a-client/1", notes, byID, nil, at, sent)
+	said = nil
+	for _, r := range rows {
+		said = append(said, r.Said())
+	}
+	if strings.Join(said, "\n") != strings.Join([]string{
+		"⇢ sent off to /home/devices/boiler · undelivered",
+		"⇢ sent message to /rook/chat#slack:C1 · chat",
+		"⇢ sent pong to /rook/chat#slack:C1 · chat",
+	}, "\n") {
+		t.Errorf("the noted sends are\n%s", strings.Join(said, "\n"))
+	}
+	if len(rows) == 3 && (rows[0].Facts[len(rows[0].Facts)-1].Text != "/home/devices/boiler does not receive off from the run a-client/1 at /rook/bridges/slack" || linkIn(rows[1]) != "a-client/4" || linkIn(rows[0]) != "") {
+		t.Errorf("an undelivered send says %+v, and a moved one links to %q", rows[0].Facts, linkIn(rows[1]))
 	}
 
 	// A job asked again has its own input and output: Corbie writes the
@@ -1030,7 +1063,7 @@ func Test_runs_a_call_shows_the_run_it_called(t *testing.T) {
 	ctx := context.Background()
 	submit(t, l, "/lab", map[string]string{
 		"trip.yaml":    "flow: trip\nallow: [send:weather]\nstages:\n  forecast:\n    job: { call: { at: weather }, input: { days: 2 } }\noutput: ${stages.forecast.output}\n",
-		"weather.yaml": "flow: weather\nstages:\n  look:\n    job: { script: ./look.js, input: \"${input}\" }\noutput: ${stages.look.output}\n",
+		"weather.yaml": "flow: weather\ntitle: weather for ${input.days} days\nstages:\n  look:\n    job: { script: ./look.js, input: \"${input}\" }\noutput: ${stages.look.output}\n",
 		"look.js":      "return { temp: 12, days: input.days }",
 	})
 	trip, err := l.Start(ctx, client.Start{At: "/lab/trip"})
@@ -1053,8 +1086,13 @@ func Test_runs_a_call_shows_the_run_it_called(t *testing.T) {
 	if text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(group, ""); !strings.Contains(text, "stage look done") {
 		t.Errorf("the call's group does not read stage look done:\n%s", text)
 	}
-	if !strings.Contains(body, `<span class="st done">done</span>`) {
-		t.Errorf("the call's row does not end with the called run's status:\n%s", body)
+	if !strings.Contains(body, `<span class="name">weather for 2 days</span> · <span class="st done">done</span>`) {
+		t.Errorf("the call's row does not end with the called run's title and status:\n%s", body)
+	}
+	// A group opened inside another is one level below the row that opened
+	// it, however deep that row is.
+	if deep := get(t, h, strings.Replace(groupOf(t, body, "called /lab/weather · weather"), "depth=0", "depth=3", 1)); !strings.Contains(deep, "--d: 4") || strings.Contains(deep, "--d: 1") {
+		t.Errorf("a group opened at depth 3 is not at depth 4:\n%s", deep)
 	}
 
 	// The weather's page begins with the trip, which called it.

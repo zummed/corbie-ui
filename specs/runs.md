@@ -35,6 +35,7 @@ ci-client
   /work/digest             keyed       1 running
 ```
 
+- A location is written whole, on as many lines as it needs, since two locations may differ only at their end.
 - A tree of the UI's client is a row of its own, its prefix read from the record of a run there, with its locations written from the prefix under it.
 - A location in another client's tree is written in full under that client, since only a tree's client reads which tree a run is in.
 - A location's lifetime is read from the record of a run there, where its tree is the UI's client's. Elsewhere a location with a keyed run is `keyed`, and any other shows none.
@@ -102,7 +103,7 @@ The page is narrowed by location prefix, `?at=/home`, and by label, as `--label`
 
 ### One location
 
-Narrowed to one location, the page has a head above the sections with the location, its lifetime, and its tree and client where the UI knows them. Its keyed runs are each listed by key. With a client among the UI's parties, the head offers:
+Narrowed to one location, the page has a head above the sections with the location, its lifetime, and its tree and client where the UI knows them. Its keyed runs are each listed by key, whatever their titles. With a client among the UI's parties, the head offers:
 
 ```
 Cancel every run here   every run of the location in the client's tree     corbie run cancel <location>
@@ -144,12 +145,14 @@ Sends and calls between runs read:
 ⇢ sent set to /home/devices/boiler · boiler               links to the run that took it
 ⇢ sent message to /home/chat#slack:C1 · started chat      the send started a run at a keyed location
 ⇢ sent set to /home/rooms/thermostat#hall · undelivered   its details say why
+⇢ sent ack to /home/rooms/thermostat#hall · thermostat    a reply to a keyed run gives its key
 ⇢ called /home/services/weather · weather                 a call job; links to the run it started
 ```
 
 - Holding the pointer over a row's machine shows its run's title, its address and its ID.
 - A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
 - A send and an event from a run have a dashed mark.
+- The controller notes in the sender's record a send that was not delivered, or whose event went to another run, as when another send took the key first. The send's row says it, and the note has no row of its own.
 - An undelivered send gives the reason in its details: the receiver's `receive:` does not list the sender, no run is running there, the location's limit of runs is reached, the run is a flow or an agent, which takes no events, or the run was cancelled while it kept the event under `defer:`.
 - A send a layer of the sender refused is `denied`: a send job's row says so, and a statechart's send ends its run `failed (denied)`, whose details give what was refused, the layer and the fix.
 - The row that started a child ends with the child's title where it has one, its status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
@@ -158,7 +161,7 @@ Sends and calls between runs read:
 
 ### Following a request
 
-A send or a call to a run in a tree of the UI's client folds the rows it caused in that run, so one request can be followed from run to run on one page. Its row ends with the run's status, and its group is folded:
+A send or a call to a run in a tree of the UI's client folds the rows it caused in that run, so one request can be followed from run to run on one page. Its row ends with the run's title, where it has one other than its machine's name, and its status, and its group is folded:
 
 ```
 call    every row of the run the call started
