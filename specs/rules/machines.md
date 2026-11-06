@@ -14,7 +14,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## The list
 
-**R-machines-01** The list holds each machine by its directory, each with its type's icon, its file's name, its first line, its lifetime, its location in its name's tooltip and the count of the problems shown at its text; then each piece, with how many machines take a value from it. A location is read at the prefix a submit gives the directory by default, which the page gives. *Test:* `machines_list_shows_what_each_item_is`
+**R-machines-01** The list holds each machine by its directory, each with its type's icon, its file's name, its first line, its lifetime, its location in its name's tooltip and the count of the problems shown at its text; then each piece, with how many machines take a value from it. A location is read at the prefix the page gives: acting as the controller, that of the tree the directory was last submitted at, where there is one; otherwise the prefix a submit gives the directory by default. *Test:* `machines_list_shows_what_each_item_is`, `machines_directory_is_read_at_its_recorded_prefix`
 
 ## Problems
 
@@ -42,4 +42,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`), and Drawing to draw a definition and to find a part's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.PartFile`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`), Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a part's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.PartFile`).

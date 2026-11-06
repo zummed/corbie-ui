@@ -4,7 +4,14 @@ The Machines page shows the machines in one directory as the tree `corbie run su
 
 ## The directory
 
-The directory is the one `--dir` names, by default the one the UI was started in. It is read with Corbie's `client.ReadTree`, as `corbie run submit` reads it, at the prefix a submit gives by default: `/` and the directory's name.
+The directory is the one `--dir` names, by default the one the UI was started in. It is read with Corbie's `client.ReadTree`, as `corbie run submit` reads it, at a prefix:
+
+```
+acting as the controller, the directory last submitted at a tree   that tree's prefix, such as /home
+any other                                                         the prefix a submit gives by default: / and the directory's name
+```
+
+Its locations, and where its secrets and values are set, are then those of the runs the tree starts.
 
 ```
 house/devices/boiler.yaml       /house/devices/boiler       a machine: its first key gives a type
@@ -15,9 +22,9 @@ house/.rook/review.yaml         /house/.rook/review         a machine in a direc
 - A machine is a `.yaml` file whose first key gives a type, and its location is its path under the prefix, without `.yaml`.
 - A piece is a `.yaml` file with no type, or any other file a machine takes a value from, such as `style.md`.
 - A path in a machine may name any file inside the directory. Every path a request names is inside it, and a path that leaves it is refused.
-- The UI reads the directory again only when a file in it changes, by name, size or time of change, and the Machines and Parts pages share what it read.
+- The UI reads the directory again only when a file in it changes, by name, size or time of change, or its prefix does, and the Machines and Parts pages share what it read.
 
-The page gives the prefix above the list, `at /house`. A tree submitted with `--at` has the same locations under its own prefix.
+The page gives the prefix above the list, `at /house`.
 
 ## The list
 

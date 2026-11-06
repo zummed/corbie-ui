@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
+	corbiectl "github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
@@ -83,6 +85,14 @@ func corbie(t *testing.T, stdin string, args ...string) {
 // and gives its controller and its store.
 func lab(t *testing.T) (*identity.Identity, store.Store) {
 	t.Helper()
+	_, ctl, s := labIn(t)
+	return ctl, s
+}
+
+// labIn sets one computer up as lab does, and gives its config directory as
+// well.
+func labIn(t *testing.T) (string, *identity.Identity, store.Store) {
+	t.Helper()
 	dir := t.TempDir()
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
 	corbie(t, "", "init", "--store", at, "--name", "lab", "--ceiling", "all", "--config", config)
@@ -95,7 +105,7 @@ func lab(t *testing.T) (*identity.Identity, store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ctl, s
+	return config, ctl, s
 }
 
 func do(h http.Handler, method, target string, form url.Values) *httptest.ResponseRecorder {
@@ -194,7 +204,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 		"talker.yaml":        "agent: talker\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nsystem: { include: ./prompt.md }\n",
 	})
 	d, _ := newDir(dir)
-	ix := d.index()
+	ix := d.index("")
 	got := listed(ix)
 	want := []string{
 		". bad.yaml flow: bad 2", ". helper.yaml agent: helper transient 0", ". keyed.yaml statechart: keyed keyed 0", ". later.yaml flow: later transient 0",
@@ -269,7 +279,7 @@ func Test_machines_a_location_with_one_below_it_is_a_problem_of_its_files(t *tes
 	dir := project(t)
 	write(t, dir, map[string]string{"helper/x.yaml": "flow: x\nstages:\n  a: { job: ./x.js }\n"})
 	d, _ := newDir(dir)
-	ix := d.index()
+	ix := d.index("")
 	if ix.Unread != "" || len(ix.at("helper.yaml")) == 0 || len(ix.at("helper/x.yaml")) == 0 || len(ix.at("later.yaml")) != 0 {
 		t.Errorf("a file beside a directory of the same name is not a problem of it and the files below it: %+v, says %q", ix.Groups, ix.Unread)
 	}
@@ -290,7 +300,7 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		"z.js":              "return 1",
 	})
 	d, _ := newDir(dir)
-	ix := d.index()
+	ix := d.index("")
 	var atPart int
 	for _, p := range ix.Problems {
 		switch p.File {
@@ -343,7 +353,7 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		}
 		write(t, dir, files)
 		d, _ := newDir(dir)
-		ix := d.index()
+		ix := d.index("")
 		if len(ix.Problems) != 1 || ix.Problems[0].File != "base.yaml" || len(ix.Problems[0].Breaks) != 3 {
 			t.Errorf("a %s file three machines include gives the problems %+v", name, ix.Problems)
 		}
@@ -363,7 +373,7 @@ func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 		"z.yaml":          "flow: z\nstages: {}\ncolour: blue\n",
 	})
 	d, _ := newDir(dir)
-	ix := d.index()
+	ix := d.index("")
 	if len(ix.Problems) == 0 {
 		t.Fatalf("no problems")
 	}
@@ -565,6 +575,52 @@ func Test_machines_secrets_and_values_used_are_listed(t *testing.T) {
 	}
 }
 
+// The directory a client submitted at a prefix of its own is read at that
+// prefix, where the UI acts as the controller, so its locations and where
+// its secrets and values are set are those of its runs.
+func Test_machines_directory_is_read_at_its_recorded_prefix(t *testing.T) {
+	config, ctl, s := labIn(t)
+	h, dir := machines(t, Config{Controller: ctl, Store: s})
+	write(t, dir, map[string]string{"shipper.yaml": shipper})
+	ctx := context.Background()
+	if err := secret.SetValue(ctx, s, ctl, "/home", "HUB", "hub.lan"); err != nil {
+		t.Fatal(err)
+	}
+	before := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()
+	if !strings.Contains(before, "at /"+filepath.Base(dir)) || !strings.Contains(before, "value · not set at /"+filepath.Base(dir)+"/shipper or above") {
+		t.Errorf("a directory with no tree is not read at the prefix a submit gives it by default:\n%s", before)
+	}
+	tree, err := client.ReadTree(dir, "/home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, err := identity.Config{Dir: config}.Load(identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := client.New(me, ctl.Card, s)
+	message, err := c.Submit(ctx, tree, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := corbiectl.New(ctl, s).Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if receipt, err := c.WaitReceipt(ctx, message, time.Minute, 10*time.Millisecond); err != nil || !receipt.Taken {
+		t.Fatalf("the submit answered %+v, %v", receipt, err)
+	}
+	after := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()
+	for _, want := range []string{"at /home", "/home/shipper", "value · set at /home"} {
+		if !strings.Contains(after, want) {
+			t.Errorf("the directory submitted at /home does not show %s:\n%s", want, after)
+		}
+	}
+	h, _ = New(Config{Dir: dir, Interval: time.Second, Shell: page.Shell{}})
+	if alone := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String(); !strings.Contains(alone, "at /"+filepath.Base(dir)) {
+		t.Errorf("a client alone does not read the directory at the prefix a submit gives it by default:\n%s", alone)
+	}
+}
+
 func Test_machines_a_machine_shows_its_location(t *testing.T) {
 	h, dir := machines(t, Config{})
 	prefix := "/" + filepath.Base(dir)
@@ -647,17 +703,17 @@ func Test_machines_directory_is_read_once_per_change(t *testing.T) {
 	dir := project(t)
 	d, _ := newDir(dir)
 	c := &indexed{dir: d}
-	first := c.current()
-	if c.current() != first {
+	first := c.current("")
+	if c.current("") != first {
 		t.Errorf("the directory was read again with nothing changed")
 	}
 	write(t, dir, map[string]string{"new.yaml": "flow: new\nstages:\n  a: { job: .kit/hear.js }\n"})
-	next := c.current()
+	next := c.current("")
 	if next == first || !slices.Contains(listed(next), ". new.yaml flow: new transient 0") {
 		t.Errorf("a file written is not read: %v", listed(next))
 	}
 	write(t, dir, map[string]string{"parts/part.yaml": "does: changed\ntools: {}\n"})
-	if c.current() == next {
+	if c.current("") == next {
 		t.Errorf("a change to a file that is not a machine is not read")
 	}
 }
@@ -671,7 +727,7 @@ func Test_machines_dotted_files_are_read_as_any_other(t *testing.T) {
 		"uses.yaml":         "flow: uses\nstages:\n  a: { job: { machine: .kit/reached.yaml } }\n",
 	})
 	d, _ := newDir(dir)
-	ix := d.index()
+	ix := d.index("")
 	prefix := "/" + filepath.Base(dir)
 	for _, want := range []string{".kit .kit/alone.yaml agent: alone transient 0", ".kit .kit/broken.yaml flow: broken 2"} {
 		if !slices.Contains(listed(ix), want) {

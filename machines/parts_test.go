@@ -87,7 +87,7 @@ func partsView_(t *testing.T, dir, open string) partsView {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return d.index().partsView(open)
+	return d.index("").partsView(open)
 }
 
 func byDoes(t *testing.T, v partsView, does string) part {

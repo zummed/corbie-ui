@@ -386,6 +386,7 @@ svg.machine { flex: none; height: auto; }
 .ide > * { min-height: 0; overflow: auto; }
 .files { display: flex; flex-direction: column; }
 .files > .head { position: sticky; top: 0; z-index: 1; background: var(--plate); }
+.files > .head .at { flex: none; color: var(--ink); }
 .files .filelist > p { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); font: 11.5px/1.4 var(--mono); }
 .files .unread { color: var(--rowan); }
 .files .unread a { text-decoration: underline; text-underline-offset: 3px; }

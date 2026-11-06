@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zummed/corbie-ui/controller"
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
@@ -114,9 +115,34 @@ type use struct {
 	Name, Kind, State string
 }
 
+// tree gives the index of the directory, read at the prefix of the tree
+// the controller recorded from it, where the UI acts as the controller and
+// it recorded one; at the prefix a submit gives by default otherwise.
+func (h *handler) tree(ctx context.Context) (*index, error) {
+	if h.Controller == nil {
+		return h.index.current(""), nil
+	}
+	trees, err := controller.Trees(ctx, h.Store, h.Controller)
+	if err != nil {
+		return nil, err
+	}
+	at := ""
+	for _, t := range trees {
+		if t.Directory == h.dir.real {
+			at = t.Prefix
+			break
+		}
+	}
+	return h.index.current(at), nil
+}
+
 func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	ix := h.index.current()
+	ix, err := h.tree(r.Context())
+	if err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	v := view{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil}
 	if v.Open == "" && len(ix.Groups) > 0 {
 		v.Open = ix.Groups[0].Entries[0].Path
@@ -309,8 +335,12 @@ func hrefs(file string, open map[string]bool) func(string) string {
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	open := r.URL.Query().Get("file")
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(context.Context) ([]page.Part, error) {
-		v := view{index: h.index.current(), Open: open}
+	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) ([]page.Part, error) {
+		ix, err := h.tree(ctx)
+		if err != nil {
+			return nil, err
+		}
+		v := view{index: ix, Open: open}
 		if open != "" {
 			h.opened(&v)
 		}

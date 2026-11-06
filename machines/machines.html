@@ -23,7 +23,7 @@
 {{define "machines"}}
 <div class="ide">
   <nav class="panel files" aria-label="The machines in {{.DirFull}}">
-    <div class="head"><span class="facts" title="{{.DirFull}}">{{.Dir}}</span>{{if .Prefix}}<span class="facts" title="corbie run submit records the directory at {{.Prefix}} when no --at gives another prefix">at {{.Prefix}}</span>{{end}}</div>
+    <div class="head"><span class="facts" title="{{.DirFull}}">{{.Dir}}</span>{{if .Prefix}}<span class="facts at" title="the locations of the directory's machines are under {{.Prefix}}">at {{.Prefix}}</span>{{end}}</div>
     {{template "files" .}}
     {{template "disk" .}}
   </nav>

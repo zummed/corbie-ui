@@ -13,8 +13,8 @@ import (
 )
 
 // An index is what the pages show of the directory, read once each time a
-// file in it changes: each machine as Corbie reads it, at its location
-// under the prefix a submit gives by default, the list, the pieces, each
+// file in it changes or its prefix does: each machine as Corbie reads it, at
+// its location under the prefix, the list, the pieces, each
 // problem once, and the parts.
 type index struct {
 	Prefix   string
@@ -43,29 +43,31 @@ type entry struct {
 }
 
 // indexed keeps the index of a directory, and reads it again only when the
-// directory changed.
+// directory changed, or the prefix it is read at.
 type indexed struct {
-	dir   *dir
-	mu    sync.Mutex
-	stamp string
-	ix    *index
+	dir       *dir
+	mu        sync.Mutex
+	stamp, at string
+	ix        *index
 }
 
-// current gives the index of the directory as it is now.
-func (c *indexed) current() *index {
+// current gives the index of the directory as it is now, read at the
+// prefix at, or at the prefix a submit gives it by default where at is "".
+func (c *indexed) current(at string) *index {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if stamp := c.dir.stamp(); c.ix == nil || stamp != c.stamp {
-		c.ix, c.stamp = c.dir.index(), stamp
+	if stamp := c.dir.stamp(); c.ix == nil || stamp != c.stamp || at != c.at {
+		c.ix, c.stamp, c.at = c.dir.index(at), stamp, at
 	}
 	return c.ix
 }
 
 // index reads every machine in the directory with Corbie's own reader, as
-// a tree at the prefix a submit gives it by default.
-func (d *dir) index() *index {
+// a tree at the prefix at, or at the prefix a submit gives it by default
+// where at is "".
+func (d *dir) index(at string) *index {
 	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, included: map[string][]string{}}
-	tree, err := client.ReadTree(d.root, "")
+	tree, err := client.ReadTree(d.root, at)
 	if err != nil {
 		ix.Unread = err.Error()
 		return ix

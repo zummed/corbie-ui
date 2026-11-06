@@ -310,8 +310,12 @@ func writtenTool(name, does string, written any, file string) partTool {
 
 // partsPage reads the Parts page as an address asks for it: the part
 // chosen, and its file's text where the address says view=text.
-func (h *handler) partsPage(q url.Values) (partsView, error) {
-	v := h.index.current().partsView(q.Get("part"))
+func (h *handler) partsPage(ctx context.Context, q url.Values) (partsView, error) {
+	ix, err := h.tree(ctx)
+	if err != nil {
+		return partsView{}, err
+	}
+	v := ix.partsView(q.Get("part"))
 	v.Dir = shortly(h.Dir)
 	if v.Open != nil && v.Open.File != "" && q.Get("view") == "text" {
 		src, _, err := h.dir.read(v.Open.File)
@@ -326,7 +330,7 @@ func (h *handler) partsPage(q url.Values) (partsView, error) {
 // showParts is the Parts page.
 func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	v, err := h.partsPage(q)
+	v, err := h.partsPage(r.Context(), q)
 	if err != nil {
 		page.Error(w, http.StatusNotFound, err.Error())
 		return
@@ -357,8 +361,8 @@ func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
 func (h *handler) streamParts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(context.Context) ([]page.Part, error) {
-		v, err := h.partsPage(q)
+	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) ([]page.Part, error) {
+		v, err := h.partsPage(ctx, q)
 		if err != nil {
 			return nil, err
 		}

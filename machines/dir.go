@@ -24,7 +24,11 @@ type dir struct {
 }
 
 func newDir(root string) (*dir, error) {
-	real, err := filepath.EvalSymlinks(root)
+	full, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	real, err := filepath.EvalSymlinks(full)
 	if err != nil {
 		return nil, err
 	}
