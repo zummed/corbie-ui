@@ -197,6 +197,7 @@ func waitsFor(s *flow.Stage) []string {
 		reads = append(reads, machine.ReadsIn(s.Job.Input, "stages")...)
 		reads = append(reads, machine.Reads(s.Job.Machine, "stages")...)
 		reads = append(reads, machine.Reads(s.Job.Script, "stages")...)
+		reads = append(reads, machine.ReadsIn(s.Job.Addressed(), "stages")...)
 	}
 	reads = append(reads, machine.ReadsIn(s.Each, "stages")...)
 	reads = append(reads, machine.ReadsIn(s.Blob, "stages")...)

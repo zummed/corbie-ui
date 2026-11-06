@@ -10,7 +10,7 @@ What the UI shows and does follows from the parties it is started as, and from w
 corbie ui                      the machines in a directory, and every party the config holds
 corbie ui none                 no party: the status of every run, and /metrics
 corbie ui client               the config's client: its runs in full, and the machines in a directory
-corbie ui client controller    the controller as well: its runners, clients and secrets
+corbie ui client controller    the controller as well: its runners, clients, trees, secrets and values
 ```
 
 Three uses follow from this.
@@ -36,9 +36,12 @@ The program links Corbie's packages, and carries the machine types and the plugi
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 
 - Corbie's command line opens a config's parties to read the store.
-- An `include:` names a file from the file that writes it when it begins `./`, and from the top of the project otherwise.
+- An `include:` names a file from the file that writes it when it begins `./`, and from the top of the tree otherwise.
 - `corbie run show` prints the words of a run and of its record.
 - The flow package has the rule by which a stage waits for others (see Drawing).
+- The names of the secrets a machine written out uses, which Corbie reads for a submit's reminder.
+- The controller's record of a tree: its client, the directory last submitted there, and each location's lifetime.
+- The name of the controller's note of a send in the sender's record: the send's message, then `.note` where it was not delivered, or `.moved.` and the end of the run's ID where its event went to another run.
 
 ## Reading these specs
 
@@ -52,10 +55,10 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its steps, its drawing as of each step, what it waits on, and what can be sent to it.
 
-**[Machines](machines.md).** The machines in a directory, read only: the list, the problems Corbie finds in them, each machine's drawing and text, and the secrets it names. The parts in the directory, and what opens and starts each.
+**[Machines](machines.md).** The machines and pieces in a directory, read as a tree, read only: the list, the problems Corbie finds in them, and each machine's location, lifetime, who may send to it, the secrets and values it uses, its drawing, its text and its definition written out. The parts in the directory, and what opens and starts each.
 
 **[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
 
-**[Controller](controller.md).** The runners and clients the controller trusts, and its secrets.
+**[Controller](controller.md).** The runners and clients the controller trusts, its trees, and the secrets and values set at each location.
 
 **[Metrics](metrics.md).** The counts Prometheus reads, from the status of every run.

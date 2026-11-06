@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,8 +38,12 @@ type Config struct {
 	Client     *client.Client
 	Controller bool
 	Command    page.Command
-	Interval   time.Duration
-	Shell      page.Shell
+	// Machine gives the address on the Machines page of the machine at a
+	// location of a tree submitted from a directory, with cards unfolded,
+	// and its file; none where the UI offers no Machines page.
+	Machine  func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	Interval time.Duration
+	Shell    page.Shell
 }
 
 type handler struct {
@@ -55,7 +60,13 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"cmd":    func(c *page.Call) string { return c.String() },
 	"word":   pluralWord,
 	"middle": middle,
+	"breaks": breaks,
 }).ParseFS(files, "list.html", "run.html"))
+
+// breaks writes a location so that a line may break after each /.
+func breaks(location string) template.HTML {
+	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(location), "/", "/<wbr>"))
+}
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
@@ -63,7 +74,7 @@ func New(c Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
-	mux.HandleFunc("POST /runs/cancel", h.cancel)
+	mux.HandleFunc("POST /runs/at/{act}", h.atAct)
 	mux.HandleFunc("GET /runs/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		data, _ := files.ReadFile("runs.js")
@@ -72,15 +83,16 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("GET /run/{who}/{stamp}", h.runPage)
 	mux.HandleFunc("GET /run/{who}/{stamp}/stream", h.runStream)
 	mux.HandleFunc("GET /run/{who}/{stamp}/at", h.at)
+	mux.HandleFunc("GET /run/{who}/{stamp}/group", h.group)
 	mux.HandleFunc("GET /run/{who}/{stamp}/file", h.file)
 	mux.HandleFunc("POST /run/{who}/{stamp}/{act}", h.act)
 	return mux
 }
 
-// listOf reads the Runs page: the runs, and the latest step of each run of
-// the UI's client that it shows.
+// listOf reads the Runs page: the runs, and the latest step of each run in
+// a tree of the UI's client that it shows.
 func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
-	runs, err := h.titled(ctx)
+	runs, facts, err := h.titled(ctx)
 	if runs == nil && err != nil {
 		return listView{}, err
 	}
@@ -89,7 +101,7 @@ func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 		mine = h.Client.ID.Name
 	}
 	read := h.steps.reader(ctx, h.Client, runs)
-	v := listOf(runs, read.of, n, time.Now(), mine)
+	v := listOf(runs, read.of, facts, n, time.Now(), mine)
 	return v, errors.Join(err, read.done())
 }
 
@@ -101,7 +113,7 @@ func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, erro
 	var parts []page.Part
 	// The ended runs are sent before the running ones, so that a run that
 	// ended is found running on the page as its new line arrives.
-	for _, id := range []string{"ended", "busy", "idle", "services"} {
+	for _, id := range []string{"locations", "here", "ended", "busy", "idle", "singletons"} {
 		html, err := render(id, v)
 		if err != nil {
 			return nil, err
@@ -168,8 +180,8 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	page.Write(w, s)
 }
 
-// runStream follows a run: its status from the list, and, for a run the
-// UI's client started, its record as it is written.
+// runStream follows a run: its status from the list, and, for a run in a
+// tree of the UI's client, its record as it is written.
 func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil {
@@ -208,7 +220,7 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil || !h.mine(id) {
-		page.Error(w, http.StatusNotFound, "only the client that started a run can read its record")
+		page.Error(w, http.StatusNotFound, "only the client whose tree holds a run can read its record")
 		return
 	}
 	ctx := r.Context()
@@ -224,7 +236,7 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	if p := cmp.Or(byID[of], byID[id]); p != nil {
 		day = p.Started
 	}
-	row := rowAt(rowsOf(id, entries, byID, at, day), r.URL.Query().Get("row"))
+	row := rowAt(rowsOf(id, entries, byID, h.mine, at, day), r.URL.Query().Get("row"))
 	if row == nil || row.Run.ID != id {
 		page.Error(w, http.StatusNotFound, "the run has no such row")
 		return
@@ -247,17 +259,111 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	json.MarshalWrite(w, parts)
 }
 
-// titled gives the runs of the list, each run of the UI's client with its
-// title.
-func (h *handler) titled(ctx context.Context) ([]*client.Run, error) {
+// group answers the rows of a send's or a call's group: the row named by
+// its key, of the run in the address, is the send or the call, and the rows
+// come from the record of the run it reached. Both runs must be in a tree
+// of the UI's client.
+func (h *handler) group(w http.ResponseWriter, r *http.Request) {
+	id, err := idOf(r)
+	if err != nil || !h.mine(id) {
+		page.Error(w, http.StatusNotFound, "only the client whose tree holds a run can read its record")
+		return
+	}
+	ctx := r.Context()
+	var entries []client.Entry
+	if _, err := h.Client.Record(ctx, id, func(e client.Entry) { entries = append(entries, e) }); err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	at, byID, of := time.Now(), h.byID(ctx), r.URL.Query().Get("page")
+	var day time.Time
+	if p := cmp.Or(byID[of], byID[id]); p != nil {
+		day = p.Started
+	}
+	row := rowAt(rowsOf(id, entries, byID, h.mine, at, day), r.URL.Query().Get("row"))
+	if row == nil || row.Run.ID != id || row.Trace == nil || !h.mine(row.Trace.Run.ID) {
+		page.Error(w, http.StatusNotFound, "the run has no such send or call")
+		return
+	}
+	var reached []client.Entry
+	if _, err := h.Client.Record(ctx, row.Trace.Run.ID, func(e client.Entry) { reached = append(reached, e) }); err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	depth := row.Depth
+	if d, err := strconv.Atoi(r.URL.Query().Get("depth")); err == nil && d >= 0 {
+		depth = d
+	}
+	html, err := render("steprows", traced(row.Trace, reached, byID, h.mine, at, day, depth+1))
+	if err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	io.WriteString(w, string(html))
+}
+
+// titled gives the runs of the list, each run in a tree of the UI's client
+// with its title, and what is fixed of each of those.
+func (h *handler) titled(ctx context.Context) ([]*client.Run, map[string]fixed, error) {
 	runs, err := h.List.Runs()
-	titled, read := h.titles.of(ctx, h.Client, runs)
-	return titled, errors.Join(err, read)
+	titled, facts, read := h.titles.of(ctx, h.Client, runs)
+	return titled, facts, errors.Join(err, read)
+}
+
+// defined gives where the Machines page shows a run's machine as its file
+// now is: the file of the run's location, or of its root's for a child,
+// unfolded down the cards of the jobs that started each child. A run in
+// another client's tree, one whose machine was made while running, and one
+// the Machines page does not show, have none.
+func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
+	if h.Machine == nil || !h.mine(id) {
+		return nil, nil
+	}
+	runs, facts, _ := h.titled(ctx)
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	root, cards := cardsOf(id, byID, facts)
+	if root == nil {
+		return nil, nil
+	}
+	href, file, err := h.Machine(ctx, root.Location, facts[root.ID].Dir, cards)
+	if href == "" || err != nil {
+		return nil, err
+	}
+	return &definedAt{Href: href, File: file, Cards: strings.Join(cards, " › ")}, nil
+}
+
+// cardsOf gives the root of a run, and the cards of the jobs that started
+// each child down to the run, from the root's machine: none where what is
+// fixed of a run on the way is not read, or a machine was made while
+// running.
+func cardsOf(id string, byID map[string]*client.Run, facts map[string]fixed) (*client.Run, []string) {
+	var cards []string
+	for r := byID[id]; r != nil; r = byID[r.Parent] {
+		f, ok := facts[r.ID]
+		switch {
+		case !ok || f.Made:
+			return nil, nil
+		case r.Parent == "":
+			return r, cards
+		}
+		cards = append([]string{jobOf(f.Job)}, cards...)
+	}
+	return nil, nil
+}
+
+// definedAt is where the Machines page shows a run's machine: its address,
+// its file, and the cards unfolded down to it.
+type definedAt struct {
+	Href, File, Cards string
 }
 
 // byID gives the runs of the list by their IDs.
 func (h *handler) byID(ctx context.Context) map[string]*client.Run {
-	runs, _ := h.titled(ctx)
+	runs, _, _ := h.titled(ctx)
 	byID := map[string]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
@@ -284,7 +390,7 @@ func either(ctx context.Context, a, b <-chan struct{}) <-chan struct{} {
 func (h *handler) file(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil || !h.mine(id) {
-		page.Error(w, http.StatusNotFound, "only the client that started a run can read its files")
+		page.Error(w, http.StatusNotFound, "only the client whose tree holds a run can read its files")
 		return
 	}
 	path := r.URL.Query().Get("path")
@@ -361,28 +467,42 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusForbidden, "only a client acts on a run: start the UI as the client")
 		return
 	case call.Words[0] == "controller" && !h.Controller:
-		page.Error(w, http.StatusForbidden, "only the client that started a run cancels it, or the controller")
-		return
-	case act == "send" && !mine:
-		page.Error(w, http.StatusForbidden, "only the client that started a run sends it events")
+		page.Error(w, http.StatusForbidden, "only the client whose tree holds a run cancels it, or the controller")
 		return
 	}
 	answer := h.Command(r.Context(), call)
 	if answer.Status != 0 {
-		page.Error(w, http.StatusConflict, answer.Error())
+		page.Error(w, http.StatusConflict, refusal(answer))
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	io.WriteString(w, receipt(answer))
 }
 
+// refusal is what a command that failed answered: the reason its receipt
+// gives, in words, or its error as it printed it.
+func refusal(a page.Answer) string {
+	if said := receipt(a); strings.HasPrefix(said, "refused: ") {
+		return said
+	}
+	return a.Error()
+}
+
 // receipt is an action's answer in words: taken, refused with the reason,
-// and for an event whether the machine acted on it.
+// for an event whether the machine acted on it and the run that took it,
+// for a start the run it started, and for a cancel at a location each run
+// it cancelled.
 func receipt(a page.Answer) string {
 	var got struct {
+		ID      string `json:"id"`
 		Taken   bool   `json:"taken"`
 		Refused string `json:"refused"`
 		Acted   *bool  `json:"acted"`
+		Run     string `json:"run"`
+	}
+	var each []string
+	if json.Unmarshal([]byte(strings.TrimSpace(a.Out)), &each) == nil {
+		return strings.Join(each, "; ")
 	}
 	if json.Unmarshal([]byte(strings.TrimSpace(a.Out)), &got) != nil {
 		return strings.TrimSpace(a.Said + "\n" + a.Out)
@@ -390,8 +510,12 @@ func receipt(a page.Answer) string {
 	switch {
 	case got.Refused != "":
 		return "refused: " + got.Refused
+	case got.ID != "":
+		return "started " + got.ID
 	case got.Acted != nil && !*got.Acted:
 		return "taken; the machine has no rule for the event"
+	case got.Taken && got.Run != "":
+		return "taken by " + got.Run
 	case got.Taken:
 		return "taken"
 	}

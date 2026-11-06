@@ -29,8 +29,11 @@ var runParts = []string{"summary", "path", "steps", "waits", "output", "children
 
 // runView is a run's page as it is drawn.
 type runView struct {
-	Run                  *client.Run
-	Name                 string
+	Run  *client.Run
+	Name string
+	// Address is the run's full address, and At the page narrowed to its
+	// location.
+	Address, At          string
 	Mine                 bool
 	Started, Ended, Took string
 	Path                 []link
@@ -46,14 +49,16 @@ type runView struct {
 	Cancel               *page.Call
 	Send, Reply          bool
 	Shown                shown
+	Defined              *definedAt
 }
 
 // A link is a run by its machine, as the path, the waits and the steps
-// show it, with its title and the tooltip of its name. Sent says a send of
-// the run before it in a path started it.
+// show it, with its title and the tooltip of its name. Sent says what of
+// the run before it in a path started it: a send, a call, or, where the UI
+// cannot read which, a send or a call.
 type link struct {
-	ID, Machine, Title, Tip, Type string
-	This, Sent                    bool
+	ID, Machine, Title, Tip, Type, Sent string
+	This                                bool
 }
 
 // shown is a run as of one row of Steps: its drawing as it was at the
@@ -61,6 +66,7 @@ type link struct {
 // from.
 type shown struct {
 	Row           *stepRow
+	Defined       *definedAt
 	Page          string
 	Type          string
 	Time          string
@@ -70,7 +76,7 @@ type shown struct {
 }
 
 // A wait is one thing a run waits on, in words: a ticket with its name,
-// and its value where the UI's client started the run, or a running child
+// and its value where the run is in a tree of the UI's client, or a running child
 // with its run.
 type wait struct {
 	Text, Ticket, Value string
@@ -102,8 +108,8 @@ type file struct {
 
 // A child is a run another started, as its parent's page lists it.
 type child struct {
-	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
-	Ended                                                     bool
+	ID, Status, Failure, Name, Key, Tip, Machine, Type, When, Took string
+	Ended                                                          bool
 }
 
 // record is what a run's page has read of its record, as it is read.
@@ -135,7 +141,7 @@ func (r *record) Changed() <-chan struct{} {
 	return r.changed
 }
 
-// reading is what a run's page has read of a run the UI's client started,
+// reading is what a run's page has read of a run in a tree of the UI's client,
 // kept while the page is open: its latest step, read again when the run
 // takes another.
 type reading struct {
@@ -251,6 +257,9 @@ func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries 
 		return s, err
 	}
 	s.Type = d.def.Type
+	if s.Defined, err = h.defined(ctx, r.Run.ID); err != nil {
+		return s, err
+	}
 	var st *instance.State
 	if step.State.Status == instance.Running {
 		st = &step.State
@@ -338,13 +347,14 @@ func countRows(rows []stepRow) int {
 	return n
 }
 
-// mine says whether the UI's client started a run, and so may read it all.
+// mine says whether a run is in a tree of the UI's client, and so whether
+// the UI may read it all.
 func (h *handler) mine(id string) bool {
 	return h.Client != nil && store.InstanceClient(id) == h.Client.ID.Name
 }
 
-// runOf reads what a run's page shows: everything for a run the UI's
-// client started, and what the list says of any other.
+// runOf reads what a run's page shows: everything for a run in a tree of
+// the UI's client, and what the list says of any other.
 func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, r *reading) (runView, error) {
 	at := time.Now()
 	v := runView{Mine: h.mine(id)}
@@ -356,7 +366,10 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	if err != nil {
 		return v, err
 	}
-	v.Run, v.Name = run, nameOf(run)
+	v.Run, v.Name, v.Address = run, nameOf(run, ""), cmp.Or(addressOf(run, ""), run.Location)
+	if run.Location != "" {
+		v.At = narrowing{At: run.Location, Window: "6h"}.with(func(*narrowing) {})
+	}
 	v.Started = page.When(run.Started, at)
 	if run.HasEnded() {
 		v.Ended, v.Took = page.When(run.Ended, at), took(run.Ended.Sub(run.Started))
@@ -364,42 +377,45 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	for _, name := range slices.Sorted(maps.Keys(run.Labels)) {
 		v.Labels = append(v.Labels, label{Name: name, Value: run.Labels[name]})
 	}
-	runs, _ := h.titled(ctx)
+	runs, facts, _ := h.titled(ctx)
 	byID := map[string]*client.Run{}
 	under := map[string][]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
 		under[r.Parent] = append(under[r.Parent], r)
 	}
-	v.Path = pathOf(run, byID, under)
+	v.Path = pathOf(run, byID, under, facts)
 	for _, r := range under[id] {
 		v.Children = append(v.Children, childOf(r, at))
 	}
 	slices.SortFunc(v.Children, func(a, b child) int { return strings.Compare(a.ID, b.ID) })
 
 	v.Reply = h.Client != nil && !run.HasEnded() && !v.Mine
+	v.Send = h.Client != nil && sends(run)
 	switch {
 	case !run.HasEnded() && v.Mine:
-		v.Send = sends(run)
 		cancel := cancelOf(id)
 		v.Cancel = &cancel
 	case !run.HasEnded() && h.Controller:
 		v.Cancel = &page.Call{Words: []string{"controller", "cancel"}, Args: []string{id}}
 	}
 	if !v.Mine {
-		v.Waits = listed(waitsOf(run, nil, running(under[id]), at), run.Key)
+		v.Waits = waitsOf(run, nil, running(under[id]), at)
 		return v, nil
 	}
 
 	if err := h.read(ctx, id, run.Step, r); err != nil {
 		return v, err
 	}
+	if v.Defined, err = h.defined(ctx, id); err != nil {
+		return v, err
+	}
 	var st *instance.State
 	if r.step != nil && !run.HasEnded() {
 		st = &r.step.State
 	}
-	v.Waits = listed(waitsOf(run, st, running(under[id]), at), run.Key)
-	v.Rows = rowsOf(id, entries, byID, at, run.Started)
+	v.Waits = waitsOf(run, st, running(under[id]), at)
+	v.Rows = rowsOf(id, entries, byID, h.mine, at, run.Started)
 	v.Count, v.Dated = countRows(v.Rows), dated(v.Rows, run.Started)
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))
@@ -430,14 +446,13 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	return v, nil
 }
 
-// sends says whether a run of the UI's client is offered Send: only a
-// running statechart is.
+// sends says whether a run is offered Send: only a running statechart is.
 func sends(run *client.Run) bool { return !run.HasEnded() && run.Type == "statechart" }
 
 // pathOf gives the runs from a run's root down to it, by parent, and on
 // from it to the deepest running run; before the root, the run whose send
-// started it.
-func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*client.Run) []link {
+// or call started it.
+func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*client.Run, facts map[string]fixed) []link {
 	path := chainOf(run, under)
 	path[0].This = true
 	seen := map[string]bool{run.ID: true}
@@ -448,7 +463,10 @@ func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*cl
 		path = slices.Insert(path, 0, linkTo(up))
 	}
 	if by := byID[root.StartedBy]; by != nil && !seen[by.ID] {
-		path[0].Sent = true
+		path[0].Sent = "a send or a call"
+		if f, ok := facts[root.ID]; ok {
+			path[0].Sent = map[bool]string{false: "a send", true: "a call"}[f.Called]
+		}
 		path = slices.Insert(path, 0, linkTo(by))
 	}
 	return path
@@ -466,9 +484,9 @@ func running(kids []*client.Run) []*client.Run {
 }
 
 // waitsOf gives what a running run waits on: each ticket, each running
-// child, each job by its name, each timer with when it is due, and events
-// at its key where it is a statechart. With no state, as for a run another
-// client started, its jobs and timers are only counted.
+// child, each job by its name, and each timer with when it is due. With no
+// state, as for a run in another client's tree, its jobs and timers are
+// only counted.
 func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Time) []wait {
 	if run.HasEnded() {
 		return nil
@@ -504,9 +522,6 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 			waits = append(waits, wait{Text: "timer " + jobOf(name) + " due " + page.When(st.Timers[name].At, at)})
 		}
 	}
-	if run.Type == "statechart" && run.Key != "" {
-		waits = append(waits, wait{Text: "events at key " + run.Key})
-	}
 	return waits
 }
 
@@ -528,7 +543,7 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		}
 		asks := asksOf(e.Asks)
 		for _, a := range e.Asks {
-			if a.Kind != instance.AskScript && a.Kind != instance.AskChild {
+			if a.Kind != instance.AskScript && a.Kind != instance.AskChild && a.Kind != instance.AskCall {
 				continue
 			}
 			name := jobOf(a.Name)
@@ -536,7 +551,7 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 				name, asks = asks[0], asks[1:]
 			}
 			s.Asked = append(s.Asked, name)
-			if r := byID[a.Child]; r != nil {
+			if r := byID[cmp.Or(a.Child, callee(a))]; r != nil {
 				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
 			}
 		}
@@ -601,8 +616,16 @@ func jobOf(name string) string {
 	return name
 }
 
+// callee gives the run a call job started, where the ask is a call's.
+func callee(a instance.Ask) string {
+	if a.Kind == instance.AskCall {
+		return a.Run
+	}
+	return ""
+}
+
 func childOf(r *client.Run, at time.Time) child {
-	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
+	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, ""), Key: keyOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
 	c.When = page.When(r.Started, at)
 	if r.HasEnded() {
 		c.When, c.Took = page.When(r.Ended, at), took(r.Ended.Sub(r.Started))

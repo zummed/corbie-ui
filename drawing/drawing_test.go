@@ -2,7 +2,11 @@ package drawing
 
 import (
 	"html/template"
+	"math"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -146,6 +150,23 @@ func Test_drawing_statechart_arrows_name_event_condition_and_timer(t *testing.T)
 	if strings.Count(svg, `class="tile`) != 1 {
 		t.Errorf("a state with no job has an icon: only drafting, whose job is a script, has one:\n%s", svg)
 	}
+
+	// States in different holders go by the rows of their holders: w3 is
+	// drawn above report and first above deep, so those are arrows, and
+	// deep's rule back to first is written in deep.
+	levels, err := os.ReadFile("testdata/levels.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svg = draw(t, definition(t, string(levels), nil), nil)
+	if !strings.Contains(svg, ">again ↩ first<") || strings.Contains(svg, "↩ report<") || strings.Contains(svg, "↩ deep<") {
+		t.Errorf("the rules back are not the rules to a row above:\n%s", svg)
+	}
+	for _, label := range []string{">ok<", ">done<", ">out<", ">quick<", ">bad<"} {
+		if !strings.Contains(svg, label) {
+			t.Errorf("no arrow is labelled %s", label)
+		}
+	}
 }
 
 func Test_drawing_flow_has_one_arrow_for_each_wait_that_says_something(t *testing.T) {
@@ -187,6 +208,167 @@ states:
 	if at("ok") == at("fine") {
 		t.Errorf("two chips are at x %s:\n%s", at("ok"), svg)
 	}
+}
+
+// Every arrow of a statechart has a line of its own, from the card it
+// leaves to the card it goes to, behind no card, and each chip is clear of
+// other chips and cards, and 12 from other arrows. Arrows from one card
+// share the line they leave it by.
+func Test_drawing_arrows_and_chips_are_apart(t *testing.T) {
+	files, _ := filepath.Glob("testdata/*.yaml")
+	sources := map[string]string{"review": review}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources[filepath.Base(f)] = string(b)
+	}
+	if len(sources) < 8 {
+		t.Fatalf("the examples in testdata are not there")
+	}
+	for name, src := range sources {
+		svg := draw(t, definition(t, src, map[string]string{"w.js": script, "write.js": script}), nil)
+		lines, chips, cards, holders := geometry(t, svg)
+		if len(chips) != len(lines) {
+			t.Errorf("%s: %d chips for %d arrows", name, len(chips), len(lines))
+		}
+		for i, a := range lines {
+			if !onBorder(a[0].p, append(cards, holders...)) || !onBorder(a[len(a)-1].q, append(cards, holders...)) {
+				t.Errorf("%s: the arrow %v does not run from one card to another", name, a)
+			}
+			for _, s := range a {
+				for _, c := range cards {
+					if passes(c, s, -1) {
+						t.Errorf("%s: the arrow %v runs behind the card at %v", name, a, c)
+					}
+				}
+			}
+			for _, b := range lines[i+1:] {
+				if a[0].p == b[0].p {
+					continue
+				}
+				for _, s := range a {
+					for _, o := range b {
+						if overlap(s, o) {
+							t.Errorf("%s: the arrows %v and %v run on one line", name, a, b)
+						}
+					}
+				}
+			}
+		}
+		for i, c := range chips {
+			for _, o := range chips[i+1:] {
+				if c.x < o.x+o.w && o.x < c.x+c.w && c.y < o.y+o.h && o.y < c.y+c.h {
+					t.Errorf("%s: the chips at %v and %v overlap", name, c, o)
+				}
+			}
+			for _, b := range cards {
+				if c.x < b.x+b.w && b.x < c.x+c.w && c.y < b.y+b.h && b.y < c.y+c.h {
+					t.Errorf("%s: the chip at %v is on the card at %v", name, c, b)
+				}
+			}
+			mid := point{c.x + c.w/2, c.y + c.h/2}
+			for j, a := range lines {
+				for _, s := range a {
+					if j == i && passes(c, s, 0) && !on(mid, s) {
+						t.Errorf("%s: the chip at %v is on its arrow %v twice", name, c, a)
+					}
+					if j != i && passes(c, s, 11.5) {
+						t.Errorf("%s: the chip at %v is within 12 of the arrow %v", name, c, a)
+					}
+				}
+			}
+		}
+	}
+}
+
+type point struct{ x, y float64 }
+
+// A segment is a straight piece of an arrow, across or down.
+type segment struct{ p, q point }
+
+type rect struct{ x, y, w, h float64 }
+
+// geometry reads a drawing's arrows, each as its straight pieces, and its
+// chips, cards and holders.
+func geometry(t *testing.T, svg string) ([][]segment, []rect, []rect, []rect) {
+	t.Helper()
+	f := func(s string) float64 { v, _ := strconv.ParseFloat(s, 64); return v }
+	var lines [][]segment
+	for _, m := range regexp.MustCompile(`(<circle class="start"[^>]*/>)?<path class="edge[^"]*" d="([^"]*)"`).FindAllStringSubmatch(svg, -1) {
+		if m[1] != "" {
+			continue // the short arrow into the state a level starts in
+		}
+		var line []segment
+		var at point
+		for _, c := range regexp.MustCompile(`([MHVQ])([-0-9. ]+)`).FindAllStringSubmatch(m[2], -1) {
+			v := strings.Fields(c[2])
+			switch c[1] {
+			case "M":
+				at = point{f(v[0]), f(v[1])}
+			case "H":
+				line = append(line, segment{at, point{f(v[0]), at.y}})
+				at = point{f(v[0]), at.y}
+			case "V":
+				line = append(line, segment{at, point{at.x, f(v[0])}})
+				at = point{at.x, f(v[0])}
+			case "Q":
+				at = point{f(v[2]), f(v[3])}
+			}
+		}
+		lines = append(lines, line)
+	}
+	rects := func(re string) []rect {
+		var out []rect
+		for _, m := range regexp.MustCompile(re+` x="([-0-9.]+)" y="([-0-9.]+)" width="([0-9.]+)" height="([0-9.]+)"`).FindAllStringSubmatch(svg, -1) {
+			out = append(out, rect{f(m[1]), f(m[2]), f(m[3]), f(m[4])})
+		}
+		return out
+	}
+	var cards []rect
+	for _, r := range rects(`<rect class="(?:box|outer)"`) {
+		if !slices.ContainsFunc(cards, func(o rect) bool { return r.x >= o.x && r.y >= o.y && r.x+r.w <= o.x+o.w && r.y+r.h <= o.y+o.h }) {
+			cards = append(cards, r)
+		}
+	}
+	return lines, rects(`<rect class="chip[^"]*"`), cards, rects(`holder"><rect`)
+}
+
+// passes says a piece of an arrow goes through the inside of a box, grown
+// by grow.
+func passes(b rect, s segment, grow float64) bool {
+	x0, y0, x1, y1 := b.x-grow, b.y-grow, b.x+b.w+grow, b.y+b.h+grow
+	if s.p.y == s.q.y {
+		return s.p.y > y0 && s.p.y < y1 && max(s.p.x, s.q.x) > x0 && min(s.p.x, s.q.x) < x1
+	}
+	return s.p.x > x0 && s.p.x < x1 && max(s.p.y, s.q.y) > y0 && min(s.p.y, s.q.y) < y1
+}
+
+// overlap says two pieces of arrows run along one line for more than a
+// point.
+func overlap(a, b segment) bool {
+	if a.p.y == a.q.y && b.p.y == b.q.y && math.Abs(a.p.y-b.p.y) < 1 {
+		return min(max(a.p.x, a.q.x), max(b.p.x, b.q.x))-max(min(a.p.x, a.q.x), min(b.p.x, b.q.x)) > 1
+	}
+	if a.p.x == a.q.x && b.p.x == b.q.x && math.Abs(a.p.x-b.p.x) < 1 {
+		return min(max(a.p.y, a.q.y), max(b.p.y, b.q.y))-max(min(a.p.y, a.q.y), min(b.p.y, b.q.y)) > 1
+	}
+	return false
+}
+
+// on says a point is on a piece of an arrow.
+func on(p point, s segment) bool {
+	return p.x >= min(s.p.x, s.q.x)-0.5 && p.x <= max(s.p.x, s.q.x)+0.5 && p.y >= min(s.p.y, s.q.y)-0.5 && p.y <= max(s.p.y, s.q.y)+0.5
+}
+
+// onBorder says a point is on the edge of one of the boxes.
+func onBorder(p point, boxes []rect) bool {
+	return slices.ContainsFunc(boxes, func(b rect) bool {
+		in := p.x >= b.x-0.5 && p.x <= b.x+b.w+0.5 && p.y >= b.y-0.5 && p.y <= b.y+b.h+0.5
+		edge := math.Abs(p.x-b.x) < 0.5 || math.Abs(p.x-b.x-b.w) < 0.5 || math.Abs(p.y-b.y) < 0.5 || math.Abs(p.y-b.y-b.h) < 0.5
+		return in && edge
+	})
 }
 
 func Test_drawing_holder_makes_room_for_its_notes(t *testing.T) {
@@ -362,7 +544,7 @@ func Test_drawing_transition_just_taken_is_marked(t *testing.T) {
 	if len(taken) != 1 {
 		t.Fatalf("%d arrows are marked as taken, not one", len(taken))
 	}
-	if !regexp.MustCompile(`<path class="edge taken" d="M[^"]*"[^>]*/><rect class="chip"[^>]*/><text class="on"[^>]*>done</text>`).MatchString(svg) {
+	if !regexp.MustCompile(`<rect class="chip taken"[^>]*/><text class="on"[^>]*>done</text>`).MatchString(svg) || strings.Count(svg, `class="chip taken"`) != 1 {
 		t.Errorf("the arrow marked as taken is not the one done goes by")
 	}
 }
@@ -382,21 +564,21 @@ states:
   hearing:
     job: ./w.js
     on:
-      message: { send: { to: { machine: ./chat.yaml, key: "a" }, event: said } }
+      message: { send: { to: { at: chat, key: "a" }, event: said } }
       again: hearing
       done: over
   over: { end: done }
-`, map[string]string{"w.js": script, "chat.yaml": "flow: chat\nstages:\n  a: { job: ./w.js }\n"})
+`, map[string]string{"w.js": script})
 	svg, _ := Draw(chart, nil)
 	_, hearing := centre(t, svg, "hearing")
-	_, box := centre(t, svg, "chat.yaml")
+	_, box := centre(t, svg, "chat#a")
 	if box <= hearing {
 		t.Errorf("the send's box at %v is not below the state at %v", box, hearing)
 	}
-	if !regexp.MustCompile(`<path class="edge send" d="[^"]*"[^>]*/><rect class="chip"[^>]*/><text class="on"[^>]*>message</text>`).MatchString(string(svg)) {
+	if !strings.Contains(string(svg), `<path class="edge send"`) || !regexp.MustCompile(`<rect class="chip send"[^>]*/><text class="on"[^>]*>message</text>`).MatchString(string(svg)) {
 		t.Errorf("the send's arrow is not dashed and labelled with the event:\n%s", svg)
 	}
-	if !strings.Contains(group(t, string(svg), "chat.yaml"), "sends") {
+	if !strings.Contains(group(t, string(svg), "chat#a"), "sends") {
 		t.Errorf("the send's box is not marked as one")
 	}
 	if !strings.Contains(string(svg), ">again ↻<") || strings.Contains(string(svg), `>again</text>`) {
@@ -478,7 +660,7 @@ stages:
 		for _, p := range open {
 			u.Open[p] = true
 		}
-		svg, err := Unfolded(draft, "dir/a.yaml", u)
+		svg, err := Unfolded(draft, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -615,5 +797,35 @@ open:
 	page, _ := Draw(def, nil)
 	if strings.Contains(string(page), "folded") || !strings.Contains(string(page), ">disk</text>") {
 		t.Errorf("a drawing of no run folds a part")
+	}
+}
+
+func Test_drawing_call_and_send_jobs_are_cards(t *testing.T) {
+	def := definition(t, `flow: trip
+stages:
+  weather: { job: { call: { at: services/weather }, input: { days: 2 } } }
+  heat:
+    job:
+      send: { to: { at: devices/boiler }, event: set, data: { target: "${stages.weather.output.celsius}" } }
+  room:
+    job:
+      send: { to: { at: rooms/hall, key: "${input.k}" }, event: set }
+`, nil)
+	svg := draw(t, def, nil)
+	for _, want := range []string{">call: services/weather<", ">send: set<", ">to: devices/boiler<", ">to: rooms/hall#${input.k}<"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("the drawing does not hold %s:\n%s", want, svg)
+		}
+	}
+	if _, weather := centre(t, template.HTML(svg), "weather"); func() bool { _, heat := centre(t, template.HTML(svg), "heat"); return heat <= weather }() {
+		t.Errorf("a send whose data reads a stage is not drawn below it:\n%s", svg)
+	}
+	if strings.Contains(svg, "<a href") {
+		t.Errorf("a call that started no run, or a send, has a link:\n%s", svg)
+	}
+	// On a run's page, a call's card links to the run it called.
+	run := draw(t, def, &Run{Children: map[string]Child{"weather": {ID: "lab/7", Machine: "weather", Type: "flow"}}})
+	if !strings.Contains(run, `<a href="/run/lab/7">`) || !strings.Contains(run, ">flow: weather<") || !strings.Contains(run, ">call: services/weather<") {
+		t.Errorf("a call's card does not link to the run it called:\n%s", run)
 	}
 }

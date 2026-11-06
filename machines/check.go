@@ -9,14 +9,13 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
-	"github.com/zummed/corbie/secret"
 	"go.yaml.in/yaml/v3"
 )
 
 // A problem is one of Corbie's, at the file it names: the file, the place in
 // it and its line where the text writes the place, what is wrong, and the
-// machines of the project it breaks. Top says the file is a directory below
-// the one the UI reads that is the top of a project. included says the
+// machines of the directory it breaks. Top says the file is a directory
+// below the one the UI reads that is the top of a tree. included says the
 // problem is a file an `include:` names that cannot be read.
 type problem struct {
 	File, Place, Text string
@@ -141,37 +140,4 @@ func walk(n *yaml.Node, parts [][]string) (int, int) {
 		n, found = next, found+1
 	}
 	return found, line
-}
-
-// secretsNamed gives the secrets a definition's text names: each NAME of a
-// secret:NAME@… entry in any allow list, the definition's own and each
-// job's, once, in the order written. An entry whose name holds * names
-// none.
-func secretsNamed(src []byte) []string {
-	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil {
-		return nil
-	}
-	var allow []string
-	var walk func(n *yaml.Node)
-	walk = func(n *yaml.Node) {
-		if n.Kind != yaml.MappingNode {
-			for _, c := range n.Content {
-				walk(c)
-			}
-			return
-		}
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			k, v := n.Content[i], n.Content[i+1]
-			if k.Value == "allow" && v.Kind == yaml.SequenceNode {
-				for _, item := range v.Content {
-					allow = append(allow, item.Value)
-				}
-			} else {
-				walk(v)
-			}
-		}
-	}
-	walk(&doc)
-	return secret.Named(allow)
 }

@@ -8,9 +8,9 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 ## A statechart
 
-**R-drawing-02** A transition to a later state is an arrow with a chip giving its event, its condition as written and a timer's time, one arrow for all the rules between two states; a timer's arrow is dashed; a transition to an earlier state or the same state is written in its card with no arrow; a state's ticket and timers are written in it, and a final state that fails is marked as failed. *Test:* `drawing_statechart_arrows_name_event_condition_and_timer`
+**R-drawing-02** A transition to a state in a row below or in its own row is an arrow with a chip giving its event, its condition as written and a timer's time, one arrow for all the rules between two states; a timer's arrow is dashed; a transition to a state in a row above or the same state is written in its card with no arrow; a state's ticket and timers are written in it, and a final state that fails is marked as failed. *Test:* `drawing_statechart_arrows_name_event_condition_and_timer`
 
-**R-drawing-05** A `send:` that names a machine is drawn as a card of its own below the state, with a dashed arrow labelled with the event. *Test:* `drawing_statechart_send_is_a_card`
+**R-drawing-05** A `send:` to an address is drawn as a card of its own below the state, named by the address, with a dashed arrow labelled with the event. *Test:* `drawing_statechart_send_is_a_card`
 
 ## An agent
 
@@ -19,6 +19,8 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 ## A machine inside a machine
 
 **R-drawing-07** A card whose job names a machine shows the machine's type and name, known from its file on the Machines page and from the definition the run was started from on a run's page. On the Machines page it is a link that unfolds the machine's drawing inside the card, at any depth, and the same card then folds it; a job whose machine is an expression has no link. On a run's page it links to the run the job started, an ask's card to the run that ask started. *Test:* `drawing_machine_unfolds_in_its_card`
+
+**R-drawing-09** A job that sends is a card giving its event and its address, and a job that calls is a card giving the location it calls; on a run's page a call's card links to the run it called. A stage waits for each stage its address and its data read. *Test:* `drawing_call_and_send_jobs_are_cards`
 
 ## A run on the drawing
 

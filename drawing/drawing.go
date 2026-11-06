@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"html/template"
+	"maps"
 	"math"
 	"path"
 	"slices"
@@ -96,17 +97,14 @@ type Unfold struct {
 	Open map[string]bool
 	// Href gives the address of a card's link.
 	Href func(path string) string
-	// Part gives the file a part of an agent in a file is included from, or
-	// nothing: the agent by its name, the part by its name and its `does:`.
-	Part func(file, name, part, does string) string
 }
 
-// Unfolded gives the drawing of the machine in a file, with a link on each
-// card whose job names a machine, and the machines of the cards unfolded
-// drawn inside them.
-func Unfolded(draft *machine.Draft, file string, u Unfold) (template.HTML, error) {
+// Unfolded gives the drawing of a machine read from its file, with a link
+// on each card whose job names a machine, and the machines of the cards
+// unfolded drawn inside them.
+func Unfolded(draft *machine.Draft, u Unfold) (template.HTML, error) {
 	def := draft.Definition
-	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft, file: file})
+	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft})
 	if err != nil {
 		return "", err
 	}
@@ -132,14 +130,13 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 		if err := json.Unmarshal(def.Body, &a); err != nil {
 			return drawn{}, err
 		}
-		return drawAgent(def.Name, &a, def.Ask, run, w), nil
+		return drawAgent(def, &a, run, w), nil
 	}
 	return drawn{}, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 }
 
 // A walker is what a drawing knows of the machines its jobs name. On the
-// Machines page it is a machine's draft, the file it is in, or for one
-// written in place the file that writes it, and the path of the card it is
+// Machines page it is a machine's draft and the path of the card it is
 // drawn in. On a run's page it is the machines its definition names and
 // the runs its jobs started.
 type walker struct {
@@ -147,7 +144,6 @@ type walker struct {
 	draft    *machine.Draft
 	machines map[string]Machine
 	children map[string]Child
-	file     string
 	path     string
 }
 
@@ -159,10 +155,7 @@ func (w *walker) open(at, job string) (string, *drawn) {
 	if !w.unfold.Open[at] {
 		return href, nil
 	}
-	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], file: w.file, path: at}
-	if !inPlace(job) {
-		sub.file = path.Clean(job)
-	}
+	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], path: at}
 	d, err := drawOf(sub.draft.Definition, nil, sub)
 	if err != nil {
 		return href, nil
@@ -174,12 +167,31 @@ func (w *walker) open(at, job string) (string, *drawn) {
 // machine written in place.
 func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
-// part gives the file a part is included from.
-func (w *walker) part(name, part, does string) string {
-	if w.file == "" || w.unfold.Part == nil {
+// PartFile gives the file a part of an agent is included from, as Corbie
+// writes out the agent: the file its tools are written in, or its `does:`
+// where it has no tools, when that is not the file of the agent's own
+// first line. A part written in place gives nothing.
+func PartFile(def *machine.Definition, part string) string {
+	at := "open." + part + "."
+	file := fileOf(def.Lines[at+"does"])
+	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
+		if strings.HasPrefix(place, at+"tools.") {
+			file = fileOf(def.Lines[place])
+			break
+		}
+	}
+	if file == fileOf(def.Lines[def.Type]) {
 		return ""
 	}
-	return w.unfold.Part(w.file, name, part, does)
+	return file
+}
+
+// fileOf gives the file of a value's file and line, as base.yaml:3.
+func fileOf(line string) string {
+	if i := strings.LastIndexByte(line, ':'); i >= 0 {
+		return line[:i]
+	}
+	return line
 }
 
 // describe writes what a card's job is into it: its icon and its line, and
@@ -194,6 +206,15 @@ func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 		return
 	case job.Script != "":
 		it.icon, it.lines = "script", []string{fit("script: " + job.Script)}
+		return
+	case job.Send != nil:
+		it.icon, it.lines = "statechart", []string{fit("send: " + job.Send.Event), fit("to: " + addressOf(&job.Send.To))}
+		return
+	case job.Call != nil:
+		it.icon, it.lines = "file", []string{fit("call: " + addressOf(job.Call))}
+		if c, ok := w.children[at]; ok {
+			it.icon, it.lines, it.href = c.Type, append(it.lines, fit(c.Type+": "+c.Machine)), "/run/"+c.ID
+		}
 		return
 	case job.Machine == "":
 		return
@@ -297,12 +318,12 @@ func (b box) right() float64  { return b.x + b.w }
 func (b box) bottom() float64 { return b.y + b.h }
 
 // drawn is a drawing being made: its parts in the order they are painted,
-// states that hold states first, then arrows, then the states they join,
-// how far it reaches, to the right, below and to the left, and how many
-// arrows go round it.
+// states that hold states first, then arrows, then their chips, then the
+// states they join, and how far it reaches, to the right, below and to the
+// left.
 type drawn struct {
-	holders, edges, shapes strings.Builder
-	w, h, left             float64
+	holders, edges, chips, shapes strings.Builder
+	w, h, left                    float64
 }
 
 func (d *drawn) reach(b box) {
@@ -318,6 +339,7 @@ func (d *drawn) svg(label string) template.HTML {
 		`<marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="arrow taken" d="M0 0L10 5L0 10z"/></marker></defs>`)
 	b.WriteString(d.holders.String())
 	b.WriteString(d.edges.String())
+	b.WriteString(d.chips.String())
 	b.WriteString(d.shapes.String())
 	b.WriteString(`</svg>`)
 	return template.HTML(b.String())
@@ -379,8 +401,8 @@ func (d *drawn) paint(it item, b box, class string, rx float64, behind string) {
 	}
 	if it.in != nil {
 		dx := (b.w - it.in.w - margin) / 2
-		fmt.Fprintf(&d.shapes, `<g transform="translate(%s %s)">%s%s%s</g>`, num(b.x+dx), num(b.y+it.head()-margin+8),
-			it.in.holders.String(), it.in.edges.String(), it.in.shapes.String())
+		fmt.Fprintf(&d.shapes, `<g transform="translate(%s %s)">%s%s%s%s</g>`, num(b.x+dx), num(b.y+it.head()-margin+8),
+			it.in.holders.String(), it.in.edges.String(), it.in.chips.String(), it.in.shapes.String())
 	}
 	d.reach(b)
 }
@@ -390,42 +412,54 @@ func (d *drawn) paint(it item, b box, class string, rx float64, behind string) {
 // run together. A label is a chip on the arrow: on the rail, where it is
 // apart from the chips of other arrows into the same row or box.
 func (d *drawn) down(from, to box, class, label string) {
-	const r = 8
 	x1, y1, x2, y2 := from.cx(), from.bottom(), to.cx(), to.y
 	rail := y2 - rowGap/2
 	if label != "" {
 		rail = y2 - rowGap
 	}
-	var p string
 	cx, cy := (x1+x2)/2, rail
 	if math.Abs(x1-x2) < 1 {
-		p = fmt.Sprintf("M%s %s V%s", num(x1), num(y1), num(y2))
 		cy = y2 - 14
-	} else {
-		turn := r
-		if x2 < x1 {
-			turn = -r
-		}
-		p = fmt.Sprintf("M%s %s V%s Q%s %s %s %s H%s Q%s %s %s %s V%s", num(x1), num(y1), num(rail-r),
-			num(x1), num(rail), num(x1+float64(turn)), num(rail), num(x2-float64(turn)),
-			num(x2), num(rail), num(x2), num(rail+r), num(y2))
 	}
-	fmt.Fprintf(&d.edges, `<path class="%s" d="%s" marker-end="url(#%s)"/>`, esc(strings.TrimSpace("edge "+class)), p, head(class))
-	d.reach(box{x: math.Max(x1, x2), y: y2})
+	d.line([]pt{{x1, y1}, {x1, rail}, {x2, rail}, {x2, y2}}, class)
 	if label != "" {
-		d.chip(cx, cy, label)
+		d.chip(cx, cy, label, class)
 	}
 }
 
-// across draws an arrow from a box to one beside it.
-func (d *drawn) across(from, to box, class, label string, bend float64) {
-	x1, x2, y := from.right(), to.x, from.cy()+bend
-	if x2 < x1 {
-		x1, x2 = from.x, to.right()
+// line draws an arrow through points, one after another across or down,
+// with its turns rounded.
+func (d *drawn) line(pts []pt, class string) {
+	const r = 8
+	pts = simplify(pts)
+	var p strings.Builder
+	at := pts[0]
+	fmt.Fprintf(&p, "M%s %s", num(at.x), num(at.y))
+	to := func(q pt) {
+		if math.Abs(q.y-at.y) < 0.01 {
+			fmt.Fprintf(&p, " H%s", num(q.x))
+		} else {
+			fmt.Fprintf(&p, " V%s", num(q.y))
+		}
+		at = q
 	}
-	fmt.Fprintf(&d.edges, `<path class="%s" d="M%s %s H%s" marker-end="url(#%s)"/>`, esc(strings.TrimSpace("edge "+class)), num(x1), num(y), num(x2), head(class))
-	if label != "" {
-		d.chip((x1+x2)/2, y-11, label)
+	toward := func(a, b pt, n float64) pt {
+		l := math.Hypot(b.x-a.x, b.y-a.y)
+		return pt{a.x + (b.x-a.x)*n/l, a.y + (b.y-a.y)*n/l}
+	}
+	for i := 1; i < len(pts)-1; i++ {
+		prev, q, next := pts[i-1], pts[i], pts[i+1]
+		n := math.Min(r, math.Min(math.Hypot(q.x-prev.x, q.y-prev.y), math.Hypot(next.x-q.x, next.y-q.y))/2)
+		to(toward(q, prev, n))
+		end := toward(q, next, n)
+		fmt.Fprintf(&p, " Q%s %s %s %s", num(q.x), num(q.y), num(end.x), num(end.y))
+		at = end
+	}
+	to(pts[len(pts)-1])
+	fmt.Fprintf(&d.edges, `<path class="%s" d="%s" marker-end="url(#%s)"/>`, esc(strings.TrimSpace("edge "+class)), p.String(), head(class))
+	for _, q := range pts {
+		d.reach(box{x: q.x, y: q.y})
+		d.left = math.Min(d.left, q.x)
 	}
 }
 
@@ -439,16 +473,17 @@ func head(class string) string {
 }
 
 // chip draws a label in a pill, short enough to stay apart from the chips of
-// the arrows beside it, with the whole label as its tooltip.
-func (d *drawn) chip(x, y float64, label string) {
+// the arrows beside it, with the whole label as its tooltip. It has the
+// classes of its arrow.
+func (d *drawn) chip(x, y float64, label, class string) {
 	short := clip(label, longestChip)
-	w := labelWidth(short) + 14
+	w := chipWidth(label)
 	title := ""
 	if short != label {
 		title = "<title>" + esc(label) + "</title>"
 	}
-	fmt.Fprintf(&d.edges, `<rect class="chip" x="%s" y="%s" width="%s" height="18" rx="9"/><text class="on" x="%s" y="%s" text-anchor="middle">%s%s</text>`,
-		num(x-w/2), num(y-9), num(w), num(x), num(y+4), esc(short), title)
+	fmt.Fprintf(&d.chips, `<rect class="%s" x="%s" y="%s" width="%s" height="18" rx="9"/><text class="on" x="%s" y="%s" text-anchor="middle">%s%s</text>`,
+		esc(strings.TrimSpace("chip "+class)), num(x-w/2), num(y-9), num(w), num(x), num(y+4), esc(short), title)
 	d.reach(box{x: x + w/2, y: y + 9})
 	d.left = math.Min(d.left, x-w/2)
 }

@@ -36,21 +36,29 @@ document.addEventListener('click', e => {
   }
 });
 
-const client = document.getElementById('client');
-if (client) client.addEventListener('change', () => { location = client.value; });
-
 // A run's Steps. Each child run is a group under the row that started it:
 // an ended child is folded and a running one open, until the person folds
-// or opens it. One row is selected; the drawing and the details beside the
+// or opens it. A send or a call to a run the UI may read is a group too,
+// folded, whose rows are asked for when it is opened. One row is selected; the drawing and the details beside the
 // list show its run as of its step. The selection follows the newest row,
-// or the row of the folded group it is in, until the person moves it.
+// or the row of the folded group it is in, until the person moves it; on a
+// running run, Follow then selects the newest row and follows again.
 const split = document.querySelector('.split[data-page]');
 const folds = new Map();
 let selected = null, moved = false, details = false, detailTab = 'what', seen = null, asked = null, base = null;
 
 const listOf = () => document.querySelector('#steps .steplist');
 const visible = () => [...(listOf()?.querySelectorAll('.step') ?? [])].filter(r => r.offsetParent !== null);
-const rowOf = key => key && listOf()?.querySelector(`.step[data-row="${CSS.escape(key)}"]`);
+const rowOf = key => key && [...(listOf()?.querySelectorAll('.step') ?? [])].find(r => keyOf(r) === key);
+
+// keyOf gives a row's key on the page: the keys of the send and call groups
+// it is in, then its own. A run's rows can be on the page more than once,
+// in the groups of two sends to it, and each copy has its own key.
+function keyOf(row) {
+  const keys = [row.dataset.row];
+  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) if (g.matches('.trace')) keys.unshift(g.dataset.group);
+  return keys.join(' ');
+}
 
 // The group a row's run is in: the row's own li, not the group a head row starts.
 function groupOf(row) {
@@ -62,6 +70,38 @@ function applyFolds() {
   for (const g of listOf()?.querySelectorAll('li.group') ?? []) {
     const open = folds.has(g.dataset.group) ? folds.get(g.dataset.group) : !g.hasAttribute('data-ended');
     g.classList.toggle('folded', !open);
+    if (open) load(g);
+  }
+}
+
+// load asks the UI for the rows of a send's or a call's group, once each
+// time the group is drawn. A group the UI could not read says why, and is
+// asked for again when it is next opened.
+async function load(g) {
+  if (!g.dataset.load || g.dataset.loaded) return;
+  g.dataset.loaded = '1';
+  const ol = g.querySelector(':scope > ol');
+  try {
+    const res = await fetch(`${g.dataset.load}&page=${encodeURIComponent(split.dataset.page)}`);
+    const t = document.createElement('template');
+    if (!res.ok) {
+      delete g.dataset.loaded;
+      const none = document.createElement('li');
+      none.className = 'dim none';
+      none.textContent = (await res.text()).trim() || res.statusText;
+      ol.replaceChildren(none);
+      return;
+    }
+    t.innerHTML = (await res.text()).trim();
+    if (!t.content.firstElementChild) t.innerHTML = '<li class="dim none">nothing yet</li>';
+    ol.replaceChildren(t.content);
+    for (const r of ol.querySelectorAll('.step')) seen.add(keyOf(r));
+    applyFolds();
+    const row = rowOf(selected);
+    if (row && ol.contains(row)) select(row, false);
+  } catch (err) {
+    delete g.dataset.loaded;
+    console.error(err);
   }
 }
 
@@ -73,9 +113,14 @@ function shownOf(row) {
   return at;
 }
 
+// newestRow gives the newest row of the run and the runs under it; the rows
+// of a send's or a call's group are of other runs, and are left out.
 function newestRow() {
   let last = null;
-  for (const r of listOf()?.querySelectorAll('.step') ?? []) if (!last || +r.dataset.at >= +last.dataset.at) last = r;
+  for (const r of listOf()?.querySelectorAll('.step') ?? []) {
+    if (r.parentElement.parentElement.closest('li.trace')) continue;
+    if (!last || +r.dataset.at >= +last.dataset.at) last = r;
+  }
   return last;
 }
 
@@ -94,11 +139,11 @@ function showPath(row) {
     for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) chain.unshift(g);
     for (const g of chain) {
       const sep = document.createElement('span');
-      sep.className = 'sep';
-      sep.textContent = '›';
+      sep.className = g.matches('.trace') ? 'sep send' : 'sep';
+      sep.textContent = g.matches('.trace') ? '⇢' : '›';
       const link = document.createElement('a');
-      link.href = '/run/' + g.dataset.group;
-      link.dataset.run = g.dataset.group;
+      link.href = '/run/' + g.dataset.run;
+      link.dataset.run = g.dataset.run;
       link.title = g.dataset.tip;
       const icon = g.querySelector(':scope > ol .step svg.g');
       link.append(g.dataset.machine);
@@ -148,24 +193,32 @@ function showMarked(view) {
 
 function select(row, fetchToo = true) {
   if (!row) return;
-  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) { folds.set(g.dataset.group, true); g.classList.remove('folded'); }
+  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) fold(g, true);
   for (const r of listOf().querySelectorAll('.step.sel')) r.classList.remove('sel');
   row.classList.add('sel');
-  const changed = selected !== row.dataset.row;
-  selected = row.dataset.row;
+  const changed = selected !== keyOf(row);
+  selected = keyOf(row);
   row.scrollIntoView({ block: 'nearest' });
   showPath(row);
   if (fetchToo && changed) show(row);
 }
 
+// showFollow shows Follow, which a running run's Steps have, while the
+// selection does not follow the newest row.
+function showFollow() {
+  const follow = document.querySelector('#steps [data-follow]');
+  if (follow) follow.hidden = !moved;
+}
+
 function fold(group, open) {
   folds.set(group.dataset.group, open);
   group.classList.toggle('folded', !open);
+  if (open) load(group);
 }
 
 if (split && listOf()) {
   base = document.getElementById('path')?.innerHTML ?? null;
-  seen = new Set([...listOf().querySelectorAll('.step')].map(r => r.dataset.row));
+  seen = new Set([...listOf().querySelectorAll('.step')].map(keyOf));
   applyFolds();
   select(newestRow(), false);
   const sel = rowOf(selected), view = document.getElementById('view');
@@ -180,20 +233,27 @@ if (split && listOf()) {
     }
     if (e.detail.id !== 'steps') return;
     applyFolds();
-    for (const r of listOf().querySelectorAll('.step')) if (!seen.has(r.dataset.row)) { r.classList.add('new'); seen.add(r.dataset.row); }
+    for (const r of listOf().querySelectorAll('.step')) if (!seen.has(keyOf(r))) { r.classList.add('new'); seen.add(keyOf(r)); }
     const row = rowOf(selected);
     if (!moved || !row) select(shownOf(newestRow()));
     else select(row, false);
+    showFollow();
   });
 
   document.addEventListener('click', e => {
     if (!e.target.closest('#steps')) return;
+    if (e.target.closest('[data-follow]')) {
+      moved = false;
+      select(shownOf(newestRow()));
+      showFollow();
+      return;
+    }
     const all = e.target.closest('[data-fold]');
     if (all) {
       for (const g of listOf().querySelectorAll('li.group')) fold(g, all.dataset.fold === 'open');
       let top = null;
       for (let g = rowOf(selected) && groupOf(rowOf(selected)); g; g = groupOf(g.firstElementChild)) top = g;
-      if (top && all.dataset.fold === 'fold') { moved = true; select(top.firstElementChild); }
+      if (top && all.dataset.fold === 'fold') { moved = true; select(top.firstElementChild); showFollow(); }
       return;
     }
     const button = e.target.closest('button.fold');
@@ -209,6 +269,7 @@ if (split && listOf()) {
     details = true;
     document.getElementById('details')?.removeAttribute('hidden');
     select(row);
+    showFollow();
   });
 
   document.addEventListener('keydown', e => {
@@ -232,6 +293,6 @@ if (split && listOf()) {
       default: return;
     }
     e.preventDefault();
-    if (next) { moved = true; select(next); }
+    if (next) { moved = true; select(next); showFollow(); }
   });
 }

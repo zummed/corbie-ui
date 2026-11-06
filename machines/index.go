@@ -9,15 +9,20 @@ import (
 	"sync"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/machine"
 )
 
 // An index is what the pages show of the directory, read once each time a
-// file in it changes: each machine as Corbie reads it, the list, each problem
-// once, and the parts.
+// file in it changes or its prefix does: each machine as Corbie reads it, at
+// its location under the prefix, the list, the pieces, each
+// problem once, and the parts.
 type index struct {
+	Prefix   string
 	machines map[string]*client.Machine
 	own      map[string][]problem
 	Groups   []group
+	Pieces   []entry
+	included map[string][]string
 	Problems []problem
 	Unread   string
 	parts    []part
@@ -29,39 +34,46 @@ type group struct {
 	Entries []entry
 }
 
-// An entry is one machine in the list: its file, its type and first line, and
-// how many problems it has.
+// An entry is one machine or one piece in the list: its file; a machine's
+// type and first line, location, lifetime and how many problems it has; and
+// how many machines include a piece.
 type entry struct {
-	Path, Type, First string
-	Problems          int
+	Path, Type, First, Location, Lifetime string
+	Problems, Included                    int
 }
 
 // indexed keeps the index of a directory, and reads it again only when the
-// directory changed.
+// directory changed, or the prefix it is read at.
 type indexed struct {
-	dir   *dir
-	mu    sync.Mutex
-	stamp string
-	ix    *index
+	dir       *dir
+	mu        sync.Mutex
+	stamp, at string
+	ix        *index
 }
 
-// current gives the index of the directory as it is now.
-func (c *indexed) current() *index {
+// current gives the index of the directory as it is now, read at the
+// prefix at, or at the prefix a submit gives it by default where at is "".
+func (c *indexed) current(at string) *index {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if stamp := c.dir.stamp(); c.ix == nil || stamp != c.stamp {
-		c.ix, c.stamp = c.dir.index(), stamp
+	if stamp := c.dir.stamp(); c.ix == nil || stamp != c.stamp || at != c.at {
+		c.ix, c.stamp, c.at = c.dir.index(at), stamp, at
 	}
 	return c.ix
 }
 
-// index reads every machine in the directory with Corbie's own reader.
-func (d *dir) index() *index {
-	found, err := client.ReadMachines(d.root)
-	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}}
+// index reads every machine in the directory with Corbie's own reader, as
+// a tree at the prefix at, or at the prefix a submit gives it by default
+// where at is "".
+func (d *dir) index(at string) *index {
+	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, included: map[string][]string{}}
+	tree, err := client.ReadTree(d.root, at)
 	if err != nil {
 		ix.Unread = err.Error()
+		return ix
 	}
+	ix.Prefix = tree.Prefix
+	found := tree.Machines
 	for _, m := range found {
 		ix.machines[m.Path] = m
 		if m.Problem != nil {
@@ -72,12 +84,17 @@ func (d *dir) index() *index {
 	ix.Problems = d.problemsOnce(ix.own)
 	groups := map[string][]entry{}
 	for _, m := range found {
-		if dotted(m.Path) || ix.machines[m.Path] == nil {
+		if ix.machines[m.Path] == nil {
 			continue
 		}
-		en := entry{Path: m.Path, Problems: len(ix.at(m.Path))}
+		en := entry{Path: m.Path, Location: m.Location, Problems: len(ix.at(m.Path))}
 		if m.Draft != nil {
-			en.Type, en.First = m.Draft.Definition.Type, m.Draft.Definition.Name
+			en.Type, en.First, en.Lifetime = m.Draft.Definition.Type, m.Draft.Definition.Name, m.Draft.Definition.Lifetime
+			for _, file := range filesOf(m.Draft.Definition) {
+				if file != m.Path && ix.machines[file] == nil {
+					ix.included[file] = append(ix.included[file], m.Path)
+				}
+			}
 		} else if src, _, err := d.read(m.Path); err == nil {
 			en.Type, en.First = firstLine(src)
 		}
@@ -89,8 +106,42 @@ func (d *dir) index() *index {
 	for _, at := range sortedKeys(groups) {
 		ix.Groups = append(ix.Groups, group{Dir: at, Entries: groups[at]})
 	}
+	files, err := d.files()
+	if err != nil {
+		ix.Unread = err.Error()
+	}
+	pieces := map[string]bool{}
+	for _, file := range files {
+		if strings.HasSuffix(file, ".yaml") && ix.machines[file] == nil {
+			pieces[file] = true
+		}
+	}
+	for file := range ix.included {
+		pieces[file] = true
+	}
+	for _, file := range sortedKeys(pieces) {
+		ix.Pieces = append(ix.Pieces, entry{Path: file, Included: len(ix.included[file])})
+	}
 	ix.parts = d.partsOf(ix)
 	return ix
+}
+
+// piece tells whether a file is a piece: a .yaml file with no type, or a
+// file a machine takes a value from.
+func (ix *index) piece(file string) bool {
+	return slices.ContainsFunc(ix.Pieces, func(e entry) bool { return e.Path == file })
+}
+
+// filesOf gives the files a definition written out takes its values from,
+// in order, its own among them.
+func filesOf(def *machine.Definition) []string {
+	files := map[string]bool{}
+	for _, at := range def.Lines {
+		if i := strings.LastIndexByte(at, ':'); i > 0 {
+			files[at[:i]] = true
+		}
+	}
+	return sortedKeys(files)
 }
 
 // unreadIncluded reads a file an `include:` names that cannot be read, and
@@ -132,17 +183,14 @@ func (d *dir) beginsAsMachine(file string) bool {
 	return kind != ""
 }
 
-// problemsOnce gives each problem of the project's machines once, at the file
-// Corbie names, with the machines it breaks. A machine that reads without
-// problems from a directory below this one gives one problem: that directory
-// is the top of its project.
+// problemsOnce gives each problem of the directory's machines once, at the
+// file Corbie names, with the machines it breaks. A machine that reads
+// without problems from a directory below this one gives one problem: that
+// directory is the top of its tree.
 func (d *dir) problemsOnce(own map[string][]problem) []problem {
 	var tops, rest []*problem
 	found := map[string]*problem{}
 	for _, file := range sortedKeys(own) {
-		if dotted(file) {
-			continue
-		}
 		if top := d.topOf(file); top != "" {
 			if found[top] == nil {
 				found[top] = &problem{File: top, Top: true}
@@ -181,7 +229,7 @@ func byPlace(a, b problem) int {
 func (d *dir) topOf(file string) string {
 	for at := path.Dir(file); at != "."; at = path.Dir(at) {
 		rel := strings.TrimPrefix(file, at+"/")
-		if _, _, err := client.ReadMachine(filepath.Join(d.root, filepath.FromSlash(at)), rel); err == nil {
+		if _, err := client.ReadMachine(filepath.Join(d.root, filepath.FromSlash(at)), rel); err == nil {
 			return at
 		}
 	}
@@ -190,7 +238,7 @@ func (d *dir) topOf(file string) string {
 
 // at gives the problems found in a file: a machine's own, each with the
 // machines it breaks as the list gives them, or the one problem of the
-// directory that is the top of its project, or for any other file those
+// directory that is the top of its tree, or for any other file those
 // found in it by the machines that read it.
 func (ix *index) at(file string) []problem {
 	for _, p := range ix.Problems {

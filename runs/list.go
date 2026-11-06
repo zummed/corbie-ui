@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -21,11 +22,12 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// A narrowing is what the address of the Runs page holds: the runs it
-// narrows to, and the window of the runs that ended.
+// A narrowing is what the address of the Runs page holds: the location
+// prefix and the labels it narrows to, and the window of the runs that
+// ended.
 type narrowing struct {
-	Client, Window string
-	Labels         []string
+	At, Window string
+	Labels     []string
 }
 
 // A window is a length of time the ended runs are listed for.
@@ -37,7 +39,7 @@ type window struct {
 var windows = []window{{"1h", time.Hour}, {"6h", 6 * time.Hour}, {"24h", 24 * time.Hour}, {"7d", 7 * 24 * time.Hour}}
 
 func narrowingOf(q url.Values) narrowing {
-	n := narrowing{Client: q.Get("client"), Window: q.Get("window"), Labels: strings.Fields(q.Get("label"))}
+	n := narrowing{At: q.Get("at"), Window: q.Get("window"), Labels: strings.Fields(q.Get("label"))}
 	if !slices.ContainsFunc(windows, func(w window) bool { return w.Name == n.Window }) {
 		n.Window = "6h"
 	}
@@ -62,7 +64,7 @@ func (n narrowing) with(change func(*narrowing)) string {
 			q.Set(k, v)
 		}
 	}
-	set("client", n.Client, "")
+	set("at", n.At, "")
 	set("label", strings.Join(n.Labels, " "), "")
 	set("window", n.Window, "6h")
 	if len(q) == 0 {
@@ -70,9 +72,6 @@ func (n narrowing) with(change func(*narrowing)) string {
 	}
 	return "/runs?" + q.Encode()
 }
-
-// WithClient gives the address narrowed to a client, or to every client.
-func (n narrowing) WithClient(c string) string { return n.with(func(m *narrowing) { m.Client = c }) }
 
 // LabelText is the labels narrowed to, as they are typed.
 func (n narrowing) LabelText() string { return strings.Join(n.Labels, " ") }
@@ -84,11 +83,11 @@ func (n narrowing) query() string {
 	return ""
 }
 
-// keeps says whether a run is one the narrowing leaves: a label with a
-// value must match it, and one with none need only be there, as `corbie
-// ls --label` reads it.
+// keeps says whether a run is one the narrowing leaves: one at the prefix
+// or below it, with every label, where a label with a value must match it
+// and one with none need only be there, as `corbie ls --label` reads it.
 func (n narrowing) keeps(r *client.Run) bool {
-	if n.Client != "" && store.InstanceClient(r.ID) != n.Client {
+	if n.At != "" && !under(r.Location, n.At) {
 		return false
 	}
 	for _, l := range n.Labels {
@@ -101,11 +100,18 @@ func (n narrowing) keeps(r *client.Run) bool {
 	return true
 }
 
+// under says whether a location is a prefix or below it.
+func under(location, prefix string) bool {
+	return location == prefix || strings.HasPrefix(location, prefix+"/")
+}
+
 // listView is the Runs page as it is drawn.
 type listView struct {
-	Narrowing                   narrowing
-	Clients                     []choice
-	Busy, Idle, Services, Ended section
+	Narrowing                     narrowing
+	Every                         choice
+	Clients                       []clientPlaces
+	Here                          *placeHead
+	Busy, Idle, Singletons, Ended section
 }
 
 type choice struct {
@@ -113,33 +119,69 @@ type choice struct {
 	Current    bool
 }
 
-// A section is one panel of lines: its part's ID, its name, and what its
-// head offers.
+// A section is one panel of lines: its part's ID, its name, and the windows
+// its head offers.
 type section struct {
 	ID, Name string
 	Lines    []rootLine
 	Windows  []choice
-	Cancel   *cancelling
 }
 
-// cancelling is the idle runs on old versions the UI may cancel, and the
-// commands that cancel them.
-type cancelling struct {
-	IDs      []string
-	Commands string
+// clientPlaces is the locations of one client's trees, as Locations lists
+// them: the trees the UI knows, then the locations in trees it does not.
+type clientPlaces struct {
+	Name  string
+	Trees []treeView
+}
+
+// A treeView is a tree and its locations; a tree with no prefix is the
+// locations whose tree the UI does not know, each written in full.
+type treeView struct {
+	Prefix, Href string
+	Current      bool
+	Places       []place
+}
+
+// A place is one location as Locations lists it: its name from its tree's
+// prefix, its lifetime where it is known, and the status of a singleton's
+// run or how many of its runs are running.
+type place struct {
+	Name, Location, Href, Lifetime, Status, Says string
+	Current                                      bool
+}
+
+// placeHead is the head of a page narrowed to one location, and what it
+// offers: Cancel in the UI's client's own tree, Send at a keyed location,
+// Start at a transient location of its own tree.
+type placeHead struct {
+	Location, Lifetime, Tree, Client string
+	Cancel                           *page.Call
+	Send, Start                      bool
+}
+
+// fixed is what a run has from its start, which never changes: its title,
+// the prefix of its tree, its lifetime, whether a call started it, the job
+// of its parent's it is, whether a machine above it or it was made while
+// running, and the directory last submitted at its tree. The UI reads it
+// from the record of a run in a tree of its client.
+type fixed struct {
+	Title, Tree, Lifetime, Job, Dir string
+	Called, Made                    bool
 }
 
 // A rootLine is one root run: the chain of running runs from it to the
 // deepest, what the deepest waits on, and the rows it unfolds to.
 type rootLine struct {
 	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
+	// Key is the run's key after its title, at a keyed location.
+	Key string
 	// Titled says the name is the root's title, which is cut at its end;
-	// a key is cut in its middle.
+	// an address is cut in its middle.
 	Titled bool
 	Chain  []link
 	folded
 	Shown, Waits string
-	Old, Ended   bool
+	Ended        bool
 	Under        int
 	Rows         []row
 	// More is how many of the runs it started are not rows, and are
@@ -170,8 +212,8 @@ func fold(chain []link) folded {
 // are under it, when it started and how long it took. The root's own row,
 // where it runs, comes first.
 type row struct {
-	ID, Status, Failure, Name, Tip, Machine, Type string
-	Own                                           bool
+	ID, Status, Failure, Name, Key, Tip, Machine, Type string
+	Own                                                bool
 	folded
 	Shown, Says, When, Took string
 	Under                   int
@@ -181,60 +223,76 @@ type row struct {
 const most = 20
 
 // nameOf is how the UI names a run wherever it lists it: by its title, by
-// its key where it has none, and by its machine where it has neither.
-func nameOf(r *client.Run) string { return cmp.Or(r.Title, r.Key, r.Machine) }
+// its address, written from the prefix at, where it has none, and by its
+// machine where it has neither.
+func nameOf(r *client.Run, at string) string { return cmp.Or(r.Title, addressOf(r, at), r.Machine) }
 
-// tipOf is the tooltip of a run's name: its title and its key, where it has
-// them, and its ID.
+// keyOf gives the key a run's name is followed by: #key for a run at a
+// keyed location named by its title, whose name does not give its key.
+func keyOf(r *client.Run) string {
+	if r.Title == "" || r.Key == "" {
+		return ""
+	}
+	return "#" + r.Key
+}
+
+// addressOf gives a run's address as the command line writes it: its
+// location, with #key at a keyed location, written from the prefix at. A
+// location the prefix names in full keeps its last name. A child that
+// machine: started has no address of its own.
+func addressOf(r *client.Run, at string) string {
+	if r.Location == "" || r.Parent != "" {
+		return ""
+	}
+	loc := r.Location
+	switch {
+	case at != "" && strings.HasPrefix(loc, at+"/"):
+		loc = loc[len(at)+1:]
+	case at != "" && loc == at:
+		loc = path.Base(loc)
+	}
+	if r.Key != "" {
+		loc += "#" + r.Key
+	}
+	return loc
+}
+
+// tipOf is the tooltip of a run's name: its title where it has one, its
+// full address, or a child's location, and its ID.
 func tipOf(r *client.Run) string {
 	var tip []string
 	if r.Title != "" {
 		tip = append(tip, r.Title)
 	}
-	if r.Key != "" {
-		tip = append(tip, "key "+r.Key)
+	if a := cmp.Or(addressOf(r, ""), r.Location); a != "" {
+		tip = append(tip, a)
 	}
 	return strings.Join(append(tip, r.ID), "\n")
 }
 
-// listOf gives the Runs page from the runs and the latest step of each run
-// of the UI's client, mine, that the page shows.
-func listOf(runs []*client.Run, stepOf func(*client.Run) *instance.Step, n narrowing, at time.Time, mine string) listView {
+// listOf gives the Runs page from the runs, the latest step of each run in
+// a tree of the UI's client, mine, that the page shows, and what is fixed of
+// each of those runs.
+func listOf(runs []*client.Run, stepOf func(*client.Run) *instance.Step, facts map[string]fixed, n narrowing, at time.Time, mine string) listView {
 	v := listView{Narrowing: n,
-		Busy:     section{ID: "busy", Name: "Busy"},
-		Idle:     section{ID: "idle", Name: "Idle"},
-		Services: section{ID: "services", Name: "Services"},
-		Ended:    section{ID: "ended", Name: "Ended"},
+		Busy:       section{ID: "busy", Name: "Busy"},
+		Idle:       section{ID: "idle", Name: "Idle"},
+		Singletons: section{ID: "singletons", Name: "Singletons"},
+		Ended:      section{ID: "ended", Name: "Ended"},
 	}
-	clients := map[string]bool{}
 	byID := map[string]*client.Run{}
 	under := map[string][]*client.Run{}
-	// The current version of a file, for each client, is that of the
-	// newest run with no parent that the client keyed by it.
-	current := map[[2]string]*client.Run{}
 	for _, r := range runs {
-		clients[store.InstanceClient(r.ID)] = true
 		byID[r.ID] = r
 		under[r.Parent] = append(under[r.Parent], r)
-		if file, ok := strings.CutPrefix(r.Key, client.KeyFile); ok && r.Parent == "" {
-			at := [2]string{store.InstanceClient(r.ID), file}
-			if c := current[at]; c == nil || r.Started.After(c.Started) {
-				current[at] = r
-			}
-		}
 	}
 	for _, kids := range under {
 		slices.SortFunc(kids, func(a, b *client.Run) int { return strings.Compare(a.ID, b.ID) })
 	}
-	for _, c := range slices.Sorted(maps.Keys(clients)) {
-		v.Clients = append(v.Clients, choice{Name: c, Href: n.with(func(m *narrowing) { m.Client = c }), Current: n.Client == c})
-	}
+	v.Every = choice{Name: "every location", Href: n.with(func(m *narrowing) { m.At = "" }), Current: n.At == ""}
+	v.Clients, v.Here = placesOf(runs, facts, n, mine)
 	for _, w := range windows {
 		v.Ended.Windows = append(v.Ended.Windows, choice{Name: w.Name, Href: n.with(func(m *narrowing) { m.Window = w.Name }), Current: n.Window == w.Name})
-	}
-	old := func(r *client.Run) bool {
-		c := current[[2]string{store.InstanceClient(r.ID), r.Labels[client.LabelMachine]}]
-		return c != nil && r.Labels[client.LabelHash] != c.Labels[client.LabelHash]
 	}
 	from := at.Add(-n.long())
 	var roots, ended []*client.Run
@@ -251,34 +309,20 @@ func listOf(runs []*client.Run, stepOf func(*client.Run) *instance.Step, n narro
 	slices.SortFunc(roots, func(a, b *client.Run) int { return strings.Compare(b.ID, a.ID) })
 	slices.SortFunc(ended, func(a, b *client.Run) int { return b.Ended.Compare(a.Ended) })
 
-	l := lister{byID: byID, under: under, stepOf: stepOf, from: from, at: at}
+	l := lister{byID: byID, under: under, stepOf: stepOf, from: from, at: at, prefix: n.At}
 	for _, r := range roots {
 		line := l.line(r)
-		line.Old = old(r)
 		line.Chain = descent(r, under, running)
 		line.folded = fold(line.Chain)
-		line.Shown, line.Waits = l.waits(byID[line.Chain[len(line.Chain)-1].ID], r.Key)
+		line.Shown, line.Waits = l.waits(byID[line.Chain[len(line.Chain)-1].ID])
 		switch {
-		case strings.HasPrefix(r.Key, client.KeyFile):
-			v.Services.Lines = append(v.Services.Lines, line)
+		case facts[r.ID].Lifetime == machine.LifetimeSingleton:
+			v.Singletons.Lines = append(v.Singletons.Lines, line)
 		case r.Status == instance.Waiting || r.Jobs > 0 || len(r.Tickets) > 0 || len(running(under[r.ID])) > 0:
 			v.Busy.Lines = append(v.Busy.Lines, line)
 		default:
 			v.Idle.Lines = append(v.Idle.Lines, line)
-			if line.Old && mine != "" && store.InstanceClient(r.ID) == mine {
-				if v.Idle.Cancel == nil {
-					v.Idle.Cancel = &cancelling{}
-				}
-				v.Idle.Cancel.IDs = append(v.Idle.Cancel.IDs, r.ID)
-			}
 		}
-	}
-	if c := v.Idle.Cancel; c != nil {
-		var commands []string
-		for _, id := range c.IDs {
-			commands = append(commands, cancelOf(id).String())
-		}
-		c.Commands = strings.Join(commands, "\n$ ")
 	}
 	for _, r := range ended {
 		line := l.line(r)
@@ -286,6 +330,93 @@ func listOf(runs []*client.Run, stepOf func(*client.Run) *instance.Step, n narro
 		v.Ended.Lines = append(v.Ended.Lines, line)
 	}
 	return v
+}
+
+// placesOf gives the locations at which the list holds a run, by the client
+// whose tree holds each, and the head of a page narrowed to one of them.
+func placesOf(runs []*client.Run, facts map[string]fixed, n narrowing, mine string) ([]clientPlaces, *placeHead) {
+	type found struct {
+		client, tree, lifetime string
+		keyed                  bool
+		running                int
+		newest                 *client.Run
+	}
+	at := map[string]*found{}
+	for _, r := range runs {
+		if r.Location == "" {
+			continue
+		}
+		f := at[r.Location]
+		if f == nil {
+			f = &found{client: store.InstanceClient(r.ID)}
+			at[r.Location] = f
+		}
+		known := facts[r.ID]
+		f.tree, f.lifetime = cmp.Or(f.tree, known.Tree), cmp.Or(f.lifetime, known.Lifetime)
+		f.keyed = f.keyed || r.Key != ""
+		if r.Parent == "" {
+			if !r.HasEnded() {
+				f.running++
+			}
+			if f.newest == nil || r.Started.After(f.newest.Started) {
+				f.newest = r
+			}
+		}
+	}
+	trees := map[string]map[string][]place{} // by client, then by tree
+	var here *placeHead
+	for _, loc := range slices.Sorted(maps.Keys(at)) {
+		f := at[loc]
+		if f.lifetime == "" && f.keyed {
+			f.lifetime = machine.LifetimeKeyed
+		}
+		p := place{Name: loc, Location: loc, Lifetime: f.lifetime, Href: n.with(func(m *narrowing) { m.At = loc }), Current: n.At == loc}
+		if f.tree != "" {
+			p.Name = strings.TrimPrefix(loc, f.tree+"/")
+			if loc == f.tree {
+				p.Name = path.Base(loc)
+			}
+		}
+		switch {
+		case f.lifetime == machine.LifetimeSingleton && f.newest != nil:
+			p.Status = f.newest.Status
+		case f.running > 0:
+			p.Says = fmt.Sprintf("%d running", f.running)
+		}
+		if trees[f.client] == nil {
+			trees[f.client] = map[string][]place{}
+		}
+		trees[f.client][f.tree] = append(trees[f.client][f.tree], p)
+		if p.Current {
+			here = &placeHead{Location: loc, Lifetime: f.lifetime, Tree: f.tree, Client: f.client}
+			own := mine != "" && f.client == mine
+			if own {
+				cancel := page.Call{Words: []string{"run", "cancel"}, Args: []string{loc}}
+				here.Cancel = &cancel
+			}
+			here.Send = mine != "" && f.lifetime == machine.LifetimeKeyed
+			here.Start = own && f.lifetime == machine.LifetimeTransient
+		}
+	}
+	var out []clientPlaces
+	for _, c := range slices.Sorted(maps.Keys(trees)) {
+		cp := clientPlaces{Name: c}
+		// The trees the UI knows come first, by prefix; the locations of
+		// trees it does not know, under no prefix, last.
+		prefixes := slices.Sorted(maps.Keys(trees[c]))
+		if len(prefixes) > 0 && prefixes[0] == "" {
+			prefixes = append(prefixes[1:], "")
+		}
+		for _, prefix := range prefixes {
+			t := treeView{Prefix: prefix, Places: trees[c][prefix]}
+			if prefix != "" {
+				t.Href, t.Current = n.with(func(m *narrowing) { m.At = prefix }), n.At == prefix
+			}
+			cp.Trees = append(cp.Trees, t)
+		}
+		out = append(out, cp)
+	}
+	return out, here
 }
 
 // A lister gives the lines of the Runs page from the runs under each run
@@ -296,19 +427,22 @@ type lister struct {
 	stepOf func(*client.Run) *instance.Step
 	from   time.Time
 	at     time.Time
+	// prefix is the location prefix the page is narrowed to, from which
+	// addresses are written.
+	prefix string
 }
 
 // line gives a root's line, with the rows it unfolds to: its own row where
 // it runs, then the runs it started that run or ended in the window,
 // newest first, the first twenty of them.
 func (l lister) line(r *client.Run) rootLine {
-	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
+	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Key: keyOf(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
 	if r.HasEnded() {
 		line.Took = took(r.Ended.Sub(r.Started))
 	} else {
 		line.When = page.When(r.Started, l.at)
 		own := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: r.Machine, Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Own: true, When: line.When}
-		own.Shown, own.Says = l.waits(r, r.Key)
+		own.Shown, own.Says = l.waits(r)
 		line.Rows = append(line.Rows, own)
 	}
 	kids, shown := l.under[r.ID], 0
@@ -318,7 +452,7 @@ func (l lister) line(r *client.Run) rootLine {
 		case shown == most:
 			line.More++
 		default:
-			line.Rows = append(line.Rows, l.row(k, r.Key))
+			line.Rows = append(line.Rows, l.row(k))
 			shown++
 		}
 	}
@@ -328,12 +462,12 @@ func (l lister) line(r *client.Run) rootLine {
 // row gives a run a root started: a running one with the chain of running
 // runs below it and what the deepest waits on, an ended one with the chain
 // of the newest run at each level below it and what it ended with.
-func (l lister) row(r *client.Run, key string) row {
-	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
+func (l lister) row(r *client.Run) row {
+	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Key: keyOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
 	if !r.HasEnded() {
 		chain := descent(r, l.under, running)
 		w.folded = fold(chain)
-		w.Shown, w.Says = l.waits(l.byID[chain[len(chain)-1].ID], key)
+		w.Shown, w.Says = l.waits(l.byID[chain[len(chain)-1].ID])
 		return w
 	}
 	w.folded = fold(descent(r, l.under, all))
@@ -343,11 +477,10 @@ func (l lister) row(r *client.Run, key string) row {
 }
 
 // waits gives the states a running run is in and what it waits on, from
-// its latest step where the UI's client started it, events at the root's
-// key left out.
-func (l lister) waits(r *client.Run, key string) (shown, says string) {
+// its latest step where it is in a tree of the UI's client.
+func (l lister) waits(r *client.Run) (shown, says string) {
 	step := l.stepOf(r)
-	return shownOf(step), inWords(listed(waitsOf(r, stateOf(step), running(l.under[r.ID]), l.at), key))
+	return shownOf(step), inWords(waitsOf(r, stateOf(step), running(l.under[r.ID]), l.at))
 }
 
 // count gives how many runs are under a run.
@@ -371,8 +504,8 @@ func endOf(step *instance.Step) string {
 		return ""
 	}
 	e := step.Events[len(step.Events)-1]
-	if e.From != "" {
-		return e.Name + " from " + e.From
+	if from := cmp.Or(senderOf(e.Event), e.From); from != "" {
+		return e.Name + " from " + from
 	}
 	return e.Name
 }
@@ -394,12 +527,6 @@ func descent(r *client.Run, under map[string][]*client.Run, kids func([]*client.
 
 // all gives every run of kids.
 func all(kids []*client.Run) []*client.Run { return kids }
-
-// listed gives waits as a root's line lists them: events at the root's key
-// are left out, since the line gives that key.
-func listed(waits []wait, key string) []wait {
-	return slices.DeleteFunc(waits, func(w wait) bool { return key != "" && w.Text == "events at key "+key })
-}
 
 // shownOf gives the states or stages a run is in, or what an agent waits
 // for, from what its type shows of its latest step.
@@ -448,53 +575,59 @@ func counted(n int, what string) string {
 	return plural(n, what)
 }
 
-// cancelOf is the command that cancels a run the UI's client started.
+// cancelOf is the command that cancels a run in a tree of the UI's client.
 func cancelOf(id string) page.Call {
 	return page.Call{Words: []string{"run", "cancel"}, Args: []string{id}}
 }
 
-// cancel cancels runs the UI's client started, with one `corbie run
-// cancel` for each, and answers with what they printed.
-func (h *handler) cancel(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	ids := r.Form["id"]
-	for _, id := range ids {
-		if store.CheckInstance(id) != nil || !h.mine(id) {
-			page.Error(w, http.StatusForbidden, "only the client that started a run cancels it: "+id)
+// atAct runs the command of an action on a location: Cancel every run
+// there, Send to a key, or Start a run. It answers with what the command
+// printed: the receipt, or each run cancelled, or the error.
+func (h *handler) atAct(w http.ResponseWriter, r *http.Request) {
+	at := r.FormValue("at")
+	if store.CheckLocation(at) != nil {
+		page.Error(w, http.StatusBadRequest, "not a location: "+at)
+		return
+	}
+	if h.Client == nil {
+		page.Error(w, http.StatusForbidden, "only a client acts on a location: start the UI as the client")
+		return
+	}
+	var call page.Call
+	switch r.PathValue("act") {
+	case "cancel":
+		call = page.Call{Words: []string{"run", "cancel"}, Args: []string{at}}
+	case "send":
+		data, err := jsonOf(r.FormValue("data"))
+		if err != nil {
+			page.Error(w, http.StatusBadRequest, "the data is not JSON: "+err.Error())
 			return
 		}
-	}
-	// Each cancel waits for the controller's answer, so they are sent side
-	// by side and the answers are read in order.
-	answers := make([]page.Answer, len(ids))
-	var wg sync.WaitGroup
-	for i, id := range ids {
-		wg.Go(func() { answers[i] = h.Command(r.Context(), cancelOf(id)) })
-	}
-	wg.Wait()
-	var said, failed []string
-	count := map[string]int{}
-	for i, id := range ids {
-		answer := answers[i]
-		if answer.Status != 0 {
-			failed = append(failed, id+": "+answer.Error())
-			continue
+		call = page.Call{Words: []string{"run", "send"}, Args: []string{at + "#" + r.FormValue("key"), r.FormValue("event")}}
+		if data != "" {
+			call.Args = append(call.Args, data)
 		}
-		text := receipt(answer)
-		if count[text] == 0 {
-			said = append(said, text)
+	case "start":
+		input, err := jsonOf(r.FormValue("input"))
+		if err != nil {
+			page.Error(w, http.StatusBadRequest, "the input is not JSON: "+err.Error())
+			return
 		}
-		count[text]++
+		call = page.Call{Words: []string{"run", "submit"}, Args: []string{at}}
+		if input != "" {
+			call.Flags = []string{"--input=" + input}
+		}
+	default:
+		page.Error(w, http.StatusNotFound, "there is no such action")
+		return
 	}
-	for i, text := range said {
-		said[i] = fmt.Sprintf("%s: %d", text, count[text])
-	}
-	if len(failed) > 0 {
-		page.Error(w, http.StatusConflict, strings.Join(append(said, failed...), "; "))
+	answer := h.Command(r.Context(), call)
+	if answer.Status != 0 {
+		page.Error(w, http.StatusConflict, refusal(answer))
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprint(w, strings.Join(said, "; "))
+	fmt.Fprint(w, receipt(answer))
 }
 
 // steps keeps the latest step of each run of the UI's client that the
@@ -562,28 +695,30 @@ func (r *stepReader) done() error {
 	return errors.Join(r.errs...)
 }
 
-// titles keeps the title of each run of the UI's client that the list
-// holds: it is filled in at the run's first step and never changes.
+// titles keeps what is fixed of each run in a tree of the UI's client
+// that the list holds: it is filled in at the run's first step and never
+// changes.
 type titles struct {
 	mu   sync.Mutex
 	read map[string]titleRead
 }
 
-// A titleRead is a run's title, and the step of its head it was looked
-// for at. Kept says the title was read, and is the run's title for good.
+// A titleRead is what is fixed of a run, and the step of its head it was
+// looked for at. Kept says it was read, and is the run's for good.
 type titleRead struct {
 	at    int
-	title string
+	fixed fixed
 	kept  bool
 }
 
 // of gives the runs of a listing, each run of the client's a copy with its
-// title, read once for each run. The titles of runs the listing no longer
-// holds are forgotten.
-func (t *titles) of(ctx context.Context, c *client.Client, runs []*client.Run) ([]*client.Run, error) {
+// title, and what is fixed of each, read once for each run. What is fixed
+// of runs the listing no longer holds is forgotten.
+func (t *titles) of(ctx context.Context, c *client.Client, runs []*client.Run) ([]*client.Run, map[string]fixed, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	kept := map[string]titleRead{}
+	facts := map[string]fixed{}
 	var errs []error
 	var out []*client.Run
 	for _, run := range runs {
@@ -593,43 +728,46 @@ func (t *titles) of(ctx context.Context, c *client.Client, runs []*client.Run) (
 		}
 		got, ok := t.read[run.ID]
 		if !ok || (!got.kept && got.at != run.Step) {
-			title, found, err := titleOf(ctx, c, run)
+			f, found, err := fixedOf(ctx, c, run)
 			if err != nil {
 				errs = append(errs, err)
 				out = append(out, run)
 				continue
 			}
-			got = titleRead{at: run.Step, title: title, kept: found}
+			got = titleRead{at: run.Step, fixed: f, kept: found}
 		}
 		kept[run.ID] = got
+		facts[run.ID] = got.fixed
 		titled := *run
-		titled.Title = got.title
+		titled.Title = got.fixed.Title
 		out = append(out, &titled)
 	}
 	t.read = kept
-	return out, errors.Join(errs...)
+	return out, facts, errors.Join(errs...)
 }
 
-// titleOf reads a run's title from the step its head gives, or from its
-// latest step where that one is not there. A run with no step yet has not
-// been given its title; one sealed to a key the client no longer has shows
-// none.
-func titleOf(ctx context.Context, c *client.Client, run *client.Run) (title string, found bool, err error) {
+// fixedOf reads what is fixed of a run from the step its head gives, or
+// from its latest step where that one is not there. A run with no step yet
+// has not been given its title; one sealed to a key the client no longer
+// has shows none.
+func fixedOf(ctx context.Context, c *client.Client, run *client.Run) (f fixed, found bool, err error) {
 	step, err := instance.ReadStep(ctx, c.Store, c.Controller, c.ID, run.ID, run.Step)
 	if err == nil && step == nil {
 		step, err = instance.Current(ctx, c.Store, c.Controller, c.ID, run.ID)
 	}
 	switch {
 	case errors.Is(err, identity.ErrNotForUs):
-		return "", true, nil
+		return f, true, nil
 	case err != nil || step == nil:
-		return "", false, err
+		return f, false, err
 	}
-	return step.State.Title, true, nil
+	st := &step.State
+	return fixed{Title: st.Title, Tree: st.Tree, Lifetime: st.Lifetime, Job: st.Above.Job, Dir: st.Above.Context,
+		Called: st.Above.CallJob != "" || st.Above.CallReceipt != nil, Made: st.Above.Made}, true, nil
 }
 
-// middle cuts a long key in its middle, where keys that differ at their
-// end keep it.
+// middle cuts a long address in its middle, where keys that differ at
+// their end keep it.
 func middle(s string) string {
 	const most = 32
 	if r := []rune(s); len(r) > most {

@@ -112,7 +112,7 @@ func ask(h http.Handler, method, path string, headers ...string) *httptest.Respo
 func Test_serve_request_without_the_token_is_refused(t *testing.T) {
 	h := served(t, "client", "controller")
 	for _, r := range [][2]string{{"GET", "/runs"}, {"GET", "/runs/stream"}, {"GET", "/metrics"}, {"GET", "/assets/ui.css"},
-		{"POST", "/run/lab-client/20261015T091204.118Z-3be1c07a2f/cancel"}, {"POST", "/runs/cancel"}} {
+		{"POST", "/run/lab-client/20261015T091204.118Z-3be1c07a2f/cancel"}, {"POST", "/runs/at/cancel"}} {
 		if w := ask(h, r[0], r[1]); w.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without the token answered %d", r[0], r[1], w.Code)
 		}
@@ -152,7 +152,7 @@ func Test_serve_request_from_another_origin_is_refused(t *testing.T) {
 		if w := ask(h, "GET", "/runs", "Cookie", cookie, "Origin", origin); w.Code != http.StatusForbidden {
 			t.Errorf("a page from %s answered %d", origin, w.Code)
 		}
-		for _, action := range []string{"/run/lab-client/20261015T091204.118Z-3be1c07a2f/cancel", "/runs/cancel"} {
+		for _, action := range []string{"/run/lab-client/20261015T091204.118Z-3be1c07a2f/cancel", "/runs/at/cancel"} {
 			if w := ask(h, "POST", action, "Cookie", cookie, "Origin", origin); w.Code != http.StatusForbidden {
 				t.Errorf("the action %s from %s answered %d", action, origin, w.Code)
 			}

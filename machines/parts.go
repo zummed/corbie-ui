@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/machine"
@@ -19,11 +18,11 @@ import (
 )
 
 // A part is a group of tools under an agent's `open:`, as the Parts page shows
-// it. File is the file it is included from, where one is written, and Opening
-// says opening it needs approval.
+// it. File is the file it is included from, where one is written, Opening
+// says opening it needs approval, and Broken that its file has problems.
 type part struct {
 	ID, Name, Does, File string
-	Opening              bool
+	Opening, Broken      bool
 	Tools                []partTool
 	Opened               []opener
 	key                  string
@@ -36,13 +35,11 @@ type partTool struct {
 	Approve               bool
 }
 
-// An opener is an agent that opens a part, and the machines that start it.
-// Problems says Corbie cannot read the machine the agent is in, so what
-// starts it is not known.
+// An opener is an agent that opens a part, the machines that start it, and
+// for an agent in a file of its own, how its location's runs start.
 type opener struct {
-	Name, File string
-	Starts     []start
-	Problems   bool
+	Name, File, Lifetime, Started string
+	Starts                        []start
 }
 
 // A start is a machine that starts an agent.
@@ -72,46 +69,36 @@ type node struct {
 
 // partIndex is what the machines in a directory say of parts.
 type partIndex struct {
-	dir    *dir
 	byFile map[string]*node
 	above  map[string][]string
 	parts  map[string]*part
 }
 
-// partsOf reads every part in the directory: those that the project's
-// machines open, and through them the machines they name, and those that no
-// agent opens.
+// partsOf reads every part in the directory: those that its machines open,
+// and through them the machines they name, and those that no agent opens. A
+// machine with problems opens none, since Corbie does not write it out.
 func (d *dir) partsOf(ix *index) []part {
-	px := &partIndex{dir: d, byFile: map[string]*node{}, above: map[string][]string{}, parts: map[string]*part{}}
+	px := &partIndex{byFile: map[string]*node{}, above: map[string][]string{}, parts: map[string]*part{}}
 	for _, file := range sortedKeys(ix.machines) {
-		if m := ix.machines[file]; m.Draft != nil && !dotted(file) {
+		if m := ix.machines[file]; m.Draft != nil {
 			px.add(file, m.Draft)
 		}
 	}
 	var parts []part
 	for _, p := range px.parts {
 		for i := range p.Opened {
-			p.Opened[i].Starts = px.startsOf(p.Opened[i].File)
+			o := &p.Opened[i]
+			o.Starts = px.startsOf(o.File)
+			if m := ix.machines[o.File]; m != nil && m.Draft != nil && px.byFile[o.File].kind == "agent" {
+				o.Lifetime, o.Started = m.Draft.Definition.Lifetime, startedBy(m.Draft.Definition.Lifetime, m.Location)
+			}
 		}
 		slices.SortFunc(p.Opened, func(a, b opener) int { return strings.Compare(a.File+a.Name, b.File+b.Name) })
 		parts = append(parts, *p)
 	}
-	parts = append(parts, d.unopened(parts)...)
-	for _, file := range sortedKeys(ix.own) {
-		if m := ix.machines[file]; m.Draft != nil || dotted(file) {
-			continue
-		}
-		agents := d.agentsIn(file)
-		for _, name := range sortedKeys(agents) {
-			for _, files := range agents[name] {
-				for i := range parts {
-					p := &parts[i]
-					if p.File != "" && slices.Contains(files, p.File) && !slices.ContainsFunc(p.Opened, func(o opener) bool { return o.File == file && o.Name == name }) {
-						p.Opened = append(p.Opened, opener{Name: name, File: file, Problems: true})
-					}
-				}
-			}
-		}
+	parts = append(parts, d.unopened(ix, parts)...)
+	for i := range parts {
+		parts[i].Broken = parts[i].File != "" && slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == parts[i].File })
 	}
 	slices.SortFunc(parts, func(a, b part) int { return strings.Compare(a.Name+a.key, b.Name+b.key) })
 	uses := map[string]int{}
@@ -182,7 +169,7 @@ func (px *partIndex) opens(file string, a *agent.Agent, d *machine.Draft) {
 				tools = append(tools, tool)
 			}
 		}
-		included := px.dir.partFile(file, d.Definition.Name, name, a.Parts[name].Does)
+		included := drawing.PartFile(d.Definition, name)
 		key := included
 		if key == "" {
 			key = name + "\x00" + a.Parts[name].Does + "\x00" + strings.Join(tools, " ")
@@ -230,60 +217,42 @@ func writtenFrom(file, name string) string {
 	return fromFile(file, name)
 }
 
-// startsOf gives the machines that start the agent in a file: the nearest
-// machine above it on each path that is outside directories whose names begin
-// with a dot, or the machine the agent is written in.
+// startsOf gives the machines that start the agent in a file: for an agent
+// in a file of its own, each machine that runs that file with `machine:`;
+// for one written in place, the machine it is written in.
 func (px *partIndex) startsOf(file string) []start {
-	var starts []start
-	seen := map[string]bool{}
-	var up func(file string)
-	up = func(file string) {
-		for _, above := range px.above[file] {
-			if seen[above] {
-				continue
-			}
-			seen[above] = true
-			if dotted(above) {
-				up(above)
-				continue
-			}
-			h := px.byFile[above]
-			starts = append(starts, start{Name: h.name, File: above, Type: h.kind})
-		}
-	}
-	if h := px.byFile[file]; h.kind != "agent" && !dotted(file) {
+	if h := px.byFile[file]; h.kind != "agent" {
 		return []start{{Name: h.name, File: file, Type: h.kind}}
 	}
-	up(file)
+	var starts []start
+	for _, above := range px.above[file] {
+		h := px.byFile[above]
+		starts = append(starts, start{Name: h.name, File: above, Type: h.kind})
+	}
 	slices.SortFunc(starts, func(a, b start) int { return strings.Compare(a.File, b.File) })
 	return starts
 }
 
-// unopened gives each file in the directory that is written as a part and that
-// no agent opens, outside directories whose names begin with a dot.
-func (d *dir) unopened(known []part) []part {
+// startedBy says how the runs at a location with a lifetime start.
+func startedBy(lifetime, location string) string {
+	switch lifetime {
+	case machine.LifetimeSingleton:
+		return "the submit starts its one run"
+	case machine.LifetimeKeyed:
+		return "a send to a key starts the run for that key"
+	}
+	return "a call, or corbie run submit " + location + ", starts each run"
+}
+
+// unopened gives each piece in the directory that is written as a part and
+// that no agent opens.
+func (d *dir) unopened(ix *index, known []part) []part {
 	var found []part
-	filepath.WalkDir(d.real, func(full string, e fs.DirEntry, err error) error {
-		switch {
-		case err != nil:
-			return err
-		case e.IsDir() && full != d.real && strings.HasPrefix(e.Name(), "."):
-			return filepath.SkipDir
-		case e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml"):
-			return nil
-		}
-		rel, err := filepath.Rel(d.real, full)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if p, ok := d.writtenPart(rel); ok && !slices.ContainsFunc(known, func(k part) bool {
-			return k.File == rel
-		}) {
+	for _, piece := range ix.Pieces {
+		if p, ok := d.writtenPart(piece.Path); ok && !slices.ContainsFunc(known, func(k part) bool { return k.File == piece.Path }) {
 			found = append(found, p)
 		}
-		return nil
-	})
+	}
 	return found
 }
 
@@ -341,8 +310,12 @@ func writtenTool(name, does string, written any, file string) partTool {
 
 // partsPage reads the Parts page as an address asks for it: the part
 // chosen, and its file's text where the address says view=text.
-func (h *handler) partsPage(q url.Values) (partsView, error) {
-	v := h.index.current().partsView(q.Get("part"))
+func (h *handler) partsPage(ctx context.Context, q url.Values) (partsView, error) {
+	ix, err := h.tree(ctx)
+	if err != nil {
+		return partsView{}, err
+	}
+	v := ix.partsView(q.Get("part"))
 	v.Dir = shortly(h.Dir)
 	if v.Open != nil && v.Open.File != "" && q.Get("view") == "text" {
 		src, _, err := h.dir.read(v.Open.File)
@@ -357,7 +330,7 @@ func (h *handler) partsPage(q url.Values) (partsView, error) {
 // showParts is the Parts page.
 func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	v, err := h.partsPage(q)
+	v, err := h.partsPage(r.Context(), q)
 	if err != nil {
 		page.Error(w, http.StatusNotFound, err.Error())
 		return
@@ -388,8 +361,8 @@ func (h *handler) showParts(w http.ResponseWriter, r *http.Request) {
 func (h *handler) streamParts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(context.Context) ([]page.Part, error) {
-		v, err := h.partsPage(q)
+	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) ([]page.Part, error) {
+		v, err := h.partsPage(ctx, q)
 		if err != nil {
 			return nil, err
 		}

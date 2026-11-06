@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,8 +14,11 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
+	corbiectl "github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
+	_ "github.com/zummed/corbie/statechart"
 	"github.com/zummed/corbie/store"
 )
 
@@ -27,13 +31,15 @@ func corbie(t *testing.T, stdin string, args ...string) string {
 	return out.String()
 }
 
-// lab sets one computer up, enrols a runner with tags and removes it, and
-// keeps one secret; it gives the Controller page on it.
+// lab sets one computer up, enrols a runner with tags and removes it, keeps
+// a secret at / and a value at /home, and records a tree at /home and a
+// one-file tree at /hello; it gives the Controller page on it.
 func lab(t *testing.T, command page.Command) http.Handler {
 	t.Helper()
 	dir := t.TempDir()
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
 	corbie(t, "", "init", "--store", at, "--name", "lab", "--ceiling", "network,disk", "--config", config)
+	corbie(t, "", "controller", "enrol", "lab-client", "--ceiling", "network,disk,at:/home,at:/hello", "--config", config)
 	card := regexp.MustCompile(`corbie-card:\S+`).FindString(corbie(t, "", "runner", "card", "--name", "gpu-box", "--config", filepath.Join(dir, "other")))
 	corbie(t, "", "controller", "enrol", card, "--tags", "gpu,big", "--config", config)
 	corbie(t, "", "runner", "card", "--name", "old-box", "--config", filepath.Join(dir, "old"))
@@ -41,6 +47,7 @@ func lab(t *testing.T, command page.Command) http.Handler {
 	corbie(t, "", "controller", "enrol", old, "--config", config)
 	corbie(t, "", "controller", "remove", "old-box", "--config", config)
 	corbie(t, "swordfish", "controller", "secret", "set", "ANTHROPIC_KEY", "-", "--config", config)
+	corbie(t, "", "controller", "value", "set", "HUB", "192.0.2.8:8123", "--at", "/home", "--config", config)
 	ctl, err := identity.Config{Dir: config}.Load(identity.Controller)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +56,61 @@ func lab(t *testing.T, command page.Command) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	house := write(t, map[string]string{
+		"devices/boiler.yaml":   "statechart: boiler\nlifetime: singleton\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
+		"rooms/thermostat.yaml": "statechart: thermostat\nlifetime: keyed\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
+		"tools/lookup.yaml":     "statechart: lookup\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
+	})
+	tree, err := client.ReadTree(house, "/home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit(t, config, s, ctl, tree)
+	// One file is a tree of its own, as `corbie run submit hello.yaml` reads it.
+	house = write(t, map[string]string{"hello.yaml": "statechart: hello\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n"})
+	one, err := client.ReadFile(house, "hello.yaml", "/hello", client.ScriptJob{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit(t, config, s, ctl, one)
 	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Shell: page.Shell{}})
+}
+
+// write writes files into a new directory, and gives the directory.
+func write(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "house")
+	for name, text := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// submit records a tree, as `corbie run submit` and one pass of the
+// controller do.
+func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, tree *client.Tree) {
+	t.Helper()
+	ctx := context.Background()
+	me, err := identity.Config{Dir: config}.Load(identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := client.New(me, ctl.Card, s)
+	message, err := c.Submit(ctx, tree, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := corbiectl.New(ctl, s).Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if receipt, err := c.WaitReceipt(ctx, message, time.Minute, 10*time.Millisecond); err != nil || !receipt.Taken {
+		t.Fatalf("the submit answered %+v, %v", receipt, err)
+	}
 }
 
 func get(t *testing.T, h http.Handler) string {
@@ -70,12 +131,22 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 	return w
 }
 
-func Test_controller_lists_parties_and_secret_names(t *testing.T) {
+func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 	body := get(t, lab(t, nil))
-	for _, want := range []string{"lab-runner", "lab-client", "network, disk", "gpu-box", "gpu, big", `<tr data-key="old-box" class="removed">`, "ANTHROPIC_KEY"} {
+	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", "gpu, big", `<tr data-key="old-box" class="removed">`,
+		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim cut" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
+		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
+		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
+		`<td class="in" title="/hello"><a href="/runs?at=%2Fhello">hello</a></td>`,
+		`<td>/</td><td>ANTHROPIC_KEY</td><td class="dim">secret</td><td class="cut" title=""></td>`,
+		`<td>/home</td><td>HUB</td><td class="dim">value</td><td class="cut" title="192.0.2.8:8123">192.0.2.8:8123</td>`,
+		`<td class="cut" title="network, disk, at:/home, at:/hello">`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %s", want)
 		}
+	}
+	if strings.Index(body, "ANTHROPIC_KEY") > strings.Index(body, ">HUB<") {
+		t.Errorf("the secrets and values are not listed by location")
 	}
 	if !regexp.MustCompile(`<td class="dim">[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}</td>`).MatchString(body) {
 		t.Errorf("the page does not show a card's fingerprint")
@@ -101,14 +172,20 @@ func Test_controller_actions_run_their_commands(t *testing.T) {
 	post(h, "tags", url.Values{"name": {"gpu-box"}, "tags": {"gpu"}})
 	post(h, "ceiling", url.Values{"name": {"lab-client"}, "ceiling": {"all"}})
 	post(h, "remove", url.Values{"name": {"gpu-box"}})
-	post(h, "secret-remove", url.Values{"name": {"ANTHROPIC_KEY"}})
+	post(h, "secret-remove", url.Values{"name": {"ANTHROPIC_KEY"}, "at": {"/"}})
+	post(h, "value-set", url.Values{"name": {"HUB"}, "value": {"192.0.2.9:8123"}, "at": {"/home"}})
+	post(h, "value-set", url.Values{"name": {"REGION"}, "value": {"eu-west-2"}})
+	post(h, "value-remove", url.Values{"name": {"HUB"}, "at": {" /home "}})
 	want := []string{
 		"corbie controller enrol corbie-card:runner:new-box:abc --tags=gpu,big --replace",
 		"corbie controller enrol corbie-card:client:new-client:abc --ceiling=network,disk",
 		"corbie controller enrol gpu-box --tags=gpu",
 		"corbie controller enrol lab-client --ceiling=all",
 		"corbie controller remove gpu-box",
-		"corbie controller secret remove ANTHROPIC_KEY",
+		"corbie controller secret remove ANTHROPIC_KEY --at=/",
+		"corbie controller value set HUB 192.0.2.9:8123 --at=/home",
+		"corbie controller value set REGION eu-west-2 --at=/",
+		"corbie controller value remove HUB --at=/home",
 	}
 	if len(r.calls) != len(want) {
 		t.Fatalf("the actions ran %v", r.calls)
@@ -139,12 +216,12 @@ func Test_controller_removed_party_offers_only_enrol(t *testing.T) {
 func Test_controller_secret_value_goes_on_standard_input_only(t *testing.T) {
 	r := &recorder{}
 	h := lab(t, r.run)
-	w := post(h, "secret-set", url.Values{"name": {"GITHUB_TOKEN"}, "value": {"hunter2"}})
+	w := post(h, "secret-set", url.Values{"name": {"GITHUB_TOKEN"}, "value": {"hunter2"}, "at": {"/home"}})
 	if len(r.calls) != 1 {
 		t.Fatalf("Set ran %v", r.calls)
 	}
 	c := r.calls[0]
-	if c.Stdin != "hunter2" || strings.Contains(c.String(), "hunter2") || c.String() != "corbie controller secret set GITHUB_TOKEN -" {
+	if c.Stdin != "hunter2" || strings.Contains(c.String(), "hunter2") || c.String() != "corbie controller secret set GITHUB_TOKEN - --at=/home" {
 		t.Errorf("Set ran %q with %q on standard input", c.String(), c.Stdin)
 	}
 	if strings.Contains(w.Body.String(), "hunter2") || strings.Contains(get(t, h), "swordfish") {

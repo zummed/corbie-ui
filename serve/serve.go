@@ -42,8 +42,8 @@ config holds: it shows only the status of every run the store lets it read.
   --listen host:port    where it listens; default 127.0.0.1:8373
   --token-file <file>   a file holding the token every request must show;
                         by default it makes one and prints it
-  --dir <directory>     the directory of machines; default the directory it
-                        was started in
+  --dir <directory>     the directory of machines, read as a tree; default
+                        the directory it was started in
   --interval <time>     how often it reads the store again; default 1s, or
                         10s for a bucket
 
@@ -225,6 +225,18 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
 	mux.Handle("GET /manual/", http.StripPrefix("/manual", manual.Site()))
 	home := "/machines"
+	var areaMachines *machines.Pages
+	if !o.asNone {
+		var err error
+		areaMachines, err = machines.New(machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Runs: u.noStore == nil, Interval: interval, Shell: shell})
+		if err != nil {
+			return nil, err
+		}
+		mux.Handle("/machines", areaMachines)
+		mux.Handle("/machines/", areaMachines)
+		mux.Handle("/parts", areaMachines)
+		mux.Handle("/parts/", areaMachines)
+	}
 	if u.noStore == nil {
 		home = "/runs"
 		u.list = newList()
@@ -235,21 +247,15 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		u.list.set(found, nil)
 		go u.list.follow(ctx, p.lister, interval)
 		mux.Handle("GET /metrics", metrics.Handler(u.list))
-		areaRuns := runs.New(runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil,
-			Command: command, Interval: interval, Shell: shell})
+		c := runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil,
+			Command: command, Interval: interval, Shell: shell}
+		if areaMachines != nil {
+			c.Machine = areaMachines.Href
+		}
+		areaRuns := runs.New(c)
 		mux.Handle("/runs", areaRuns)
 		mux.Handle("/runs/", areaRuns)
 		mux.Handle("/run/", areaRuns)
-	}
-	if !o.asNone {
-		areaMachines, err := machines.New(machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Interval: interval, Shell: shell})
-		if err != nil {
-			return nil, err
-		}
-		mux.Handle("/machines", areaMachines)
-		mux.Handle("/machines/", areaMachines)
-		mux.Handle("/parts", areaMachines)
-		mux.Handle("/parts/", areaMachines)
 	}
 	if p.controller != nil {
 		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Shell: shell})
