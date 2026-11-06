@@ -41,6 +41,7 @@ Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Eac
 - The flow package has the rule by which a stage waits for others (see Drawing).
 - The names of the secrets a machine written out uses, which Corbie reads for a submit's reminder.
 - The controller's record of a tree: its client, the directory last submitted there, and each location's lifetime.
+- The name of the controller's note of a send in the sender's record: the send's message, then `.note` where it was not delivered, or `.moved.` and the end of the run's ID where its event went to another run.
 
 ## Reading these specs
 
