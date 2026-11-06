@@ -86,7 +86,7 @@ sends to   devices/boiler, /work/log
 | lifetime | `singleton`, `keyed` or `transient`, what starts its runs, and `limits: { runs: }` |
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event; with no `receive:`, its own tree and its tree's client |
-| sends to | the `send:` entries of its `allow:` |
+| sends to | the `send:` entries of its `allow:`, with `**` read as every location in its tree, `/**` and `all` as every location; `none` where there are none |
 
 A machine with problems shows only its text, with no location.
 

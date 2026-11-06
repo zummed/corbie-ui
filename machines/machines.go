@@ -272,10 +272,24 @@ func placeOf(m *client.Machine) *place {
 	}
 	for _, entry := range def.Allow {
 		if to, ok := strings.CutPrefix(entry, "send:"); ok {
-			p.Sends = append(p.Sends, to)
+			p.Sends = append(p.Sends, sendsTo(to))
+		} else if entry == "all" {
+			p.Sends = append(p.Sends, "all (every location)")
 		}
 	}
 	return p
+}
+
+// sendsTo gives a send: entry as written, with what a pattern of every
+// location means.
+func sendsTo(to string) string {
+	switch to {
+	case "**":
+		return "** (every location in its tree)"
+	case "/**":
+		return "/** (every location)"
+	}
+	return to
 }
 
 // usesOf gives the secrets and the values a machine uses, as Corbie reads

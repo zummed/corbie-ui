@@ -628,6 +628,8 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"devices/boiler.yaml":   "statechart: boiler\nlifetime: singleton\nreceive: { set: [schedules/*, client:panel], stop: [client:panel] }\ninitial: idle\nstates:\n  idle: { on: { set: idle } }\n",
 		"rooms/thermostat.yaml": "statechart: thermostat\nlifetime: keyed\nlimits: { runs: 3 }\nupdate: restart\nallow: [send:devices/boiler, send:/work/log]\ninitial: on\nstates:\n  on: { on: { set: on } }\n",
 		"services/weather.yaml": "flow: weather\nreceive: [rooms/*]\nstages:\n  a: { job: write.js }\n",
+		"services/hub.yaml":     "flow: hub\nallow: [send:**, send:/**]\nstages:\n  a: { job: write.js }\n",
+		"services/root.yaml":    "flow: root\nallow: [all]\nstages:\n  a: { job: write.js }\n",
 	})
 	place := regexp.MustCompile(`(?s)<section class="place">.*?</section>`)
 	rows := func(file string) string {
@@ -640,7 +642,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"<span>lifetime</span><span>singleton: the submit starts its one run</span>",
 			"<span>update</span><span>restart: a changed file cancels its runs</span>",
 			"<span>receives</span><span>set from schedules/*, client:panel<br>stop from client:panel<br>and anything from its tree's client</span>",
-			"<span>sends to</span><span>no location: its <code>allow:</code> has no <code>send:</code> entry</span>",
+			"<span>sends to</span><span>none</span>",
 		},
 		"rooms/thermostat.yaml": {
 			"<span>lifetime</span><span>keyed: a send to a key starts the run for that key, at most 3 running at once</span>",
@@ -651,7 +653,10 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"<span>lifetime</span><span>transient: a call, or corbie run submit " + prefix + "/services/weather, starts each run</span>",
 			"<span>update</span><span>drain: a changed file leaves its runs to finish on the definition they started with</span>",
 			"<span>receives</span><span>every event from rooms/*<br>and anything from its tree's client</span>",
+			"<span>sends to</span><span>none</span>",
 		},
+		"services/hub.yaml":  {"<span>sends to</span><span>** (every location in its tree), /** (every location)</span>"},
+		"services/root.yaml": {"<span>sends to</span><span>all (every location)</span>"},
 	} {
 		got := rows(file)
 		for _, w := range want {

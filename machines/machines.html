@@ -9,7 +9,7 @@
   <span>lifetime</span><span>{{.Lifetime}}: {{.Started}}{{if .Runs}}, at most {{.Runs}} running at once{{end}}</span>
   <span>update</span><span>{{.Update}}: {{.Updated}}</span>
   <span>receives</span><span>{{range .Receives}}{{.}}<br>{{end}}{{if .Receives}}and anything from its tree's client{{else}}from its own tree and its tree's client{{end}}</span>
-  <span>sends to</span><span>{{if .Sends}}{{join .Sends}}{{else}}no location: its <code>allow:</code> has no <code>send:</code> entry{{end}}</span>
+  <span>sends to</span><span>{{if .Sends}}{{join .Sends}}{{else}}none{{end}}</span>
 </div></section>{{end}}{{end}}
 
 {{define "uses"}}{{if .Uses}}<section class="uses"><h2>Secrets and values</h2><div class="named">{{range .Uses}}<span>{{.Name}}</span><span class="dim">{{.Kind}}{{if .State}} · {{.State}}{{end}}</span>{{end}}</div>{{if not .Controller}}<p class="dim">set by the controller's owner: <code>corbie controller secret set NAME --at {{.Place.Location}}</code>, <code>corbie controller value set NAME VALUE --at {{.Place.Location}}</code></p>{{end}}</section>{{end}}{{end}}
