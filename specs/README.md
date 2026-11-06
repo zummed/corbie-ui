@@ -39,6 +39,7 @@ Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Eac
 - An `include:` names a file from the file that writes it when it begins `./`, and from the top of the tree otherwise.
 - `corbie run show` prints the words of a run and of its record.
 - The flow package has the rule by which a stage waits for others (see Drawing).
+- The names of the secrets a machine written out uses, which Corbie reads for a submit's reminder.
 
 ## Reading these specs
 

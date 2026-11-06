@@ -32,7 +32,7 @@
   <div class="panel view"><p class="dim body">no machines in this directory</p></div>
   {{else}}
   <div class="panel view" data-file="{{.Open}}" data-base="{{.Base}}">
-    <div class="head"><svg class="g m" role="img" aria-label="{{or .Kind "file"}}"><use href="#g-{{or .Kind "file"}}"/></svg><span>{{.Open}}</span><span class="facts">{{if .Piece}}a piece{{else}}{{.First}}{{end}}</span></div>
+    <div class="head"><svg class="g m" role="img" aria-label="{{or .Kind "file"}}"><use href="#g-{{or .Kind "file"}}"/></svg><span>{{.Open}}</span><span class="facts">{{if .Piece}}a piece{{else if .First}}{{.First}}{{else}}a file{{end}}</span></div>
     {{if .Drawable}}<nav class="tabs"><a href="/machines?file={{.Open}}"{{if eq .View "drawing"}} aria-current="page"{{end}}>Drawing</a><a href="/machines?file={{.Open}}&amp;view=text"{{if eq .View "text"}} aria-current="page"{{end}}>Text</a><a href="/machines?file={{.Open}}&amp;view=written"{{if eq .View "written"}} aria-current="page"{{end}}>Written out</a></nav>{{end}}
     {{template "problems" .Found}}
     {{template "place" .}}

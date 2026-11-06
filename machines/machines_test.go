@@ -242,6 +242,10 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if !strings.Contains(piece, `<section class="included"><h2>Included by</h2><a href="/machines?file=keyed.yaml">keyed.yaml</a></section>`) || !strings.Contains(piece, ">a piece<") || strings.Contains(piece, ">Drawing<") {
 		t.Errorf("a piece does not show the machines that include it:\n%s", piece)
 	}
+	script := do(h, "GET", "/machines?file=.kit/hear.js", nil).Body.String()
+	if !strings.Contains(script, ">a file<") || strings.Contains(script, ">a piece<") || strings.Contains(script, "Included by") {
+		t.Errorf("a script no machine takes a value from is shown as a piece:\n%s", script)
+	}
 	if body := do(h, "GET", "/machines?file=./bridges/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
 		t.Errorf("a path written with ./ is not the file chosen")
 	}
@@ -258,6 +262,16 @@ func Test_machines_list_says_what_it_could_not_read(t *testing.T) {
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, `class="unread"`) || !strings.Contains(body, "a-locked") {
 		t.Errorf("a directory that cannot be read is not reported:\n%s", body)
+	}
+}
+
+func Test_machines_list_is_empty_when_a_location_has_one_below_it(t *testing.T) {
+	dir := project(t)
+	write(t, dir, map[string]string{"helper/x.yaml": "flow: x\nstages:\n  a: { job: ./x.js }\n"})
+	d, _ := newDir(dir)
+	ix := d.index()
+	if !strings.Contains(ix.Unread, "helper.yaml is beside a directory of the same name") || len(ix.Groups) != 0 || len(ix.Pieces) != 0 || len(ix.parts) != 0 {
+		t.Errorf("a tree whose files cannot all have locations lists %+v, %+v, %d parts, and says %q", ix.Groups, ix.Pieces, len(ix.parts), ix.Unread)
 	}
 }
 

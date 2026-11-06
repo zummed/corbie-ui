@@ -65,12 +65,13 @@ func (c *indexed) current() *index {
 // a tree at the prefix a submit gives it by default.
 func (d *dir) index() *index {
 	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, included: map[string][]string{}}
-	var found []*client.Machine
-	if tree, err := client.ReadTree(d.root, ""); err != nil {
+	tree, err := client.ReadTree(d.root, "")
+	if err != nil {
 		ix.Unread = err.Error()
-	} else {
-		ix.Prefix, found = tree.Prefix, tree.Machines
+		return ix
 	}
+	ix.Prefix = tree.Prefix
+	found := tree.Machines
 	for _, m := range found {
 		ix.machines[m.Path] = m
 		if m.Problem != nil {
@@ -104,7 +105,7 @@ func (d *dir) index() *index {
 		ix.Groups = append(ix.Groups, group{Dir: at, Entries: groups[at]})
 	}
 	files, err := d.files()
-	if err != nil && ix.Unread == "" {
+	if err != nil {
 		ix.Unread = err.Error()
 	}
 	pieces := map[string]bool{}
@@ -121,6 +122,12 @@ func (d *dir) index() *index {
 	}
 	ix.parts = d.partsOf(ix)
 	return ix
+}
+
+// piece tells whether a file is a piece: a .yaml file with no type, or a
+// file a machine takes a value from.
+func (ix *index) piece(file string) bool {
+	return slices.ContainsFunc(ix.Pieces, func(e entry) bool { return e.Path == file })
 }
 
 // filesOf gives the files a definition written out takes its values from,

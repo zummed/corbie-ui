@@ -37,7 +37,7 @@ people.yaml               included by none
 
 - A machine has its type's icon, its file's name, its first line, its lifetime, and the count of the problems shown at its text. Its name's tooltip gives its location.
 - A piece has its path and how many machines include it: those whose definition written out takes a value from it.
-- A directory that cannot be read ends the list there, and the list says so.
+- When a directory cannot be read, or the tree's files cannot all have locations, Corbie gives no tree. The page then lists no machine, piece or part, only Corbie's error, as `boiler.yaml is beside a directory of the same name`.
 
 ## Problems
 
@@ -104,6 +104,8 @@ A file that changes on disk is shown again.
 
 Choosing a piece shows its text, and above it the machines that include it, each a link. A piece that no machine takes a value from says so.
 
+Any other file a link opens, such as a tool's script, is headed `a file` and shows its text alone.
+
 ## The text
 
 A file is shown as text, read-only, with its lines numbered, and its keys, expressions and comments set apart. Above the text are the problems found in it, and the lines they are found at are marked.
@@ -117,7 +119,7 @@ A file with no problems shows no problems section.
 
 ## Secrets and values
 
-Above the view of a machine, the page lists the secrets and the values it uses, as Corbie reads them from the machine written out, its child machines included:
+Above the view of a machine, the page lists the secrets and the values it uses, read from the machine written out, its child machines included:
 
 ```
 secret   each NAME of a secret:NAME@… entry in an allow: list; an entry whose name holds * names none

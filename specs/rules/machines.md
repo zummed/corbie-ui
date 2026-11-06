@@ -34,7 +34,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Secrets and values
 
-**R-machines-04** The page lists each secret and each value a machine uses, as Corbie reads them from the machine written out, its child machines included. Acting as the controller, it shows where each is set: the location nearest the machine's, at it or above, or `not set` at its location or above; acting as a client alone, by name only. *Test:* `machines_secrets_and_values_used_are_listed`
+**R-machines-04** The page lists each secret and each value a machine uses, read from the machine written out, its child machines included. Acting as the controller, it shows where each is set: the location nearest the machine's, at it or above, or `not set` at its location or above; acting as a client alone, by name only. *Test:* `machines_secrets_and_values_used_are_listed`
 
 ## Parts
 

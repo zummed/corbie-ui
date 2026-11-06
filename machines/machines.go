@@ -137,7 +137,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		v.Piece = m == nil
+		v.Piece = ix.piece(v.Open)
 		v.Included = ix.included[v.Open]
 		switch {
 		case v.Drawable && v.View == "written":
