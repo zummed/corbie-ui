@@ -32,14 +32,14 @@ func corbie(t *testing.T, stdin string, args ...string) string {
 }
 
 // lab sets one computer up, enrols a runner with tags and removes it, keeps
-// a secret at / and a value at /home, and records a tree at /home; it gives
-// the Controller page on it.
+// a secret at / and a value at /home, and records a tree at /home and a
+// one-file tree at /hello; it gives the Controller page on it.
 func lab(t *testing.T, command page.Command) http.Handler {
 	t.Helper()
 	dir := t.TempDir()
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
 	corbie(t, "", "init", "--store", at, "--name", "lab", "--ceiling", "network,disk", "--config", config)
-	corbie(t, "", "controller", "enrol", "lab-client", "--ceiling", "network,disk,at:/home", "--config", config)
+	corbie(t, "", "controller", "enrol", "lab-client", "--ceiling", "network,disk,at:/home,at:/hello", "--config", config)
 	card := regexp.MustCompile(`corbie-card:\S+`).FindString(corbie(t, "", "runner", "card", "--name", "gpu-box", "--config", filepath.Join(dir, "other")))
 	corbie(t, "", "controller", "enrol", card, "--tags", "gpu,big", "--config", config)
 	corbie(t, "", "runner", "card", "--name", "old-box", "--config", filepath.Join(dir, "old"))
@@ -56,19 +56,29 @@ func lab(t *testing.T, command page.Command) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	submit(t, config, s, ctl, map[string]string{
+	house := write(t, map[string]string{
 		"devices/boiler.yaml":   "statechart: boiler\nlifetime: singleton\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
 		"rooms/thermostat.yaml": "statechart: thermostat\nlifetime: keyed\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
 		"tools/lookup.yaml":     "statechart: lookup\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n",
 	})
+	tree, err := client.ReadTree(house, "/home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit(t, config, s, ctl, tree)
+	// One file is a tree of its own, as `corbie run submit hello.yaml` reads it.
+	house = write(t, map[string]string{"hello.yaml": "statechart: hello\ninitial: open\nstates:\n  open: { on: { stop: closed } }\n  closed: { end: done }\n"})
+	one, err := client.ReadFile(house, "hello.yaml", "/hello", client.ScriptJob{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit(t, config, s, ctl, one)
 	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Shell: page.Shell{}})
 }
 
-// submit records a directory of machines as the tree /home, as `corbie run
-// submit <dir> --at /home` and one pass of the controller do.
-func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, files map[string]string) {
+// write writes files into a new directory, and gives the directory.
+func write(t *testing.T, files map[string]string) string {
 	t.Helper()
-	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "house")
 	for name, text := range files {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
@@ -78,10 +88,14 @@ func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, 
 			t.Fatal(err)
 		}
 	}
-	tree, err := client.ReadTree(dir, "/home")
-	if err != nil {
-		t.Fatal(err)
-	}
+	return dir
+}
+
+// submit records a tree, as `corbie run submit` and one pass of the
+// controller do.
+func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, tree *client.Tree) {
+	t.Helper()
+	ctx := context.Background()
 	me, err := identity.Config{Dir: config}.Load(identity.Client)
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +137,7 @@ func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim" title="lab-client, from `,
 		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
 		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
+		`<td class="in" title="/hello"><a href="/runs?at=%2Fhello">hello</a></td>`,
 		`<td>/</td><td>ANTHROPIC_KEY</td><td class="dim">secret</td><td title=""></td>`,
 		`<td>/home</td><td>HUB</td><td class="dim">value</td><td title="192.0.2.8:8123">192.0.2.8:8123</td>`} {
 		if !strings.Contains(body, want) {

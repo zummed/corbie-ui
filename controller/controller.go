@@ -246,8 +246,8 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 			page.Error(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		at := slices.IndexFunc(v.Parties, func(p party) bool { return p.Name == name })
-		if at < 0 || v.Parties[at].Removed {
+		i := slices.IndexFunc(v.Parties, func(p party) bool { return p.Name == name })
+		if i < 0 || v.Parties[i].Removed {
 			page.Error(w, http.StatusConflict, "the party is not trusted: enrol it again with its card")
 			return
 		}
