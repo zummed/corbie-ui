@@ -147,6 +147,7 @@ Sends and calls between runs read:
 ⇢ sent message to /home/chat#slack:C1 · started chat      the send started a run at a keyed location
 ⇢ sent set to /home/rooms/thermostat#hall · undelivered   its details say why
 ⇢ sent ack to /home/rooms/thermostat#hall · thermostat    a reply to a keyed run gives its key
+⇢ sent ack to client:panel · undelivered                  a reply to a client, which has no inbox
 ⇢ called /home/services/weather · weather                 a call job; links to the run it started
 ```
 
@@ -155,7 +156,7 @@ Sends and calls between runs read:
 - A send and an event from a run have a dashed mark.
 - An undelivered send's row is in the colour of a failure.
 - The controller notes in the sender's record a send that was not delivered, or whose event went to another run, as when another send took the key first. The send's row says it, and the note has no row of its own.
-- An undelivered send gives the reason in its details: the receiver's `receive:` does not list the sender, no run is running there, the location's limit of runs is reached, the run is a flow or an agent, which takes no events, or the run was cancelled while it kept the event under `defer:`.
+- An undelivered send gives the reason in its details: the receiver's `receive:` does not list the sender, no run is running there, the location's limit of runs is reached, the run is a flow or an agent, which takes no events, the run was cancelled while it kept the event under `defer:`, or the address is a client, which has no inbox.
 - A send a layer of the sender refused is `denied`: a send job's row says so, and a statechart's send ends its run `failed (denied)`, whose details give what was refused, the layer and the fix.
 - The row that started a child ends with the child's title where it has one, its status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
 - An ended child is folded, and a running one open. Open all and Fold all fold every group.

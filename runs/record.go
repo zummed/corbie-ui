@@ -77,6 +77,10 @@ func lines(e client.Entry, name string, day time.Time) []line {
 			switch {
 			case ask.Location != "":
 				to = sentTo(&ask)
+			case ask.Client != "":
+				to = "client:" + ask.Client
+			case ask.Direct:
+				to = ask.To
 			case ask.Name != "":
 				to = ask.Name
 			}
@@ -577,8 +581,9 @@ func (b *rowBuilder) gotOf(ev instance.Arrived) stepRow {
 	return r
 }
 
-// sendOf is the row of an event a run sent: to an address, to a job's
-// child, or to the run that started it, linked to the run it went to.
+// sendOf is the row of an event a run sent: to an address, to a client,
+// to a job's child, or to the run that started it, linked to the run it
+// went to.
 func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 	event := ""
 	var data any
@@ -612,6 +617,10 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 		case to != nil:
 			r.What = append(r.What, word{Text: " · "}, linked(to))
 		}
+	case a.Client != "":
+		r.Kind = "send"
+		r.What = say("⇢ sent ", bold(event), " to ", bold("client:"+a.Client))
+		r.Facts = append(r.Facts, fact{Name: "to", Text: "client:" + a.Client})
 	case to != nil:
 		r.What = say("sent ", bold(event), " to ", linked(to))
 	case a.Name != "":

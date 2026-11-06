@@ -566,6 +566,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 			{Kind: instance.AskEvent, Location: "/home/devices/boiler", To: "a-client/3", Event: &machine.Event{Name: "set"}},
 			{Kind: instance.AskEvent, Location: "/rook/chat", Key: "slack:C2", Undelivered: true, Text: "the limit of 2 runs at /rook/chat is reached", Event: &machine.Event{Name: "message"}},
 			{Kind: instance.AskCall, Name: "weather", Location: "/home/weather", Run: "a-client/6", Job: &machine.Job{Input: map[string]any{"days": 2}}},
+			{Kind: instance.AskEvent, Client: "panel", Undelivered: true, Text: "a client has no inbox", Event: &machine.Event{Name: "ack"}},
 		}}
 	rows := rowsOf("a-client/1", []client.Entry{sends}, byID, nil, at, sent)
 	var said []string
@@ -579,6 +580,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		"⇢ sent set to /home/devices/boiler · boiler",
 		"⇢ sent message to /rook/chat#slack:C2 · undelivered",
 		"⇢ called /home/weather · weather",
+		"⇢ sent ack to client:panel · undelivered",
 	}, "\n") {
 		t.Errorf("the sends are\n%s", strings.Join(said, "\n"))
 	}
@@ -606,8 +608,12 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		"send message to /rook/chat#slack:C1 · started a-client/4",
 		"send set to /home/devices/boiler · a-client/3",
 		"send message to /rook/chat#slack:C2 · undelivered: the limit of 2 runs at /rook/chat is reached",
+		"send ack to client:panel · undelivered: a client has no inbox",
 	}, "\n") {
 		t.Errorf("the record of the sends says\n%s", strings.Join(said, "\n"))
+	}
+	if f := rows[6].Facts; rows[6].Kind != "send undelivered" || f[1].Name != "to" || f[1].Text != "client:panel" || f[len(f)-1].Text != "a client has no inbox" {
+		t.Errorf("a reply to a client says %+v as %q", f, rows[6].Kind)
 	}
 	if rows[0].Time != sent.Local().Format("15:04:05") {
 		t.Errorf("a step's time is %q", rows[0].Time)
