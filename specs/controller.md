@@ -25,7 +25,7 @@ Remove keeps the name with its key, marked as removed and signed by the controll
 Each tree is a line with its prefix, the client that owns it, and the directory last submitted there. Its locations follow, each with its lifetime:
 
 ```
-/home                 laptop-client   /home/paul/house
+/home                 tree of laptop-client, from /home/paul/house
   devices/boiler      singleton
   rooms/thermostat    keyed
   tools/lookup        transient

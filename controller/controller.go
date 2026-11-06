@@ -55,15 +55,15 @@ type party struct {
 	Removed                 bool
 }
 
-// A tree is one the controller recorded at its prefix: its client, the
+// A Tree is one the controller recorded at its prefix: its client, the
 // directory last submitted there, and its locations.
-type tree struct {
+type Tree struct {
 	Prefix, Client, Directory string
-	Locations                 []location
+	Locations                 []Location
 }
 
-// A location is one of a tree's, named from the tree's prefix.
-type location struct {
+// A Location is one of a tree's, named from the tree's prefix.
+type Location struct {
 	At, Name, Lifetime string
 }
 
@@ -75,7 +75,7 @@ type setting struct {
 
 type view struct {
 	Parties []party
-	Trees   []tree
+	Trees   []Tree
 	Set     []setting
 }
 
@@ -133,20 +133,23 @@ func (h *handler) read(ctx context.Context) (view, error) {
 	return v, nil
 }
 
-// trees reads every tree the controller recorded, by prefix.
-func (h *handler) trees(ctx context.Context) ([]tree, error) {
-	ctl := h.Controller
-	names, err := store.Names(h.Store.List(ctx, store.Locations(ctl.Name)))
+func (h *handler) trees(ctx context.Context) ([]Tree, error) {
+	return Trees(ctx, h.Store, h.Controller)
+}
+
+// Trees reads every tree the controller recorded, by prefix.
+func Trees(ctx context.Context, s store.Store, ctl *identity.Identity) ([]Tree, error) {
+	names, err := store.Names(s.List(ctx, store.Locations(ctl.Name)))
 	if err != nil {
 		return nil, err
 	}
-	var trees []tree
+	var trees []Tree
 	for _, name := range names {
 		prefix, entry, ok := store.ParseLocation(ctl.Name, name)
 		if !ok || entry != "tree" {
 			continue
 		}
-		data, mark, err := h.Store.Read(ctx, name)
+		data, mark, err := s.Read(ctx, name)
 		if err != nil {
 			return nil, err
 		}
@@ -163,13 +166,13 @@ func (h *handler) trees(ctx context.Context) ([]tree, error) {
 		if err != nil {
 			return nil, fmt.Errorf("the tree at %s: %w", prefix, err)
 		}
-		t := tree{Prefix: prefix, Client: r.Client, Directory: r.Directory}
+		t := Tree{Prefix: prefix, Client: r.Client, Directory: r.Directory}
 		for _, at := range slices.Sorted(maps.Keys(r.Files)) {
-			t.Locations = append(t.Locations, location{At: at, Name: nameIn(prefix, at), Lifetime: r.Files[at].Lifetime})
+			t.Locations = append(t.Locations, Location{At: at, Name: nameIn(prefix, at), Lifetime: r.Files[at].Lifetime})
 		}
 		trees = append(trees, t)
 	}
-	slices.SortFunc(trees, func(a, b tree) int { return strings.Compare(a.Prefix, b.Prefix) })
+	slices.SortFunc(trees, func(a, b Tree) int { return strings.Compare(a.Prefix, b.Prefix) })
 	return trees, nil
 }
 

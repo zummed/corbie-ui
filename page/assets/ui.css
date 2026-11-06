@@ -444,6 +444,8 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .panel .list td.in { padding-left: 32px; }
 #trees td a:hover { color: var(--accent); text-decoration: underline; }
+#trees tr.tree td { font-weight: 500; background: color-mix(in srgb, var(--paper) 55%, var(--plate)); }
+#trees tr.tree td.dim { font-weight: 400; }
 @media (max-width: 1200px) { .cols { grid-template-columns: minmax(0, 1fr); } }
 .contents { display: contents; }
 .list td.row-acts { overflow: visible; text-align: right; }

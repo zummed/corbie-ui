@@ -37,7 +37,7 @@
 {{define "trees"}}<div class="panel" id="trees">
   <div class="head"><h2>Trees</h2></div>
   <table class="list"><thead><tr><th>Location</th><th>Lifetime</th></tr></thead>
-    <tbody>{{range .Trees}}<tr class="tree" data-key="{{.Prefix}}"><td><a href="/runs?at={{urlquery .Prefix}}">{{.Prefix}}</a></td><td class="dim" title="{{.Client}}, from {{.Directory}}">{{.Client}} · from {{.Directory}}</td></tr>
+    <tbody>{{range .Trees}}<tr class="tree" data-key="{{.Prefix}}"><td><a href="/runs?at={{urlquery .Prefix}}">{{.Prefix}}</a></td><td class="dim" title="the tree of {{.Client}}, last submitted from {{.Directory}}">tree of {{.Client}}, from {{.Directory}}</td></tr>
     {{- range .Locations}}<tr data-key="{{.At}}"><td class="in" title="{{.At}}"><a href="/runs?at={{urlquery .At}}">{{.Name}}</a></td><td>{{.Lifetime}}</td></tr>{{end}}
     {{- else}}<tr><td class="dim">no trees</td></tr>{{end}}</tbody></table>
 </div>{{end}}

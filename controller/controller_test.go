@@ -134,7 +134,7 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 	body := get(t, lab(t, nil))
 	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", "gpu, big", `<tr data-key="old-box" class="removed">`,
-		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim" title="lab-client, from `,
+		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
 		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
 		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
 		`<td class="in" title="/hello"><a href="/runs?at=%2Fhello">hello</a></td>`,
