@@ -242,7 +242,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		mux.Handle("/run/", areaRuns)
 	}
 	if !o.asNone {
-		areaMachines, err := machines.New(machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Interval: interval, Shell: shell})
+		areaMachines, err := machines.New(machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Runs: u.noStore == nil, Interval: interval, Shell: shell})
 		if err != nil {
 			return nil, err
 		}

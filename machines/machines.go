@@ -38,8 +38,11 @@ type Config struct {
 	Dir        string
 	Controller *identity.Identity
 	Store      store.Store
-	Interval   time.Duration
-	Shell      page.Shell
+	// Runs says the UI offers the Runs page, to which a machine's location
+	// links.
+	Runs     bool
+	Interval time.Duration
+	Shell    page.Shell
 }
 
 type handler struct {
@@ -96,6 +99,7 @@ type view struct {
 	Piece      bool
 	Included   []string
 	Controller bool
+	Runs       bool
 	Drawing    template.HTML
 }
 
@@ -143,7 +147,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	v := view{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil}
+	v := view{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil, Runs: h.Runs}
 	if v.Open == "" && len(ix.Groups) > 0 {
 		v.Open = ix.Groups[0].Entries[0].Path
 	}

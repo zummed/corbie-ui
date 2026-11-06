@@ -24,7 +24,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## A machine
 
-**R-machines-13** A machine without problems shows its location, its lifetime and what starts its runs, `limits: { runs: }`, its `update:` and what a changed file does to its runs, who its `receive:` lets send to it and call it, and the `send:` entries of its `allow:`. *Test:* `machines_a_machine_shows_its_location`
+**R-machines-13** A machine without problems shows its location, a link to the Runs page narrowed to it where the UI offers Runs, its lifetime and what starts its runs, `limits: { runs: }`, its `update:` and what a changed file does to its runs, who its `receive:` lets send to it and call it, and the `send:` entries of its `allow:`. *Test:* `machines_a_machine_shows_its_location`
 
 **R-machines-05** Choosing a machine shows its drawing, unfolded as the address says; a machine with problems shows its text. Text shows the file. *Test:* `machines_drawing_unfolds_as_the_address_says`
 

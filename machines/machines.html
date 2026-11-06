@@ -5,7 +5,7 @@
 {{define "code"}}{{range .}}<span class="l{{if .Bad}} err{{end}}"{{if .ID}} id="{{.ID}}"{{end}}>{{range .Spans}}{{if .Href}}<a class="{{.Class}}" href="{{.Href}}">{{.Text}}</a>{{else if .Class}}<span class="{{.Class}}">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}</span>{{end}}{{end}}
 
 {{define "place"}}{{with .Place}}<section class="place"><div class="named">
-  <span>location</span><span>{{.Location}}</span>
+  <span>location</span><span>{{if $.Runs}}<a href="/runs?at={{urlquery .Location}}" title="the runs at {{.Location}}">{{.Location}}</a>{{else}}{{.Location}}{{end}}</span>
   <span>lifetime</span><span>{{.Lifetime}}: {{.Started}}{{if .Runs}}, at most {{.Runs}} running at once{{end}}</span>
   <span>update</span><span>{{.Update}}: {{.Updated}}</span>
   <span>receives</span><span>{{range .Receives}}{{.}}<br>{{end}}{{if .Receives}}and anything from its tree's client{{else}}from its own tree and its tree's client{{end}}</span>

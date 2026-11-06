@@ -663,6 +663,14 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 	if got := place.FindString(do(h, "GET", "/machines?file=notes.yaml", nil).Body.String()); got != "" {
 		t.Errorf("a piece has a location:\n%s", got)
 	}
+	// Where the UI offers Runs, a location links to the runs there.
+	h, err := New(Config{Dir: dir, Runs: true, Interval: time.Second, Shell: page.Shell{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rows("devices/boiler.yaml"); !strings.Contains(got, `<span>location</span><span><a href="/runs?at=%2F`+strings.TrimPrefix(prefix, "/")+`%2Fdevices%2Fboiler" title="the runs at `+prefix+`/devices/boiler">`+prefix+`/devices/boiler</a></span>`) {
+		t.Errorf("a location does not link to its runs:\n%s", got)
+	}
 }
 
 func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {

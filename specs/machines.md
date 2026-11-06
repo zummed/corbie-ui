@@ -82,7 +82,7 @@ sends to   devices/boiler, /work/log
 
 | Row | What it shows |
 |---|---|
-| location | the prefix and the file's path, without `.yaml` |
+| location | the prefix and the file's path, without `.yaml`; where the UI offers Runs, a link to the runs there |
 | lifetime | `singleton`, `keyed` or `transient`, what starts its runs, and `limits: { runs: }` |
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event; with no `receive:`, its own tree and its tree's client |
