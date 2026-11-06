@@ -41,7 +41,8 @@ document.addEventListener('click', e => {
 // or opens it. A send or a call to a run the UI may read is a group too,
 // folded, whose rows are asked for when it is opened. One row is selected; the drawing and the details beside the
 // list show its run as of its step. The selection follows the newest row,
-// or the row of the folded group it is in, until the person moves it.
+// or the row of the folded group it is in, until the person moves it; on a
+// running run, Follow then selects the newest row and follows again.
 const split = document.querySelector('.split[data-page]');
 const folds = new Map();
 let selected = null, moved = false, details = false, detailTab = 'what', seen = null, asked = null, base = null;
@@ -202,6 +203,13 @@ function select(row, fetchToo = true) {
   if (fetchToo && changed) show(row);
 }
 
+// showFollow shows Follow, which a running run's Steps have, while the
+// selection does not follow the newest row.
+function showFollow() {
+  const follow = document.querySelector('#steps [data-follow]');
+  if (follow) follow.hidden = !moved;
+}
+
 function fold(group, open) {
   folds.set(group.dataset.group, open);
   group.classList.toggle('folded', !open);
@@ -229,16 +237,23 @@ if (split && listOf()) {
     const row = rowOf(selected);
     if (!moved || !row) select(shownOf(newestRow()));
     else select(row, false);
+    showFollow();
   });
 
   document.addEventListener('click', e => {
     if (!e.target.closest('#steps')) return;
+    if (e.target.closest('[data-follow]')) {
+      moved = false;
+      select(shownOf(newestRow()));
+      showFollow();
+      return;
+    }
     const all = e.target.closest('[data-fold]');
     if (all) {
       for (const g of listOf().querySelectorAll('li.group')) fold(g, all.dataset.fold === 'open');
       let top = null;
       for (let g = rowOf(selected) && groupOf(rowOf(selected)); g; g = groupOf(g.firstElementChild)) top = g;
-      if (top && all.dataset.fold === 'fold') { moved = true; select(top.firstElementChild); }
+      if (top && all.dataset.fold === 'fold') { moved = true; select(top.firstElementChild); showFollow(); }
       return;
     }
     const button = e.target.closest('button.fold');
@@ -254,6 +269,7 @@ if (split && listOf()) {
     details = true;
     document.getElementById('details')?.removeAttribute('hidden');
     select(row);
+    showFollow();
   });
 
   document.addEventListener('keydown', e => {
@@ -277,6 +293,6 @@ if (split && listOf()) {
       default: return;
     }
     e.preventDefault();
-    if (next) { moved = true; select(next); }
+    if (next) { moved = true; select(next); showFollow(); }
   });
 }

@@ -185,7 +185,7 @@ On the trip's page, `⇢ called /lab/weather · weather` unfolds to every row of
 
 ### Selecting a row
 
-One row is selected. On a running run it is the newest row, or the first row of the folded group it is in, until the person selects another; on an ended run it is the last. Folding the group of the selected row selects the group's first row. Rows of a send's or a call's group are never the newest row.
+One row is selected. On a running run it is the newest row, or the first row of the folded group it is in, until the person selects another; on an ended run it is the last. While a running run's selection is not the newest row, the head of Steps offers Follow, which selects the newest row and follows each new row until the person selects another. Folding the group of the selected row selects the group's first row. Rows of a send's or a call's group are never the newest row.
 
 The keys act when the list has the focus, or nothing else on the page has it:
 

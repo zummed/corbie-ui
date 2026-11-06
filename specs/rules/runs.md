@@ -26,6 +26,8 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **R-runs-12** A send or a call to a run in a tree of the UI's client is a group, folded, whose row ends with that run's title, where it is not its machine's name, and its status, and whose rows are read when it is opened, one level below the row: for a call every row of the run it started, and for a send the rows of the run that took the event, from the step that took it up to the next step that took another sent event. *Test:* `runs_a_send_shows_the_rows_it_caused`, `runs_a_call_shows_the_run_it_called`
 
+**R-runs-13** On a running run's page the selected row is the newest row, which it follows as rows are added, until the person selects another row; then the head of Steps offers Follow, which selects the newest row and follows again. An ended run's page has no Follow. *Test:* `runs_follow_returns_to_the_newest_row`
+
 **C-runs-01** A file of a run's result is sent as a download, with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. A result can hold HTML or SVG a script fetched from anywhere, and shown in a page it would run with the UI's cookie. *Test:* `runs_result_file_is_a_download`
 
 **C-runs-02** A run in another client's tree is read only through the list and Corbie's client package, which gives its status and nothing from its record, on its page and in a send's or a call's group. The UI holds the controller's keys too, and must not read a run another way. *Test:* `runs_other_clients_run_shows_no_record`

@@ -24,7 +24,7 @@
 {{define "steps"}}<div class="steps" id="steps">
   <div class="head"><h2>Steps</h2><span class="facts" data-count="steps">{{.Count}}</span>
     <span class="legend"><span class="statechart"><i></i>statechart</span><span class="flow"><i></i>flow</span><span class="agent"><i></i>agent</span></span>
-    <span class="acts"><button class="btn sm" type="button" data-fold="open">Open all</button><button class="btn sm" type="button" data-fold="fold">Fold all</button></span>
+    <span class="acts">{{if not .Run.HasEnded}}<button class="btn sm" type="button" data-follow hidden title="select the newest row, and go on selecting each new row">Follow</button>{{end}}<button class="btn sm" type="button" data-fold="open">Open all</button><button class="btn sm" type="button" data-fold="fold">Fold all</button></span>
   </div>
   <ol class="steplist{{if .Dated}} dated{{end}}" tabindex="0">{{template "steprows" .Rows}}{{if not .Rows}}<li class="dim none">nothing yet</li>{{end}}</ol>
 </div>{{end}}

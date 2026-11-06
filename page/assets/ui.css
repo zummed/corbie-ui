@@ -164,6 +164,7 @@ div.list > a[aria-current] .name { font-weight: 500; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn::-webkit-details-marker { display: none; }
 .btn.sm { height: 24px; padding: 0 10px; }
+.btn[hidden] { display: none; }
 .btn.go { color: var(--paper); background: var(--ink); border-color: var(--ink); }
 .btn.stop { color: var(--rowan); }
 

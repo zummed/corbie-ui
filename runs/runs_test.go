@@ -1121,3 +1121,30 @@ func Test_runs_a_call_shows_the_run_it_called(t *testing.T) {
 		t.Errorf("the called run's path does not begin with the call:\n%s", page)
 	}
 }
+
+func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
+	// A running run's Steps have Follow, hidden until the person selects a
+	// row other than the newest; an ended run's have none. The script shows
+	// it when the selection stops following and follows again on a press.
+	for _, c := range []struct {
+		status string
+		follow bool
+	}{{"running", true}, {"done", false}} {
+		html, err := render("steps", runView{Run: run("a-client/1", "chat", "statechart", c.status, time.Hour, 0, nil)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(html), `<button class="btn sm" type="button" data-follow hidden`); got != c.follow || strings.Contains(string(html), "Follow") != c.follow {
+			t.Errorf("a %s run's Steps have Follow %v:\n%s", c.status, got, html)
+		}
+	}
+	script, err := files.ReadFile("runs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"closest('[data-follow]')", "moved = false;", "follow.hidden = !moved"} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("the script does not have %s", want)
+		}
+	}
+}
