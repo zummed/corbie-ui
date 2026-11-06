@@ -416,9 +416,11 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 
 // receipt is an action's answer in words: taken, refused with the reason,
 // for an event whether the machine acted on it and the run that took it,
-// and for a cancel at a location each run it cancelled.
+// for a start the run it started, and for a cancel at a location each run
+// it cancelled.
 func receipt(a page.Answer) string {
 	var got struct {
+		ID      string `json:"id"`
 		Taken   bool   `json:"taken"`
 		Refused string `json:"refused"`
 		Acted   *bool  `json:"acted"`
@@ -434,6 +436,8 @@ func receipt(a page.Answer) string {
 	switch {
 	case got.Refused != "":
 		return "refused: " + got.Refused
+	case got.ID != "":
+		return "started " + got.ID
 	case got.Acted != nil && !*got.Acted:
 		return "taken; the machine has no rule for the event"
 	case got.Taken && got.Run != "":

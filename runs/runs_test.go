@@ -303,6 +303,9 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 		if c.Words[1] == "cancel" {
 			return page.Answer{Out: `["lab-client/1  taken","lab-client/2  taken"]`}
 		}
+		if c.Words[1] == "submit" {
+			return page.Answer{Out: `{"id":"lab-client/4"}`}
+		}
 		return page.Answer{Out: `{"taken":true,"run":"lab-client/3"}`}
 	}
 	mine, err := identity.New("lab-client", identity.Client)
@@ -324,7 +327,9 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 	if w := post("send", url.Values{"at": {"/home/rooms/thermostat"}, "key": {"hall"}, "event": {"set"}, "data": {` { "target" : 20 } `}}); w.Code != 200 || w.Body.String() != "taken by lab-client/3" {
 		t.Errorf("Send answered %d %q", w.Code, w.Body.String())
 	}
-	post("start", url.Values{"at": {"/home/scenes/away"}, "input": {`{"days": 2}`}})
+	if w := post("start", url.Values{"at": {"/home/scenes/away"}, "input": {`{"days": 2}`}}); w.Code != 200 || w.Body.String() != "started lab-client/4" {
+		t.Errorf("Start answered %d %q", w.Code, w.Body.String())
+	}
 	want := []string{
 		"corbie run cancel /home/rooms/thermostat",
 		`corbie run send /home/rooms/thermostat#hall set {"target":20}`,
@@ -981,6 +986,9 @@ states:
 	if strings.Contains(started, "leave</b> from") {
 		t.Errorf("the group of the first send holds the second:\n%s", started)
 	}
+	if text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(started, ""); !strings.Contains(text, "⇠ knock from /house/desk") {
+		t.Errorf("the room's row of the knock does not say who sent it:\n%s", text)
+	}
 	left := get(t, h, groupOf(t, body, "leave to /house/room#1 · room"))
 	if !strings.Contains(left, "leave</b> from") || !strings.Contains(left, "entered <b>closed</b>") || strings.Contains(left, "started by") {
 		t.Errorf("the group of the second send is not the room from the step that took it:\n%s", left)
@@ -1041,6 +1049,9 @@ func Test_runs_a_call_shows_the_run_it_called(t *testing.T) {
 		if !strings.Contains(group, want) {
 			t.Errorf("the call's group does not show %s:\n%s", want, group)
 		}
+	}
+	if text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(group, ""); !strings.Contains(text, "stage look done") {
+		t.Errorf("the call's group does not read stage look done:\n%s", text)
 	}
 	if !strings.Contains(body, `<span class="st done">done</span>`) {
 		t.Errorf("the call's row does not end with the called run's status:\n%s", body)

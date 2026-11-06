@@ -48,11 +48,11 @@ A root is a running run whose parent is not running. Each root is one line in Bu
 ```
 Busy         a root with a running child, a job on a runner or a ticket, or with status waiting
 Idle         any other root: no running child, no job on a runner and no ticket
-Singletons   a root at a singleton location, whatever it waits on
+Singletons   a root at a singleton location in a tree of the UI's client, whatever it waits on
 Ended        a run with no parent that ended in the window, newest first
 ```
 
-The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Singletons reads:
+A location's lifetime is read only in a tree of the UI's client, so a singleton in another client's tree is in Busy or Idle. The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Singletons reads:
 
 ```
 running  Zummed in DM: Please tell zummed…  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29
@@ -111,7 +111,7 @@ Start                   a run, with input; transient locations             corbi
 ```
 
 - Cancel is offered at a location in a tree of the UI's client. The command cancels each root running there, one after another, and a run that starts in between is not cancelled.
-- Send is offered at any keyed location, and Start at a transient location in a tree of the UI's client. The receipt says whether the controller took it.
+- Send is offered at any keyed location, and Start at a transient location in a tree of the UI's client. The page shows the answer: for Send the receipt, whether the controller took it; for Start the ID of the run it started, or why it was refused.
 
 ## One run
 
@@ -166,19 +166,17 @@ send    the rows of the run that took the event, from the step that took it up t
 ```
 
 - The rows are read when the group is first opened, and read again as the page follows the run.
+- A group whose rows cannot be read shows the error, and its rows are read again when it is next opened.
 - The rows of a send's group can hold another send or call, which folds in the same way.
 - A send's group is approximate where events from two senders arrive close together: it ends at the first other sent event, whoever sent it.
 - A send or a call to a run in another client's tree is a link to its page, which shows only its status.
 
-For Rook, one Slack message is followed from the page of the chat run at `/my-bot/.rook/blocks/chat#slack:C1`:
+In the house example, the desk at `/house/desk` sends `knock` and then `leave` to the room at `/house/room#1`, and the trip at `/lab/trip` calls the weather at `/lab/weather`. On the desk's page:
 
-1. `⇠ message from /my-bot/bridges/slack`, the message as it arrived.
-2. `⇢ sent message to /my-bot/.rook/blocks/conversation#slack:C1:helper · conversation`, which unfolds to the conversation's rows.
-3. In them, `⇢ called /my-bot/agents/helper · helper`, which unfolds to the agent's turns and tool calls.
-4. `held deploy for approval`, then `ask started approval`.
-5. Inside approval, `⇢ called /my-bot/.rook/blocks/question · question` unfolds to the question run.
-6. In the question run, `⇠ answer from /my-bot/bridges/slack`.
-7. The tool runs, then `turn 2 replied`.
+1. `⇢ sent knock to /house/room#1 · started room` unfolds to the room's rows from `started by` and `⇠ knock from /house/desk`, up to the step that took `leave`.
+2. `⇢ sent leave to /house/room#1 · room` unfolds to `⇠ leave from /house/desk` and the room entering `closed`.
+
+On the trip's page, `⇢ called /lab/weather · weather` unfolds to every row of the weather run: `started by`, then `stage look done`.
 
 ### Selecting a row
 
@@ -226,4 +224,4 @@ On a run in a tree of the UI's client, each ticket's value is filled in. On any 
 
 Cancel is on every running run in a tree of the UI's client. With the controller among the UI's parties, it is on every running run's page, and on a run in another client's tree it is `corbie controller cancel <id>`.
 
-The page shows the answer the command prints. For Reply, Send and Cancel that is the receipt: taken, or refused with the reason, for an event whether the machine acted on it, and for a send the run that took it. `corbie controller cancel` does not wait for a receipt, and the page says the cancel is in the controller's inbox.
+The page shows the answer the command prints. For Start it is the ID of the run it started. For Reply, Send and Cancel it is the receipt: taken, or refused with the reason, for an event whether the machine acted on it, and for a send the run that took it. `corbie controller cancel` does not wait for a receipt, and the page says the cancel is in the controller's inbox.

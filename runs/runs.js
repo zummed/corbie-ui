@@ -48,7 +48,16 @@ let selected = null, moved = false, details = false, detailTab = 'what', seen = 
 
 const listOf = () => document.querySelector('#steps .steplist');
 const visible = () => [...(listOf()?.querySelectorAll('.step') ?? [])].filter(r => r.offsetParent !== null);
-const rowOf = key => key && listOf()?.querySelector(`.step[data-row="${CSS.escape(key)}"]`);
+const rowOf = key => key && [...(listOf()?.querySelectorAll('.step') ?? [])].find(r => keyOf(r) === key);
+
+// keyOf gives a row's key on the page: the keys of the send and call groups
+// it is in, then its own. A run's rows can be on the page more than once,
+// in the groups of two sends to it, and each copy has its own key.
+function keyOf(row) {
+  const keys = [row.dataset.row];
+  for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) if (g.matches('.trace')) keys.unshift(g.dataset.group);
+  return keys.join(' ');
+}
 
 // The group a row's run is in: the row's own li, not the group a head row starts.
 function groupOf(row) {
@@ -65,7 +74,8 @@ function applyFolds() {
 }
 
 // load asks the UI for the rows of a send's or a call's group, once each
-// time the group is drawn.
+// time the group is drawn. A group the UI could not read says why, and is
+// asked for again when it is next opened.
 async function load(g) {
   if (!g.dataset.load || g.dataset.loaded) return;
   g.dataset.loaded = '1';
@@ -73,10 +83,18 @@ async function load(g) {
   try {
     const res = await fetch(`${g.dataset.load}&page=${encodeURIComponent(split.dataset.page)}`);
     const t = document.createElement('template');
-    t.innerHTML = res.ok ? (await res.text()).trim() : '';
+    if (!res.ok) {
+      delete g.dataset.loaded;
+      const none = document.createElement('li');
+      none.className = 'dim none';
+      none.textContent = (await res.text()).trim() || res.statusText;
+      ol.replaceChildren(none);
+      return;
+    }
+    t.innerHTML = (await res.text()).trim();
     if (!t.content.firstElementChild) t.innerHTML = '<li class="dim none">nothing yet</li>';
     ol.replaceChildren(t.content);
-    for (const r of ol.querySelectorAll('.step')) seen.add(r.dataset.row);
+    for (const r of ol.querySelectorAll('.step')) seen.add(keyOf(r));
     applyFolds();
     const row = rowOf(selected);
     if (row && ol.contains(row)) select(row, false);
@@ -177,8 +195,8 @@ function select(row, fetchToo = true) {
   for (let g = groupOf(row); g; g = groupOf(g.firstElementChild)) fold(g, true);
   for (const r of listOf().querySelectorAll('.step.sel')) r.classList.remove('sel');
   row.classList.add('sel');
-  const changed = selected !== row.dataset.row;
-  selected = row.dataset.row;
+  const changed = selected !== keyOf(row);
+  selected = keyOf(row);
   row.scrollIntoView({ block: 'nearest' });
   showPath(row);
   if (fetchToo && changed) show(row);
@@ -192,7 +210,7 @@ function fold(group, open) {
 
 if (split && listOf()) {
   base = document.getElementById('path')?.innerHTML ?? null;
-  seen = new Set([...listOf().querySelectorAll('.step')].map(r => r.dataset.row));
+  seen = new Set([...listOf().querySelectorAll('.step')].map(keyOf));
   applyFolds();
   select(newestRow(), false);
   const sel = rowOf(selected), view = document.getElementById('view');
@@ -207,7 +225,7 @@ if (split && listOf()) {
     }
     if (e.detail.id !== 'steps') return;
     applyFolds();
-    for (const r of listOf().querySelectorAll('.step')) if (!seen.has(r.dataset.row)) { r.classList.add('new'); seen.add(r.dataset.row); }
+    for (const r of listOf().querySelectorAll('.step')) if (!seen.has(keyOf(r))) { r.classList.add('new'); seen.add(keyOf(r)); }
     const row = rowOf(selected);
     if (!moved || !row) select(shownOf(newestRow()));
     else select(row, false);
