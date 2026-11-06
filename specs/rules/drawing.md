@@ -8,7 +8,7 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 ## A statechart
 
-**R-drawing-02** A transition to a later state is an arrow with a chip giving its event, its condition as written and a timer's time, one arrow for all the rules between two states; a timer's arrow is dashed; a transition to an earlier state or the same state is written in its card with no arrow; a state's ticket and timers are written in it, and a final state that fails is marked as failed. *Test:* `drawing_statechart_arrows_name_event_condition_and_timer`
+**R-drawing-02** A transition to a state in a row below or in its own row is an arrow with a chip giving its event, its condition as written and a timer's time, one arrow for all the rules between two states; a timer's arrow is dashed; a transition to a state in a row above or the same state is written in its card with no arrow; a state's ticket and timers are written in it, and a final state that fails is marked as failed. *Test:* `drawing_statechart_arrows_name_event_condition_and_timer`
 
 **R-drawing-05** A `send:` to an address is drawn as a card of its own below the state, named by the address, with a dashed arrow labelled with the event. *Test:* `drawing_statechart_send_is_a_card`
 

@@ -386,6 +386,7 @@ svg.machine { flex: none; height: auto; }
 .machine .arrow.taken { fill: var(--petrol); }
 .machine .chip { fill: var(--paper); stroke: var(--line); stroke-width: 1; }
 .machine .on { font: 500 10.5px var(--sans); fill: var(--ink2); }
+.machine .chip.taken + .on { fill: var(--petrol); }
 
 /* machines */
 .ide { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--files, 300px) 18px minmax(0, 1fr); row-gap: 18px; }
