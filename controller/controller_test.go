@@ -134,12 +134,13 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 	body := get(t, lab(t, nil))
 	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", "gpu, big", `<tr data-key="old-box" class="removed">`,
-		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
+		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim cut" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
 		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
 		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
 		`<td class="in" title="/hello"><a href="/runs?at=%2Fhello">hello</a></td>`,
-		`<td>/</td><td>ANTHROPIC_KEY</td><td class="dim">secret</td><td title=""></td>`,
-		`<td>/home</td><td>HUB</td><td class="dim">value</td><td title="192.0.2.8:8123">192.0.2.8:8123</td>`} {
+		`<td>/</td><td>ANTHROPIC_KEY</td><td class="dim">secret</td><td class="cut" title=""></td>`,
+		`<td>/home</td><td>HUB</td><td class="dim">value</td><td class="cut" title="192.0.2.8:8123">192.0.2.8:8123</td>`,
+		`<td class="cut" title="network, disk, at:/home, at:/hello">`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %s", want)
 		}

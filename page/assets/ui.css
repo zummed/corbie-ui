@@ -458,6 +458,8 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 /* controller */
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .panel .list td.in { padding-left: 32px; }
+/* a long cell takes the width left and is cut short with "…"; its tooltip gives it whole */
+.list td.cut { max-width: 0; width: 100%; }
 #trees td a:hover { color: var(--accent); text-decoration: underline; }
 #trees tr.tree td { font-weight: 500; background: color-mix(in srgb, var(--paper) 55%, var(--plate)); }
 #trees tr.tree td.dim { font-weight: 400; }
