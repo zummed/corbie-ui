@@ -61,8 +61,14 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"join":   func(s []string) string { return strings.Join(s, ", ") },
 }).ParseFS(files, "machines.html", "parts.html"))
 
+// Pages is the Machines and Parts pages.
+type Pages struct {
+	http.Handler
+	h *handler
+}
+
 // New gives the Machines and Parts pages.
-func New(c Config) (http.Handler, error) {
+func New(c Config) (*Pages, error) {
 	d, err := newDir(c.Dir)
 	if err != nil {
 		return nil, err
@@ -78,7 +84,34 @@ func New(c Config) (http.Handler, error) {
 		data, _ := files.ReadFile("machines.js")
 		w.Write(data)
 	})
-	return mux, nil
+	return &Pages{Handler: mux, h: h}, nil
+}
+
+// Href gives the address on the Machines page of the machine at a location
+// of a tree submitted from dir, with the cards named in cards unfolded one
+// inside another, and the machine's file. It gives none where the page does
+// not show that machine: a tree submitted from another directory, or a
+// location the directory, at the prefix the page reads it at, has no
+// machine at.
+func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) (href, file string, err error) {
+	if dir != p.h.dir.real {
+		return "", "", nil
+	}
+	ix, err := p.h.tree(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	for _, m := range ix.machines {
+		if m.Location != location {
+			continue
+		}
+		q := url.Values{"file": {m.Path}}
+		for i := range cards {
+			q.Add("open", strings.Join(cards[:i+1], "/"))
+		}
+		return "/machines?" + q.Encode(), m.Path, nil
+	}
+	return "", "", nil
 }
 
 // view is the Machines page as it is drawn. View is the tab chosen:

@@ -28,6 +28,8 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-05** Choosing a machine shows its drawing, unfolded as the address says; a machine with problems shows its text. Text shows the file. *Test:* `machines_drawing_unfolds_as_the_address_says`
 
+**R-machines-14** Machines gives Runs the address of the machine at a location, `/machines?file=<file>` with `open=<card path>` for each card unfolded down to a child, where the location's tree was submitted from the directory the page reads, at the prefix it reads it at; and none for any other. *Test:* `machines_a_runs_machine_is_found_by_its_location`
+
 **R-machines-12** Written out shows a machine without problems as Corbie writes it out, each value with its file and line, which links to that line of that file's text. *Test:* `machines_written_out_shows_where_each_value_is_from`
 
 **R-machines-02** A file's text is read-only, with its lines numbered, under the problems found in it, and the lines they are found at are marked: for a machine, those Corbie gives for it; for any other file, those found in it by the machines that read it. A file with none shows no problems. *Test:* `machines_text_shows_the_problems_found_in_it`

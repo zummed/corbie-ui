@@ -787,3 +787,39 @@ func Test_machines_pages_only_read(t *testing.T) {
 		t.Errorf("the directory changed")
 	}
 }
+
+func Test_machines_a_runs_machine_is_found_by_its_location(t *testing.T) {
+	// A run's machine is the file at its location, where its tree was
+	// submitted from the directory the page reads and at the prefix it
+	// reads it at; the cards down to a child are unfolded one inside
+	// another.
+	_, dir := machines(t, Config{})
+	p, err := New(Config{Dir: dir, Interval: time.Second, Shell: page.Shell{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, ctx := "/"+filepath.Base(dir), context.Background()
+	for _, c := range []struct {
+		location, dir string
+		cards         []string
+		href, file    string
+	}{
+		{prefix + "/review", real, nil, "/machines?file=review.yaml", "review.yaml"},
+		{prefix + "/review", real, []string{"draft", "check"}, "/machines?file=review.yaml&open=draft&open=draft%2Fcheck", "review.yaml"},
+		{prefix + "/review", "/elsewhere", nil, "", ""},
+		{"/work/review", real, nil, "", ""},
+		{prefix + "/notes", real, nil, "", ""},
+	} {
+		href, file, err := p.Href(ctx, c.location, c.dir, c.cards)
+		if err != nil || href != c.href || file != c.file {
+			t.Errorf("%s from %s, %v, is at %q %q, %v", c.location, c.dir, c.cards, href, file, err)
+		}
+	}
+	if got := do(p, "GET", "/machines?file=review.yaml&open=draft", nil).Code; got != 200 {
+		t.Errorf("the address answered %d", got)
+	}
+}

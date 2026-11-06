@@ -98,6 +98,8 @@ Text          the file as it is written
 Written out   the definition Corbie stores: what it includes in place, each value with its file and line
 ```
 
+The address of a machine is `/machines?file=<file>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?file=schedules/away.yaml&open=pause`. A run's page links to its machine's address where the run's tree was submitted from this directory at the prefix the page reads it at (see Runs).
+
 Written out is what `corbie test <file> --definition` prints. Each value's file and line links to that line of that file's text:
 
 ```

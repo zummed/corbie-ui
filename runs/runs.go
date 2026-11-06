@@ -38,8 +38,12 @@ type Config struct {
 	Client     *client.Client
 	Controller bool
 	Command    page.Command
-	Interval   time.Duration
-	Shell      page.Shell
+	// Machine gives the address on the Machines page of the machine at a
+	// location of a tree submitted from a directory, with cards unfolded,
+	// and its file; none where the UI offers no Machines page.
+	Machine  func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	Interval time.Duration
+	Shell    page.Shell
 }
 
 type handler struct {
@@ -305,6 +309,56 @@ func (h *handler) titled(ctx context.Context) ([]*client.Run, map[string]fixed, 
 	runs, err := h.List.Runs()
 	titled, facts, read := h.titles.of(ctx, h.Client, runs)
 	return titled, facts, errors.Join(err, read)
+}
+
+// defined gives where the Machines page shows a run's machine as its file
+// now is: the file of the run's location, or of its root's for a child,
+// unfolded down the cards of the jobs that started each child. A run in
+// another client's tree, one whose machine was made while running, and one
+// the Machines page does not show, have none.
+func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
+	if h.Machine == nil || !h.mine(id) {
+		return nil, nil
+	}
+	runs, facts, _ := h.titled(ctx)
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	root, cards := cardsOf(id, byID, facts)
+	if root == nil {
+		return nil, nil
+	}
+	href, file, err := h.Machine(ctx, root.Location, facts[root.ID].Dir, cards)
+	if href == "" || err != nil {
+		return nil, err
+	}
+	return &definedAt{Href: href, File: file, Cards: strings.Join(cards, " › ")}, nil
+}
+
+// cardsOf gives the root of a run, and the cards of the jobs that started
+// each child down to the run, from the root's machine: none where what is
+// fixed of a run on the way is not read, or a machine was made while
+// running.
+func cardsOf(id string, byID map[string]*client.Run, facts map[string]fixed) (*client.Run, []string) {
+	var cards []string
+	for r := byID[id]; r != nil; r = byID[r.Parent] {
+		f, ok := facts[r.ID]
+		switch {
+		case !ok || f.Made:
+			return nil, nil
+		case r.Parent == "":
+			return r, cards
+		}
+		cards = append([]string{jobOf(f.Job)}, cards...)
+	}
+	return nil, nil
+}
+
+// definedAt is where the Machines page shows a run's machine: its address,
+// its file, and the cards unfolded down to it.
+type definedAt struct {
+	Href, File, Cards string
 }
 
 // byID gives the runs of the list by their IDs.

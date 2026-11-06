@@ -28,6 +28,8 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **R-runs-13** On a running run's page the selected row is the newest row, which it follows as rows are added, until the person selects another row; then the head of Steps offers Follow, which selects the newest row and follows again. An ended run's page has no Follow. *Test:* `runs_follow_returns_to_the_newest_row`
 
+**R-runs-14** Where the UI offers Machines, a run in a tree of the UI's client links from its title line and the head of its drawing to the Machines page opened on its machine: the file at its root's location, unfolded down the cards of the jobs that started each child, where the root's tree was submitted from the directory the page reads at the prefix it reads it at and no machine on the way was made while running; any other run has no link. The tooltip says the page shows the file as it is now, and the drawing the definition the run started with. *Test:* `runs_a_run_links_to_its_machine`
+
 **C-runs-01** A file of a run's result is sent as a download, with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. A result can hold HTML or SVG a script fetched from anywhere, and shown in a page it would run with the UI's cookie. *Test:* `runs_result_file_is_a_download`
 
 **C-runs-02** A run in another client's tree is read only through the list and Corbie's client package, which gives its status and nothing from its record, on its page and in a send's or a call's group. The UI holds the controller's keys too, and must not read a run another way. *Test:* `runs_other_clients_run_shows_no_record`
@@ -38,4 +40,4 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 ## Interfaces
 
-Runs uses Pages for the shell, the stream, its errors, the commands its buttons run and how a time is shown (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`, `page.Call`, `page.Command`, `page.Answer`, `page.When`, `page.Clock`, `page.Dated`), and Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`, `drawing.Step`, `drawing.Child`, `drawing.Machine`).
+Runs uses Pages for the shell, the stream, its errors, the commands its buttons run and how a time is shown (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`, `page.Call`, `page.Command`, `page.Answer`, `page.When`, `page.Clock`, `page.Dated`), Drawing to draw a run's machine (`drawing.Draw`, `drawing.Run`, `drawing.Step`, `drawing.Child`, `drawing.Machine`), and Machines, as Serving gives it, for the address of a run's machine (`machines.Pages.Href`).

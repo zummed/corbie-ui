@@ -224,6 +224,8 @@ main > .head form.narrow input { width: 220px; }
 /* run */
 .head > .title, .head > .key { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .head > .key { font-weight: 400; color: var(--ink2); }
+.head > .def { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; color: var(--accent); }
+.head > .def:hover { text-decoration: underline; }
 .path { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: -8px; padding: 0 2px; font: 13px var(--mono); color: var(--ink2); white-space: nowrap; overflow: hidden; }
 .path a { display: inline-flex; align-items: center; gap: 5px; }
 .path a:hover { color: var(--accent); }

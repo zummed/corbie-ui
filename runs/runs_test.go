@@ -845,6 +845,19 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 		}
 	}
 
+	// Where the UI offers Machines, the run's page links to its machine,
+	// asked for at its location and the directory its tree was submitted
+	// from.
+	var asked []string
+	machine := func(_ context.Context, location, dir string, cards []string) (string, string, error) {
+		asked = append(asked, fmt.Sprint(location, " ", dir != "", " ", cards))
+		return "/machines?file=door.yaml", "door.yaml", nil
+	}
+	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Client: c, Machine: machine, Interval: time.Second, Shell: page.Shell{}})
+	if body := get(t, h, "/run/"+id); !strings.Contains(body, `<a class="def" href="/machines?file=door.yaml"`) || len(asked) == 0 || asked[0] != "/house/door true []" {
+		t.Errorf("the run's page asked for its machine as %v:\n%s", asked, body)
+	}
+
 	// A UI that acts as no client reads no title, and names the run by
 	// its key.
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Interval: time.Second, Shell: page.Shell{}})
@@ -1146,5 +1159,56 @@ func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("the script does not have %s", want)
 		}
+	}
+}
+
+func Test_runs_a_run_links_to_its_machine(t *testing.T) {
+	// A root's machine is its location's file; a child's is its root's,
+	// unfolded down the cards of the jobs that started each child. A run
+	// whose machine, or one above it, was made while running has none, nor
+	// does a run whose facts are not read.
+	runs := []*client.Run{
+		run("a-client/1", "away", "flow", "done", time.Hour, 0, func(r *client.Run) { r.Location = "/home/schedules/away" }),
+		run("a-client/2", "pause", "statechart", "done", time.Hour, 0, func(r *client.Run) { r.Parent, r.Location = "a-client/1", "/home/schedules/away" }),
+		run("a-client/3", "nap", "flow", "done", time.Hour, 0, func(r *client.Run) { r.Parent, r.Location = "a-client/2", "/home/schedules/away" }),
+		run("a-client/4", "made", "flow", "done", time.Hour, 0, func(r *client.Run) { r.Parent, r.Location = "a-client/1", "/home/schedules/away" }),
+		run("b-client/5", "boiler", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location = "/home/devices/boiler" }),
+	}
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	facts := map[string]fixed{"a-client/1": {Dir: "/src/house"}, "a-client/2": {Job: "pause#1"}, "a-client/3": {Job: "doze.nap"}, "a-client/4": {Job: "make", Made: true}}
+	for _, c := range []struct {
+		id, root, cards string
+	}{{"a-client/1", "a-client/1", ""}, {"a-client/2", "a-client/1", "pause"}, {"a-client/3", "a-client/1", "pause doze"}, {"a-client/4", "", ""}, {"b-client/5", "", ""}} {
+		root, cards := cardsOf(c.id, byID, facts)
+		if got := ""; root != nil {
+			got = root.ID
+			if got != c.root || strings.Join(cards, " ") != c.cards {
+				t.Errorf("%s is shown at %s with the cards %v", c.id, got, cards)
+			}
+		} else if c.root != "" {
+			t.Errorf("%s is shown at no machine", c.id)
+		}
+	}
+
+	// The link is beside the run's address and in the head of its
+	// drawing, with a tooltip that the file is as it is now.
+	d := &definedAt{Href: "/machines?file=schedules%2Faway.yaml&open=pause", File: "schedules/away.yaml", Cards: "pause"}
+	summary, err := render("summary", runView{Run: runs[1], Defined: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := render("view", shown{Row: &stepRow{Run: link{ID: "a-client/2", Machine: "pause"}}, Defined: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<a class="def" href="/machines?file=schedules%2Faway.yaml&amp;open=pause" title="the file on the Machines page as it is now; the drawing here is the definition this run started with">schedules/away.yaml › pause</a>`
+	if !strings.Contains(string(summary), want) || !strings.Contains(string(view), want) {
+		t.Errorf("the run does not link to its machine:\n%s\n%s", summary, view)
+	}
+	if html, _ := render("summary", runView{Run: runs[0]}); strings.Contains(string(html), `class="def"`) {
+		t.Errorf("a run with no machine to show links to one:\n%s", html)
 	}
 }

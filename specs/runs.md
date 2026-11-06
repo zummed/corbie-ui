@@ -117,7 +117,7 @@ Start                   a run, with input; transient locations             corbi
 
 ## One run
 
-A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and title, then its address, which links to the page narrowed to its location, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
+A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and title, then its address, which links to the page narrowed to its location, then its machine's file, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
 
 ```
 slack-listen ⇢ chat › message › answer › helper › approval › ask › question
@@ -196,7 +196,19 @@ The keys act when the list has the focus, or nothing else on the page has it:
 click    selects the row and shows its details
 ```
 
-The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls to the first card that is going, held or failed.
+The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls to the first card that is going, held or failed. Its head names the run's machine's file, as the title line does.
+
+### The machine's file
+
+The file links to the Machines page, opened on the machine of a run in a tree of the UI's client:
+
+```
+a run at its own location   the file at that location: devices/boiler.yaml
+a child                     its root's file, unfolded down the cards of the jobs that started each child: schedules/away.yaml › pause
+```
+
+- The Machines page shows the file as it is on disk now, which may differ from the definition the run started with. The run's drawing is the definition it runs, and the link's tooltip says so.
+- There is no link where the UI offers no Machines page, where the run's tree was submitted from another directory or at another prefix than the page reads, where a machine on the way was made while running, and on a run in another client's tree.
 
 The details of a row have four tabs, and Open opens the row's run's page:
 

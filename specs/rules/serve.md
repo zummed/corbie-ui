@@ -32,4 +32,4 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 ## Interfaces
 
-Serving uses every other area: it gives Runs and Metrics the list of runs, Runs, Machines and Controller the parties, Runs and Controller the way a command runs, Machines the directory, and serves the assets of Pages.
+Serving uses every other area: it gives Runs and Metrics the list of runs, Runs, Machines and Controller the parties, Runs and Controller the way a command runs, Machines the directory, Runs the address Machines gives of a run's machine where the UI offers Machines, and serves the assets of Pages.

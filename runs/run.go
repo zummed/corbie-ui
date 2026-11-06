@@ -49,6 +49,7 @@ type runView struct {
 	Cancel               *page.Call
 	Send, Reply          bool
 	Shown                shown
+	Defined              *definedAt
 }
 
 // A link is a run by its machine, as the path, the waits and the steps
@@ -65,6 +66,7 @@ type link struct {
 // from.
 type shown struct {
 	Row           *stepRow
+	Defined       *definedAt
 	Page          string
 	Type          string
 	Time          string
@@ -255,6 +257,9 @@ func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries 
 		return s, err
 	}
 	s.Type = d.def.Type
+	if s.Defined, err = h.defined(ctx, r.Run.ID); err != nil {
+		return s, err
+	}
 	var st *instance.State
 	if step.State.Status == instance.Running {
 		st = &step.State
@@ -400,6 +405,9 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	}
 
 	if err := h.read(ctx, id, run.Step, r); err != nil {
+		return v, err
+	}
+	if v.Defined, err = h.defined(ctx, id); err != nil {
 		return v, err
 	}
 	var st *instance.State
