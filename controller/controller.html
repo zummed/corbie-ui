@@ -34,13 +34,29 @@
   </div>
 </div>{{end}}
 
-{{define "secrets"}}<div class="panel" id="secrets">
-  <div class="head"><h2>Secrets</h2></div>
-  <table class="list"><thead><tr><th>Name</th><th></th></tr></thead><tbody>{{range .Secrets}}<tr data-key="{{.}}"><td>{{.}}</td><td class="row-acts"><form data-act method="post" action="/controller/secret-remove"><input type="hidden" name="name" value="{{.}}"><button class="btn sm stop" data-cmd="corbie controller secret remove {{.}}">Remove</button><span class="said"></span></form></td></tr>{{else}}<tr><td class="dim">no secrets</td></tr>{{end}}</tbody></table>
+{{define "trees"}}<div class="panel" id="trees">
+  <div class="head"><h2>Trees</h2></div>
+  <table class="list"><thead><tr><th>Location</th><th>Lifetime</th></tr></thead>
+    <tbody>{{range .Trees}}<tr class="tree" data-key="{{.Prefix}}"><td><a href="/runs?at={{urlquery .Prefix}}">{{.Prefix}}</a></td><td class="dim" title="{{.Client}}, from {{.Directory}}">{{.Client}} · from {{.Directory}}</td></tr>
+    {{- range .Locations}}<tr data-key="{{.At}}"><td class="in" title="{{.At}}"><a href="/runs?at={{urlquery .At}}">{{.Name}}</a></td><td>{{.Lifetime}}</td></tr>{{end}}
+    {{- else}}<tr><td class="dim">no trees</td></tr>{{end}}</tbody></table>
+</div>{{end}}
+
+{{define "settings"}}<div class="panel" id="settings">
+  <div class="head"><h2>Secrets and values</h2></div>
+  <table class="list"><thead><tr><th>At</th><th>Name</th><th>Kind</th><th>Value</th><th></th></tr></thead><tbody>{{range .Set}}<tr data-key="{{.Kind}} {{.At}} {{.Name}}"><td>{{.At}}</td><td>{{.Name}}</td><td class="dim">{{.Kind}}</td><td title="{{.Value}}">{{.Value}}</td><td class="row-acts"><form data-act method="post" action="/controller/{{.Kind}}-remove"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="at" value="{{.At}}"><button class="btn sm stop" data-cmd="corbie controller {{.Kind}} remove {{.Name}} --at {{.At}}">Remove</button><span class="said"></span></form></td></tr>{{else}}<tr><td class="dim" colspan="5">no secrets and no values</td></tr>{{end}}</tbody></table>
   <form class="enrol" data-act="reset" method="post" action="/controller/secret-set">
-    <input name="name" placeholder="name" size="14" aria-label="The secret's name" required>
+    <input name="name" placeholder="secret name" size="14" aria-label="The secret's name" required>
+    <input name="at" placeholder="at /" size="14" aria-label="The location it is set at">
     <input name="value" type="password" placeholder="value" autocomplete="off" aria-label="Its value" required>
-    <button class="btn go" data-cmd="corbie controller secret set &lt;NAME&gt; -">Set</button>
+    <button class="btn go" data-cmd="corbie controller secret set &lt;NAME&gt; - --at &lt;location&gt;">Set</button>
+    <span class="said"></span>
+  </form>
+  <form class="enrol" data-act="reset" method="post" action="/controller/value-set">
+    <input name="name" placeholder="value name" size="14" aria-label="The value's name" required>
+    <input name="at" placeholder="at /" size="14" aria-label="The location it is set at">
+    <input name="value" placeholder="value" autocomplete="off" aria-label="Its text" required>
+    <button class="btn go" data-cmd="corbie controller value set &lt;NAME&gt; &lt;VALUE&gt; --at &lt;location&gt;">Set</button>
     <span class="said"></span>
   </form>
 </div>{{end}}
@@ -48,6 +64,7 @@
 {{define "controller"}}
 <div class="cols">
   {{template "parties" .}}
-  {{template "secrets" .}}
+  {{template "trees" .}}
+  {{template "settings" .}}
 </div>
 {{end}}
