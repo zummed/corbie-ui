@@ -155,8 +155,9 @@ type stepRow struct {
 	Exact string
 	Depth int
 	What  []word
-	// Kind colours a row: send and got for a send between runs, held,
-	// failed, and the status a run ended with.
+	// Kind colours a row: send and got for a send between runs, with
+	// undelivered for a send that was not, held, failed, and the status a
+	// run ended with.
 	Kind  string
 	Group *group
 	Trace *trace
@@ -632,6 +633,7 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 		}
 	}
 	if undelivered {
+		r.Kind = strings.TrimSpace(r.Kind + " undelivered")
 		r.What = append(r.What, word{Text: " · undelivered"})
 		r.Facts = append(r.Facts, fact{Name: "undelivered", Text: cmp.Or(a.Text, note.undelivered, "it is not running")})
 	}

@@ -59,7 +59,7 @@ func noSteps(*client.Run) *instance.Step { return nil }
 func lineNames(s section) []string {
 	var out []string
 	for _, l := range s.Lines {
-		out = append(out, l.Name)
+		out = append(out, l.Name+l.Key)
 	}
 	return out
 }
@@ -112,6 +112,11 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	}
 	if digest.When != page.When(at.Add(-15*time.Minute), at) {
 		t.Errorf("an ended line gives the time %q, not when it ended", digest.When)
+	}
+	// An ended line gives how many runs are under it only where there are
+	// any.
+	if html, err := render("ended", v); err != nil || !strings.Contains(string(html), "1 run under it") || strings.Contains(string(html), "0 runs") {
+		t.Errorf("the ended lines are drawn as %v:\n%s", err, html)
 	}
 	long := []*client.Run{run("a-client/1", "chat", "statechart", "running", time.Hour, 0, nil)}
 	for i, m := range []string{"message", "answer", "helper", "ask", "question"} {
@@ -210,6 +215,9 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 	if got := strings.Join(ids, " "); got != "30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11" {
 		t.Errorf("the rows are %s, not the newest twenty", got)
 	}
+	if html, err := render("line", l); err != nil || !strings.Contains(string(html), ">2 runs</span>") || strings.Contains(string(html), "0 runs") || strings.Contains(string(html), "<i>·</i></span>") {
+		t.Errorf("a row gives the runs under it where there are none, or %v:\n%s", err, html)
+	}
 	newest, attended, failed := l.Rows[1], l.Rows[3], l.Rows[4]
 	if newest.Name != "message" || len(newest.Front) != 3 || newest.Front[2].Machine != "question" || newest.Says != "ticket verdict" || newest.Under != 2 || newest.Took != "" {
 		t.Errorf("a running message is the row %+v", newest)
@@ -270,19 +278,21 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 func Test_runs_keyed_runs_are_listed_by_key(t *testing.T) {
 	runs := []*client.Run{
 		run("lab-client/1", "thermostat", "statechart", "running", 2*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/home/rooms/thermostat", "kitchen", 1 }),
-		run("lab-client/2", "thermostat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers, r.Title = "/home/rooms/thermostat", "hall", 1, "a thermostat" }),
+		run("lab-client/2", "thermostat", "statechart", "running", time.Hour, 0, func(r *client.Run) {
+			r.Location, r.Key, r.Timers, r.Title = "/home/rooms/thermostat", "hall", 1, "a thermostat"
+		}),
 		run("lab-client/3", "away", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Jobs = "/home/scenes/away", 1 }),
 	}
 	facts := map[string]fixed{"lab-client/1": {Tree: "/home", Lifetime: "keyed"}, "lab-client/2": {Tree: "/home", Lifetime: "keyed"}, "lab-client/3": {Tree: "/home", Lifetime: "transient"}}
 	v := listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home/rooms/thermostat"}}), at, "lab-client")
-	if got := strings.Join(lineNames(v.Idle), " "); got != "thermostat#hall thermostat#kitchen" || len(v.Busy.Lines) != 0 {
+	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat#hall thermostat#kitchen" || len(v.Busy.Lines) != 0 {
 		t.Errorf("the keyed runs are listed as %s", got)
 	}
 	if h := v.Here; h == nil || h.Location != "/home/rooms/thermostat" || h.Lifetime != "keyed" || h.Tree != "/home" || !h.Send || h.Start || h.Cancel == nil || h.Cancel.String() != "corbie run cancel /home/rooms/thermostat" {
 		t.Errorf("the location's head is %+v", v.Here)
 	}
 	v = listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home"}}), at, "lab-client")
-	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat rooms/thermostat#kitchen" || v.Here != nil || lineNames(v.Busy)[0] != "scenes/away" {
+	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat#hall rooms/thermostat#kitchen" || v.Here != nil || lineNames(v.Busy)[0] != "scenes/away" {
 		t.Errorf("at /home the runs are named %s and %v, with the head %+v", got, lineNames(v.Busy), v.Here)
 	}
 	if h := listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home/scenes/away"}}), at, "lab-client").Here; h == nil || h.Send || !h.Start {
@@ -583,8 +593,8 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	if linkIn(rows[0]) != "a-client/4" || linkIn(rows[1]) != "" || linkIn(rows[2]) != "a-client/4" || linkIn(rows[3]) != "a-client/3" || linkIn(rows[5]) != "a-client/6" {
 		t.Errorf("the sends link to %q %q %q %q %q", linkIn(rows[0]), linkIn(rows[1]), linkIn(rows[2]), linkIn(rows[3]), linkIn(rows[5]))
 	}
-	if rows[4].Facts[len(rows[4].Facts)-1].Text != "the limit of 2 runs at /rook/chat is reached" || rows[5].In == nil || rows[2].Kind != "send" || rows[0].Kind != "got" {
-		t.Errorf("an undelivered send says %+v, and a call was given %v", rows[4].Facts, rows[5].In)
+	if rows[4].Facts[len(rows[4].Facts)-1].Text != "the limit of 2 runs at /rook/chat is reached" || rows[5].In == nil || rows[2].Kind != "send" || rows[4].Kind != "send undelivered" || rows[0].Kind != "got" {
+		t.Errorf("an undelivered send says %+v as %q, and a call was given %v", rows[4].Facts, rows[4].Kind, rows[5].In)
 	}
 	said = nil
 	for _, l := range lines(sends, "listen", sent) {
@@ -815,9 +825,9 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	}
 	id := waitFor(t, viewer, func(r *client.Run) bool { return r.Location == "/house/door" && r.Step > 0 })
 
-	// The client that started the run lists it, and heads its page, by
-	// its title, with the key in the tooltip and beside the title. A list
-	// drawn again reads nothing more.
+	// The client that started the run lists it by its title followed by
+	// its key, and heads its page by its title, with the key in the tooltip
+	// and beside the title. A list drawn again reads nothing more.
 	counted := &counting{Store: l.Client.Store}
 	c := client.New(l.Client.ID, l.Client.Controller, counted)
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: c, Interval: time.Second, Shell: page.Shell{}})
@@ -825,7 +835,7 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	if once := counted.reads.Load(); get(t, h, "/runs") != list || counted.reads.Load() != once {
 		t.Errorf("the list drawn again read %d more times", counted.reads.Load()-once)
 	}
-	if want := "<span class=\"title\" title=\"door for zummed\n/house/door#door:7\n" + id + "\">door for zummed</span>"; !strings.Contains(list, want) {
+	if want := "<span class=\"title named\" title=\"door for zummed\n/house/door#door:7\n" + id + "\" style=\"--key: 7ch\"><span>door for zummed</span><span class=\"key\">#door:7</span></span>"; !strings.Contains(list, want) {
 		t.Errorf("the run's line is not named by its title, %s:\n%s", want, list)
 	}
 	body := get(t, h, "/run/"+id)
@@ -839,7 +849,7 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	// its key.
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Interval: time.Second, Shell: page.Shell{}})
 	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
-	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\">/house/door#door:7</span>") || strings.Contains(list+body, "door for") {
+	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\"><span>/house/door#door:7</span></span>") || strings.Contains(list+body, "door for") {
 		t.Errorf("with no client the run is not named by its address:\n%s", list)
 	}
 
@@ -850,7 +860,7 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	}
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Client: client.New(other, l.Client.Controller, l.Client.Store), Interval: time.Second, Shell: page.Shell{}})
 	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
-	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\">/house/door#door:7</span>") || strings.Contains(list+body, "door for") {
+	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\"><span>/house/door#door:7</span></span>") || strings.Contains(list+body, "door for") {
 		t.Errorf("another client's run is not named by its address:\n%s", list)
 	}
 
@@ -900,11 +910,13 @@ func Test_runs_a_child_is_named_by_its_title(t *testing.T) {
 	if got := strings.Join(names, ", "); got != "say, Zummed: hello" || v.Busy.Lines[0].Name != "/rook/chat#slack:D1" {
 		t.Errorf("the line %s unfolds to rows named %s", v.Busy.Lines[0].Name, got)
 	}
+	// A keyed run with a title is named by it, followed by its key.
+	dm := run("c-client/5", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Title = "/rook/chat", "slack:D2", "Zummed in DM" })
 	for _, c := range []struct {
-		r         *client.Run
-		name, tip string
-	}{{titled, "Zummed: hello", "Zummed: hello\n/rook/chat\nc-client/2"}, {bare, "say", "/rook/chat\nc-client/4"}, {chat, "/rook/chat#slack:D1", "/rook/chat#slack:D1\nc-client/1"}} {
-		if got := childOf(c.r, at); got.Name != c.name || got.Tip != c.tip || got.Machine != c.r.Machine {
+		r              *client.Run
+		name, key, tip string
+	}{{titled, "Zummed: hello", "", "Zummed: hello\n/rook/chat\nc-client/2"}, {bare, "say", "", "/rook/chat\nc-client/4"}, {chat, "/rook/chat#slack:D1", "", "/rook/chat#slack:D1\nc-client/1"}, {dm, "Zummed in DM", "#slack:D2", "Zummed in DM\n/rook/chat#slack:D2\nc-client/5"}} {
+		if got := childOf(c.r, at); got.Name != c.name || got.Key != c.key || got.Tip != c.tip || got.Machine != c.r.Machine {
 			t.Errorf("Children lists %s as %+v", c.r.ID, got)
 		}
 	}

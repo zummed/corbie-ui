@@ -12,6 +12,7 @@ address   its location, with #key at a keyed location: /home/rooms/thermostat#ki
 machine   its machine's name, for a child that machine: started
 ```
 
+- A run at a keyed location named by its title has its key after the title, as `thermostat#kitchen`, so runs with one title are told apart wherever they are listed.
 - A run in another client's tree, and every run of a UI that acts as no client, is named by its address, or by its machine where it is a child.
 - On a page narrowed to a prefix, an address is written from that prefix: at `/home`, `rooms/thermostat#kitchen`. A location the prefix names in full keeps its last name: at `/home/rooms/thermostat`, `thermostat#kitchen`.
 - Holding the pointer over a name shows the run's title, its full address and its ID.
@@ -56,16 +57,16 @@ Ended        a run with no parent that ended in the window, newest first
 A location's lifetime is read only in a tree of the UI's client, so a singleton in another client's tree is in Busy or Idle. The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Singletons reads:
 
 ```
-running  Zummed in DM: Please tell zummed…  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29
+running  Zummed in DM: Please tell…#slack:D1  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29
 ```
 
-- The line begins with the root's status and its name. A long address is cut in its middle, since keys differ at their end, and a title at its end.
+- The line begins with the root's status and its name. A long address is cut in its middle, since keys differ at their end, and a title at its end, before its key.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
 - A chain of more than three machines shows the first, `…` and the last, and the `…` gives the whole chain in its tooltip.
 - The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
 - Then come what the deepest run waits on and when the root started.
 
-An ended line holds its status, name, machine, the number of runs under it, when it ended and how long it took.
+An ended line holds its status, name, machine, the number of runs under it where there are any, when it ended and how long it took.
 
 A click on a line opens its root's page, whose Steps follow the newest row. The `▸` at the line's start unfolds it to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
 
@@ -79,7 +80,7 @@ done       message  message › say › slack-say          done from say · 14 r
 name         the run's name
 chain        the runs below it as a line's chain: the running ones, or for an ended run the newest at each level
 ended with   the error it failed with or the last event it took, as its record writes it; for a running run, what the deepest waits on
-runs         how many runs are under it
+runs         how many runs are under it, where there are any
 when         when it started, and how long it took
 ```
 
@@ -103,7 +104,7 @@ The page is narrowed by location prefix, `?at=/home`, and by label, as `--label`
 
 ### One location
 
-Narrowed to one location, the page has a head above the sections with the location, its lifetime, and its tree and client where the UI knows them. Its keyed runs are each listed by key, whatever their titles. With a client among the UI's parties, the head offers:
+Narrowed to one location, the page has a head above the sections with the location, its lifetime, and its tree and client where the UI knows them. With a client among the UI's parties, the head offers:
 
 ```
 Cancel every run here   every run of the location in the client's tree     corbie run cancel <location>
@@ -152,6 +153,7 @@ Sends and calls between runs read:
 - Holding the pointer over a row's machine shows its run's title, its address and its ID.
 - A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
 - A send and an event from a run have a dashed mark.
+- An undelivered send's row is in the colour of a failure.
 - The controller notes in the sender's record a send that was not delivered, or whose event went to another run, as when another send took the key first. The send's row says it, and the note has no row of its own.
 - An undelivered send gives the reason in its details: the receiver's `receive:` does not list the sender, no run is running there, the location's limit of runs is reached, the run is a flow or an agent, which takes no events, or the run was cancelled while it kept the event under `defer:`.
 - A send a layer of the sender refused is `denied`: a send job's row says so, and a statechart's send ends its run `failed (denied)`, whose details give what was refused, the layer and the fix.

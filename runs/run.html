@@ -67,7 +67,7 @@
 </div>{{end}}
 
 {{define "children"}}<table class="list kids" id="children"><tbody>{{range .Children}}<tr data-key="{{.ID}}" data-status="{{.Status}}" data-ended="{{.Ended}}" data-href="/run/{{.ID}}">
-<td>{{template "status" .}}</td><td title="{{.Tip}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Name}}{{if ne .Name .Machine}} <span class="dim">{{.Machine}}</span>{{end}}</td><td class="dim num">{{.When}}</td><td class="dim num">{{.Took}}</td></tr>{{else}}<tr><td class="dim">no children</td></tr>{{end}}</tbody></table>{{end}}
+<td>{{template "status" .}}</td><td title="{{.Tip}}">{{if .Type}}{{template "icon" .Type}}{{end}}{{.Name}}{{with .Key}}<span class="dim">{{.}}</span>{{end}}{{if ne .Name .Machine}} <span class="dim">{{.Machine}}</span>{{end}}</td><td class="dim num">{{.When}}</td><td class="dim num">{{.Took}}</td></tr>{{else}}<tr><td class="dim">no children</td></tr>{{end}}</tbody></table>{{end}}
 
 {{define "run"}}
 {{template "summary" .}}

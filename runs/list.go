@@ -171,6 +171,8 @@ type fixed struct {
 // deepest, what the deepest waits on, and the rows it unfolds to.
 type rootLine struct {
 	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
+	// Key is the run's key after its title, at a keyed location.
+	Key string
 	// Titled says the name is the root's title, which is cut at its end;
 	// an address is cut in its middle.
 	Titled bool
@@ -208,8 +210,8 @@ func fold(chain []link) folded {
 // are under it, when it started and how long it took. The root's own row,
 // where it runs, comes first.
 type row struct {
-	ID, Status, Failure, Name, Tip, Machine, Type string
-	Own                                           bool
+	ID, Status, Failure, Name, Key, Tip, Machine, Type string
+	Own                                                bool
 	folded
 	Shown, Says, When, Took string
 	Under                   int
@@ -222,6 +224,15 @@ const most = 20
 // its address, written from the prefix at, where it has none, and by its
 // machine where it has neither.
 func nameOf(r *client.Run, at string) string { return cmp.Or(r.Title, addressOf(r, at), r.Machine) }
+
+// keyOf gives the key a run's name is followed by: #key for a run at a
+// keyed location named by its title, whose name does not give its key.
+func keyOf(r *client.Run) string {
+	if r.Title == "" || r.Key == "" {
+		return ""
+	}
+	return "#" + r.Key
+}
 
 // addressOf gives a run's address as the command line writes it: its
 // location, with #key at a keyed location, written from the prefix at. A
@@ -423,7 +434,7 @@ type lister struct {
 // it runs, then the runs it started that run or ended in the window,
 // newest first, the first twenty of them.
 func (l lister) line(r *client.Run) rootLine {
-	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: l.name(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
+	line := rootLine{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Key: keyOf(r), Tip: tipOf(r), Titled: r.Title != "", Machine: r.Machine, Type: r.Type, Ended: r.HasEnded(), Under: l.count(r)}
 	if r.HasEnded() {
 		line.Took = took(r.Ended.Sub(r.Started))
 	} else {
@@ -446,20 +457,11 @@ func (l lister) line(r *client.Run) rootLine {
 	return line
 }
 
-// name gives a run's name on the list: on the page narrowed to its keyed
-// location, its key, which tells its runs apart whatever their titles.
-func (l lister) name(r *client.Run) string {
-	if r.Key != "" && r.Location == l.prefix && r.Parent == "" {
-		return addressOf(r, l.prefix)
-	}
-	return nameOf(r, l.prefix)
-}
-
 // row gives a run a root started: a running one with the chain of running
 // runs below it and what the deepest waits on, an ended one with the chain
 // of the newest run at each level below it and what it ended with.
 func (l lister) row(r *client.Run) row {
-	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: l.name(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
+	w := row{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, l.prefix), Key: keyOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Under: l.count(r), When: page.When(r.Started, l.at)}
 	if !r.HasEnded() {
 		chain := descent(r, l.under, running)
 		w.folded = fold(chain)

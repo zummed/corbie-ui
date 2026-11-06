@@ -29,8 +29,8 @@ var runParts = []string{"summary", "path", "steps", "waits", "output", "children
 
 // runView is a run's page as it is drawn.
 type runView struct {
-	Run                  *client.Run
-	Name                 string
+	Run  *client.Run
+	Name string
 	// Address is the run's full address, and At the page narrowed to its
 	// location.
 	Address, At          string
@@ -106,8 +106,8 @@ type file struct {
 
 // A child is a run another started, as its parent's page lists it.
 type child struct {
-	ID, Status, Failure, Name, Tip, Machine, Type, When, Took string
-	Ended                                                     bool
+	ID, Status, Failure, Name, Key, Tip, Machine, Type, When, Took string
+	Ended                                                          bool
 }
 
 // record is what a run's page has read of its record, as it is read.
@@ -617,7 +617,7 @@ func callee(a instance.Ask) string {
 }
 
 func childOf(r *client.Run, at time.Time) child {
-	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, ""), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
+	c := child{ID: r.ID, Status: r.Status, Failure: r.Failure, Name: nameOf(r, ""), Key: keyOf(r), Tip: tipOf(r), Machine: r.Machine, Type: r.Type, Ended: r.HasEnded()}
 	c.When = page.When(r.Started, at)
 	if r.HasEnded() {
 		c.When, c.Took = page.When(r.Ended, at), took(r.Ended.Sub(r.Started))
