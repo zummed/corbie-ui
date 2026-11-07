@@ -285,12 +285,12 @@ func Test_drawing_arrows_and_chips_are_apart(t *testing.T) {
 
 type point struct{ x, y float64 }
 
-// A segment is a straight piece of an arrow, across or down.
+// A segment is a straight part of an arrow, across or down.
 type segment struct{ p, q point }
 
 type rect struct{ x, y, w, h float64 }
 
-// geometry reads a drawing's arrows, each as its straight pieces, and its
+// geometry reads a drawing's arrows, each as its segments, and its
 // chips, cards and holders.
 func geometry(t *testing.T, svg string) ([][]segment, []rect, []rect, []rect) {
 	t.Helper()
@@ -335,8 +335,7 @@ func geometry(t *testing.T, svg string) ([][]segment, []rect, []rect, []rect) {
 	return lines, rects(`<rect class="chip[^"]*"`), cards, rects(`holder"><rect`)
 }
 
-// passes says a piece of an arrow goes through the inside of a box, grown
-// by grow.
+// passes says a segment goes through the inside of a box, grown by grow.
 func passes(b rect, s segment, grow float64) bool {
 	x0, y0, x1, y1 := b.x-grow, b.y-grow, b.x+b.w+grow, b.y+b.h+grow
 	if s.p.y == s.q.y {
@@ -345,7 +344,7 @@ func passes(b rect, s segment, grow float64) bool {
 	return s.p.x > x0 && s.p.x < x1 && max(s.p.y, s.q.y) > y0 && min(s.p.y, s.q.y) < y1
 }
 
-// overlap says two pieces of arrows run along one line for more than a
+// overlap says two segments run along one line for more than a
 // point.
 func overlap(a, b segment) bool {
 	if a.p.y == a.q.y && b.p.y == b.q.y && math.Abs(a.p.y-b.p.y) < 1 {
@@ -357,7 +356,7 @@ func overlap(a, b segment) bool {
 	return false
 }
 
-// on says a point is on a piece of an arrow.
+// on says a point is on a segment.
 func on(p point, s segment) bool {
 	return p.x >= min(s.p.x, s.q.x)-0.5 && p.x <= max(s.p.x, s.q.x)+0.5 && p.y >= min(s.p.y, s.q.y)-0.5 && p.y <= max(s.p.y, s.q.y)+0.5
 }

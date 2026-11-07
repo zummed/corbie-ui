@@ -446,7 +446,7 @@ type codeLine struct {
 	Bad   bool
 }
 
-// A span is a piece of a line: a key, an expression, a comment, or plain,
+// A span is part of a line: a key, an expression, a comment, or plain,
 // and where it links to.
 type span struct {
 	Class, Text, Href string
