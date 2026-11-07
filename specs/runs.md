@@ -135,7 +135,7 @@ Steps lists what happened in the run and in every run under it, one row each, re
 
 ```
 statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started turn
-flow         stage pause started pause · stage asker done · stage files skipped · stage answer failed
+flow         stage asker done · stage files skipped · stage answer failed
 agent        turn 2 to claude-sonnet-5-5 · turn 2 called restart(vm: “web-1”) · open done
 any run      started · started by /acme/gromit/slack/gromit · held restart for approval · ask started approval · done · failed (denied) · cancelled
 ```
