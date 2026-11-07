@@ -75,7 +75,7 @@ toolkits:
 		"odd.yaml":                   "agent: odd\ndoes: a machine with problems\ntools: {}\n",
 		"bad.yaml":                   "flow: bad\nstages: {}\ncolour: blue\n",
 		"data.yaml":                  "description: not a toolkit\n",
-		".corbieignore":              "toolkits/\npeople.yaml\nshared/\nshared.yaml\ndata.yaml\n.kit/toolkit.yaml\n",
+		".corbieignore":              "toolkits/\npeople/scopes.yaml\nshared/\nshared.yaml\ndata.yaml\n.kit/toolkit.yaml\n",
 	} {
 		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644)
@@ -158,17 +158,17 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if kept.File != "toolkits/kept/toolkit.yaml" {
 		t.Errorf("a toolkit under a `toolkits:` in an included file has the file %q", kept.File)
 	}
-	if got := strings.Join(offeredBy(*shared), " "); got != "helper looker" || shared.File != "toolkits/toolkit.yaml" {
+	if got := strings.Join(offeredBy(*shared), " "); got != "support looker" || shared.File != "toolkits/toolkit.yaml" {
 		t.Errorf("the shared toolkit in %q is offered by %q", shared.File, got)
 	}
-	helper, looker := shared.Offered[0], shared.Offered[1]
-	if got := strings.Join(startsOf(helper), " "); got != "chat" || helper.Starts[0].File != ".kit/chat.yaml" || helper.Lifetime != "transient" {
-		t.Errorf("helper is started by %q: %+v", got, helper)
+	support, looker := shared.Offered[0], shared.Offered[1]
+	if got := strings.Join(startsOf(support), " "); got != "conversation" || support.Starts[0].File != ".kit/conversation.yaml" || support.Lifetime != "transient" {
+		t.Errorf("support is started by %q: %+v", got, support)
 	}
 	if looker.File != "timed.yaml" || len(looker.Starts) != 1 || looker.Starts[0].File != "timed.yaml" || looker.Lifetime != "" {
 		t.Errorf("an agent written in place is not started by the machine it is written in: %+v", looker)
 	}
-	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/say.yaml" {
+	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/post.yaml" {
 		t.Errorf("the tool is %+v", shared.Tools)
 	}
 

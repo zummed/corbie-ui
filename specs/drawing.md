@@ -2,9 +2,9 @@
 
 A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart and an agent, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs. The Machines page makes it narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
 
-Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `flow: who`, with `approve: true` where the job has it. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
+Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./find.js` or `flow: people-find`, with `approve: true` where the job has it. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 
-A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./who.yaml`.
+A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./find.yaml`.
 
 A job that sends or calls is a card with these lines:
 

@@ -267,7 +267,7 @@ func placeOf(m *client.Machine) *place {
 		p.Updated = "a changed file cancels its runs"
 	}
 	for _, event := range sortedKeys(def.Receive) {
-		from := strings.Join(def.Receive[event], ", ")
+		from := cmp.Or(strings.Join(def.Receive[event], ", "), "none")
 		if event == "" {
 			p.Receives = append(p.Receives, "every event from "+from)
 		} else {

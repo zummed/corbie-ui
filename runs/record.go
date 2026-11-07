@@ -466,12 +466,12 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				name := jobOf(a.Name)
 				var w []word
 				switch {
+				case name == instance.AskName:
+					w = say("ask started ", bold(child.Machine))
 				case run.Type == "flow":
 					w = say("stage ", bold(name), " started ", bold(child.Machine))
 				case run.Type == "statechart":
 					w = say("state ", bold(name), " started ", bold(child.Machine))
-				case name == instance.AskName:
-					w = say("ask started ", bold(child.Machine))
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
