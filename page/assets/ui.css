@@ -383,7 +383,7 @@ svg.machine { flex: none; height: auto; }
 .machine a:hover text.fold { fill: var(--accent); }
 .machine .tag { font: 500 10.5px var(--mono); fill: var(--accent); }
 .machine .holder > rect { fill: color-mix(in srgb, var(--plate) 50%, transparent); stroke: var(--line); stroke-width: 1; }
-.machine .holder.part > rect { fill: var(--paper); }
+.machine .holder.toolkit > rect { fill: var(--paper); }
 .machine .holder .name { font: 500 12px var(--mono); fill: var(--ink2); }
 .machine .start { fill: var(--ink2); }
 .machine .edge { fill: none; stroke: color-mix(in srgb, var(--ink2) 55%, var(--paper)); stroke-width: 1.3; }
@@ -433,15 +433,15 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 .code .k { color: var(--accent); } .code .x { color: var(--amber); } .code .c { color: var(--ink2); }
 .code a.c:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .code .l:target { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.view.part > .body { max-width: 1040px; }
-.view.part .does { margin: 0 0 18px; font: 13px/1.5 var(--mono); }
-.view.part .opened td { vertical-align: middle; padding-block: 6px; }
-.view.part .opened td.wrap { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.view.part .start { display: inline-flex; align-items: center; gap: 7px; }
-.view.part small { font: 11.5px var(--mono); color: var(--ink2); }
-.view.part > .body > p.dim { margin: 0; font: 13px var(--mono); }
-.view.part .body h2 { margin-top: 26px; }
-.view.part .approve, .tool .approve { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); white-space: nowrap; }
+.view.toolkit > .body { max-width: 1040px; }
+.view.toolkit .description { margin: 0 0 18px; font: 13px/1.5 var(--mono); }
+.view.toolkit .offered td { vertical-align: middle; padding-block: 6px; }
+.view.toolkit .offered td.wrap { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.view.toolkit .start { display: inline-flex; align-items: center; gap: 7px; }
+.view.toolkit small { font: 11.5px var(--mono); color: var(--ink2); }
+.view.toolkit > .body > p.dim { margin: 0; font: 13px var(--mono); }
+.view.toolkit .body h2 { margin-top: 26px; }
+.view.toolkit .approve, .tool .approve { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); white-space: nowrap; }
 .toolcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 .tool { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--plate); }
 .tool .bar { display: flex; align-items: center; gap: 8px; }
@@ -452,7 +452,7 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 @media (max-width: 760px) {
   .ide { grid-template-columns: minmax(0, 1fr); }
   .ide > .handle { display: none; }
-  .view.part .opened { display: block; overflow-x: auto; }
+  .view.toolkit .offered { display: block; overflow-x: auto; }
 }
 
 /* controller */

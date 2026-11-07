@@ -1,6 +1,6 @@
 // Package machines is the Machines page: the machines in one directory, each
-// drawn and shown as text, with the problems Corbie finds in them. The Parts
-// page shows the same directory from the tools up. Both only read.
+// drawn and shown as text, with the problems Corbie finds in them. The
+// Toolkits page shows the same directory from the tools up. Both only read.
 package machines
 
 import (
@@ -51,7 +51,7 @@ type handler struct {
 	index *indexed
 }
 
-//go:embed machines.html parts.html machines.js
+//go:embed machines.html toolkits.html machines.js
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
@@ -59,15 +59,15 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"plural": plural,
 	"short":  short,
 	"join":   func(s []string) string { return strings.Join(s, ", ") },
-}).ParseFS(files, "machines.html", "parts.html"))
+}).ParseFS(files, "machines.html", "toolkits.html"))
 
-// Pages is the Machines and Parts pages.
+// Pages is the Machines and Toolkits pages.
 type Pages struct {
 	http.Handler
 	h *handler
 }
 
-// New gives the Machines and Parts pages.
+// New gives the Machines and Toolkits pages.
 func New(c Config) (*Pages, error) {
 	d, err := newDir(c.Dir)
 	if err != nil {
@@ -77,8 +77,8 @@ func New(c Config) (*Pages, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
-	mux.HandleFunc("GET /parts", h.showParts)
-	mux.HandleFunc("GET /parts/stream", h.streamParts)
+	mux.HandleFunc("GET /toolkits", h.showToolkits)
+	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
 	mux.HandleFunc("GET /machines/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		data, _ := files.ReadFile("machines.js")

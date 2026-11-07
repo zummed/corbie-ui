@@ -450,7 +450,7 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	// Each ask a step starts is named by where it is written, in the order
 	// the step held the first job of each, and a job's failure that ended
 	// the run is noted.
-	tell := &machine.Job{Name: "tell", AskAt: "open.messages.ask"}
+	tell := &machine.Job{Name: "tell", AskAt: "toolkits.messages.ask"}
 	entries := []client.Entry{{ID: "a-client/1", Step: 1,
 		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
 		Asks: []instance.Ask{
@@ -468,10 +468,10 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		"ask#1": {Job: machine.Job{Name: "ask"}, ForAsk: []string{"tell"}},
 	}}
 	m := marksOf("a-client/1", entries, "failed", st, byID)
-	if m.Children["open.messages.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
+	if m.Children["toolkits.messages.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
 		t.Errorf("the asks' runs are known as %+v", m.Children)
 	}
-	if strings.Join(m.Going, " ") != "open.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
+	if strings.Join(m.Going, " ") != "toolkits.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
 	}
 

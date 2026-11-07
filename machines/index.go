@@ -15,7 +15,7 @@ import (
 // An index is what the pages show of the directory, read once each time a
 // file in it changes or its prefix does: each machine as Corbie reads it, at
 // its location under the prefix, the list, the pieces, each
-// problem once, and the parts.
+// problem once, and the toolkits.
 type index struct {
 	Prefix   string
 	machines map[string]*client.Machine
@@ -25,7 +25,7 @@ type index struct {
 	included map[string][]string
 	Problems []problem
 	Unread   string
-	parts    []part
+	toolkits []toolkit
 }
 
 // A group is the machines of the list in one directory.
@@ -122,7 +122,7 @@ func (d *dir) index(at string) *index {
 	for _, file := range sortedKeys(pieces) {
 		ix.Pieces = append(ix.Pieces, entry{Path: file, Included: len(ix.included[file])})
 	}
-	ix.parts = d.partsOf(ix)
+	ix.toolkits = d.toolkitsOf(ix)
 	return ix
 }
 

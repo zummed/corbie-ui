@@ -60,7 +60,7 @@ func machines(t *testing.T, c Config) (http.Handler, string) {
 	dir := t.TempDir()
 	for name, text := range map[string]string{
 		"review.yaml": review, "writer.yaml": writer, "write.js": "return 1", "lib.js": "module.exports = 1",
-		"notes.yaml": "a: list of things\n", ".hidden/secret.yaml": "flow: hidden\n",
+		"notes.yaml": "a: list of things\n", ".hidden/secret.yaml": "flow: hidden\n", ".corbieignore": "notes.yaml\n",
 	} {
 		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644)
@@ -120,7 +120,8 @@ func do(h http.Handler, method, target string, form url.Values) *httptest.Respon
 
 // project writes a directory laid out as a project of ready-made machines
 // is: a machine to keep running, machines in a directory whose name begins
-// with a dot, and an agent with a part from a file of its own.
+// with a dot, and an agent with a toolkit from a file of its own, with the
+// files that are no machine listed in .corbieignore.
 func project(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -153,12 +154,13 @@ states:
     on: { done: over }
   over: { end: done }
 `,
-		".kit/unused.yaml": "flow: unused\nstages:\n  a: { job: ./hear.js }\n",
-		".kit/say.yaml":    "flow: say\nstages:\n  a: { job: ./hear.js }\n",
-		".kit/hear.js":     "return 1",
-		"helper.yaml":      "agent: helper\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nopen:\n  messages: { include: ./parts/part.yaml }\n",
-		"parts/part.yaml":  "does: messages\nask: { machine: .kit/say.yaml }\ntools:\n  tell: { does: tells, job: { machine: .kit/say.yaml, approve: true } }\n",
-		"people.yaml":      "people: []\n",
+		".kit/unused.yaml":      "flow: unused\nstages:\n  a: { job: ./hear.js }\n",
+		".kit/say.yaml":         "flow: say\nstages:\n  a: { job: ./hear.js }\n",
+		".kit/hear.js":          "return 1",
+		"helper.yaml":           "agent: helper\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
+		"toolkits/toolkit.yaml": "description: messages\nask: { machine: .kit/say.yaml }\ntools:\n  tell: { description: tells, job: { machine: .kit/say.yaml, approve: true } }\n",
+		"people.yaml":           "people: []\n",
+		".corbieignore":         "toolkits/\npeople.yaml\nshared/\n",
 	} {
 		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644)
@@ -219,7 +221,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	for _, p := range ix.Pieces {
 		pieces = append(pieces, fmt.Sprintf("%s %d", p.Path, p.Included))
 	}
-	if want := []string{"parts/part.yaml 1", "people.yaml 0", "prompt.md 1", "shared/states.yaml 1"}; !slices.Equal(pieces, want) {
+	if want := []string{"people.yaml 0", "prompt.md 1", "shared/states.yaml 1", "toolkits/toolkit.yaml 1"}; !slices.Equal(pieces, want) {
 		t.Errorf("the pieces are %v, and not %v", pieces, want)
 	}
 	if ix.Prefix != "/"+filepath.Base(dir) || ix.Groups[len(ix.Groups)-1].Entries[0].Location != ix.Prefix+"/bridges/b" {
@@ -235,12 +237,12 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 			t.Errorf("the list does not show %s:\n%s", want, list)
 		}
 	}
-	for _, gone := range []string{"people.yaml", "part.yaml"} {
+	for _, gone := range []string{"people.yaml", "toolkit.yaml"} {
 		if strings.Contains(list, gone) {
 			t.Errorf("the machines hold %s:\n%s", gone, list)
 		}
 	}
-	for _, want := range []string{">parts/part.yaml</span><small>included by 1 machine</small>", ">people.yaml</span><small>included by none</small>"} {
+	for _, want := range []string{">toolkits/toolkit.yaml</span><small>included by 1 machine</small>", ">people.yaml</span><small>included by none</small>"} {
 		if !strings.Contains(piecesList, want) {
 			t.Errorf("the pieces do not show %s:\n%s", want, piecesList)
 		}
@@ -291,23 +293,24 @@ func Test_machines_a_location_with_one_below_it_is_a_problem_of_its_files(t *tes
 func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		"a.yaml":            "agent: a\n" + agentHead + "open:\n  messages: { include: ./parts/m/part.yaml }\n",
-		"b.yaml":            "agent: b\n" + agentHead + "open:\n  msgs: { include: ./parts/m/part.yaml }\n",
-		".kit/c.yaml":       "agent: c\n" + agentHead + "open:\n  messages: { include: parts/m/part.yaml }\n",
-		"parts/m/part.yaml": "does: messages\ntools:\n  tell:\n    description: tells\n    job: { script: ./tell.js }\n",
-		"parts/m/tell.js":   "return 1",
-		"z.yaml":            "flow: z\nstages:\n  a: { job: ./z.js }\ncolour: blue\n",
-		"z.js":              "return 1",
+		"a.yaml":                  "agent: a\n" + agentHead + "toolkits:\n  messages: { include: ./toolkits/m/toolkit.yaml }\n",
+		"b.yaml":                  "agent: b\n" + agentHead + "toolkits:\n  msgs: { include: ./toolkits/m/toolkit.yaml }\n",
+		".kit/c.yaml":             "agent: c\n" + agentHead + "toolkits:\n  messages: { include: toolkits/m/toolkit.yaml }\n",
+		"toolkits/m/toolkit.yaml": "description: messages\ntools:\n  tell:\n    does: tells\n    job: { script: ./tell.js }\n",
+		"toolkits/m/tell.js":      "return 1",
+		"z.yaml":                  "flow: z\nstages:\n  a: { job: ./z.js }\ncolour: blue\n",
+		"z.js":                    "return 1",
+		".corbieignore":           "toolkits/\n",
 	})
 	d, _ := newDir(dir)
 	ix := d.index("")
-	var atPart int
+	var atToolkit int
 	for _, p := range ix.Problems {
 		switch p.File {
-		case "parts/m/part.yaml":
-			atPart++
+		case "toolkits/m/toolkit.yaml":
+			atToolkit++
 			if !slices.Equal(p.Breaks, []string{".kit/c.yaml", "a.yaml", "b.yaml"}) || !strings.HasPrefix(p.Place, "tools.tell") || p.Line == 0 {
-				t.Errorf("a problem in the part is %+v", p)
+				t.Errorf("a problem in the toolkit is %+v", p)
 			}
 		case "z.yaml":
 			if !slices.Equal(p.Breaks, []string{"z.yaml"}) || p.Place != "colour" || p.Line != 4 {
@@ -317,16 +320,16 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 			t.Errorf("a problem is at %+v", p)
 		}
 	}
-	if atPart == 0 || len(ix.Problems) != atPart+1 {
+	if atToolkit == 0 || len(ix.Problems) != atToolkit+1 {
 		t.Errorf("the problems are %+v", ix.Problems)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	body := do(h, "GET", "/machines?file=z.yaml", nil).Body.String()
-	if n := strings.Count(body, "breaks 3 machines"); n != atPart {
-		t.Errorf("the page shows the part's problems %d times, and not %d:\n%s", n, atPart, body)
+	if n := strings.Count(body, "breaks 3 machines"); n != atToolkit {
+		t.Errorf("the page shows the toolkit's problems %d times, and not %d:\n%s", n, atToolkit, body)
 	}
-	// The Parts page lists the same problems, drawn the same way.
-	parts := do(h, "GET", "/parts", nil).Body.String()
+	// The Toolkits page lists the same problems, drawn the same way.
+	toolkits := do(h, "GET", "/toolkits", nil).Body.String()
 	box := func(page string) string {
 		start := strings.Index(page, `<div class="problems">`)
 		if start < 0 {
@@ -334,8 +337,8 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		}
 		return page[start : start+strings.Index(page[start:], "</div>")]
 	}
-	if box(parts) == "" || box(parts) != box(do(h, "GET", "/machines", nil).Body.String()) {
-		t.Errorf("the Parts page lists the problems %q, and not as the Machines page does", box(parts))
+	if box(toolkits) == "" || box(toolkits) != box(do(h, "GET", "/machines", nil).Body.String()) {
+		t.Errorf("the Toolkits page lists the problems %q, and not as the Machines page does", box(toolkits))
 	}
 
 	// A file that three machines include, which cannot be read, is one
@@ -401,10 +404,10 @@ func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 func Test_machines_text_shows_the_problems_found_in_it(t *testing.T) {
 	dir := project(t)
 	write(t, dir, map[string]string{
-		"broken.yaml":  "# one stage\nflow: broken\nstages:\n  a: { job: ./missing.js }\n",
-		"a.yaml":       "agent: a\n" + agentHead + "open:\n  m: { include: ./parts/m.yaml }\n",
-		"parts/m.yaml": "does: m\ntools:\n  r:\n    does: r\n    job: { script: ./r.js }\n    colour: blue\n",
-		"parts/r.js":   "return 1",
+		"broken.yaml":     "# one stage\nflow: broken\nstages:\n  a: { job: ./missing.js }\n",
+		"a.yaml":          "agent: a\n" + agentHead + "toolkits:\n  m: { include: ./toolkits/m.yaml }\n",
+		"toolkits/m.yaml": "description: m\ntools:\n  r:\n    description: r\n    job: { script: ./r.js }\n    colour: blue\n",
+		"toolkits/r.js":   "return 1",
 	})
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
 	body := do(h, "GET", "/machines?file=broken.yaml", nil).Body.String()
@@ -414,9 +417,9 @@ func Test_machines_text_shows_the_problems_found_in_it(t *testing.T) {
 	if !strings.Contains(body, `<span class="l" id="L1"><span class="c"># one stage</span></span>`) {
 		t.Errorf("a comment is not set apart:\n%s", body)
 	}
-	part := do(h, "GET", "/machines?file=parts/m.yaml&view=text", nil).Body.String()
-	if !strings.Contains(part, "tools.r.colour") || !strings.Contains(part, "breaks 1 machine") || strings.Count(part, `class="l err"`) != 1 {
-		t.Errorf("a part's text does not show the problem found in it:\n%s", part)
+	toolkit := do(h, "GET", "/machines?file=toolkits/m.yaml&view=text", nil).Body.String()
+	if !strings.Contains(toolkit, "tools.r.colour") || !strings.Contains(toolkit, "breaks 1 machine") || strings.Count(toolkit, `class="l err"`) != 1 {
+		t.Errorf("a toolkit's text does not show the problem found in it:\n%s", toolkit)
 	}
 	if a := do(h, "GET", "/machines?file=a.yaml", nil).Body.String(); !strings.Contains(a, "tools.r.colour") || !strings.Contains(a, "breaks 1 machine") || strings.Contains(a, `class="l err"`) {
 		t.Errorf("a machine marks its lines for a problem in a file it includes:\n%s", a)
@@ -466,13 +469,13 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 		t.Errorf("folding a box leaves what is inside it unfolded: %s", u)
 	}
 
-	part := do(h, "GET", "/machines?file=helper.yaml", nil).Body.String()
-	for _, want := range []string{">tell<", "parts/part.yaml", ">approve: true<", ">ask<"} {
-		if !strings.Contains(part, want) {
+	agent := do(h, "GET", "/machines?file=helper.yaml", nil).Body.String()
+	for _, want := range []string{">tell<", "toolkits/toolkit.yaml", ">approve: true<", ">ask<"} {
+		if !strings.Contains(agent, want) {
 			t.Errorf("the agent's drawing does not hold %s", want)
 		}
 	}
-	if !strings.Contains(part, `href="/machines?file=helper.yaml&amp;view=text"`) {
+	if !strings.Contains(agent, `href="/machines?file=helper.yaml&amp;view=text"`) {
 		t.Errorf("the drawing does not offer the text")
 	}
 	text := do(h, "GET", "/machines?file=helper.yaml&view=text", nil).Body.String()
@@ -484,9 +487,9 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	}
 }
 
-func Test_machines_drawing_labels_a_part_of_an_agent_written_in_place(t *testing.T) {
+func Test_machines_drawing_labels_a_toolkit_of_an_agent_written_in_place(t *testing.T) {
 	dir := project(t)
-	os.WriteFile(filepath.Join(dir, "here.yaml"), []byte("flow: here\nstages:\n  look:\n    job:\n      machine:\n        agent: in\n        model: { name: claude-sonnet-5-5, secret: KEY }\n        prompt: hello\n        open:\n          messages: { include: ./parts/part.yaml }\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "here.yaml"), []byte("flow: here\nstages:\n  look:\n    job:\n      machine:\n        agent: in\n        model: { name: claude-sonnet-5-5, secret: KEY }\n        prompt: hello\n        toolkits:\n          messages: { include: ./toolkits/toolkit.yaml }\n"), 0o644)
 	h, err := New(Config{Dir: dir, Interval: time.Second})
 	if err != nil {
 		t.Fatal(err)
@@ -496,8 +499,8 @@ func Test_machines_drawing_labels_a_part_of_an_agent_written_in_place(t *testing
 	if !ok {
 		t.Fatalf("the page has no drawing:\n%s", body)
 	}
-	if !strings.Contains(drawn, ">messages</text><title>parts/part.yaml</title>") {
-		t.Errorf("the part's file is not in its tooltip:\n%s", drawn)
+	if !strings.Contains(drawn, ">messages</text><title>toolkits/toolkit.yaml</title>") {
+		t.Errorf("the toolkit's file is not in its tooltip:\n%s", drawn)
 	}
 }
 
@@ -725,7 +728,7 @@ func Test_machines_directory_is_read_once_per_change(t *testing.T) {
 	if next == first || !slices.Contains(listed(next), ". new.yaml flow: new transient 0") {
 		t.Errorf("a file written is not read: %v", listed(next))
 	}
-	write(t, dir, map[string]string{"parts/part.yaml": "does: changed\ntools: {}\n"})
+	write(t, dir, map[string]string{"toolkits/toolkit.yaml": "description: changed\ntools: {}\n"})
 	if c.current("") == next {
 		t.Errorf("a change to a file that is not a machine is not read")
 	}
@@ -734,9 +737,9 @@ func Test_machines_directory_is_read_once_per_change(t *testing.T) {
 func Test_machines_dotted_files_are_read_as_any_other(t *testing.T) {
 	dir := project(t)
 	write(t, dir, map[string]string{
-		".kit/alone.yaml":   "agent: alone\n" + agentHead + "open:\n  hidden: { does: hidden, tools: { r: { does: r, job: { script: ./hear.js } } } }\n",
+		".kit/alone.yaml":   "agent: alone\n" + agentHead + "toolkits:\n  hidden: { description: hidden, tools: { r: { description: r, job: { script: ./hear.js } } } }\n",
 		".kit/broken.yaml":  "flow: broken\nstages: {}\ncolour: blue\n",
-		".kit/reached.yaml": "agent: reached\n" + agentHead + "open:\n  seen: { does: seen, tools: { r: { does: r, job: { script: ./hear.js } } } }\n",
+		".kit/reached.yaml": "agent: reached\n" + agentHead + "toolkits:\n  seen: { description: seen, tools: { r: { description: r, job: { script: ./hear.js } } } }\n",
 		"uses.yaml":         "flow: uses\nstages:\n  a: { job: { machine: .kit/reached.yaml } }\n",
 	})
 	d, _ := newDir(dir)
@@ -753,14 +756,14 @@ func Test_machines_dotted_files_are_read_as_any_other(t *testing.T) {
 	if !slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == ".kit/broken.yaml" }) {
 		t.Errorf("a machine in a dotted directory gives no problems: %+v", ix.Problems)
 	}
-	v := ix.partsView("")
-	hidden := byDoes(t, v, "hidden")
-	if len(hidden.Opened) != 1 || hidden.Opened[0].File != ".kit/alone.yaml" || len(hidden.Opened[0].Starts) != 0 || hidden.Opened[0].Lifetime != "transient" {
-		t.Errorf("an agent in a dotted directory that nothing names is %+v", hidden.Opened)
+	v := ix.toolkitsView("")
+	hidden := byDescription(t, v, "hidden")
+	if len(hidden.Offered) != 1 || hidden.Offered[0].File != ".kit/alone.yaml" || len(hidden.Offered[0].Starts) != 0 || hidden.Offered[0].Lifetime != "transient" {
+		t.Errorf("an agent in a dotted directory that nothing names is %+v", hidden.Offered)
 	}
-	seen := byDoes(t, v, "seen")
-	if len(seen.Opened) != 1 || seen.Opened[0].File != ".kit/reached.yaml" || len(seen.Opened[0].Starts) != 1 || seen.Opened[0].Starts[0].File != "uses.yaml" {
-		t.Errorf("an agent in a dotted directory that a machine names is %+v", seen.Opened)
+	seen := byDescription(t, v, "seen")
+	if len(seen.Offered) != 1 || seen.Offered[0].File != ".kit/reached.yaml" || len(seen.Offered[0].Starts) != 1 || seen.Offered[0].Starts[0].File != "uses.yaml" {
+		t.Errorf("an agent in a dotted directory that a machine names is %+v", seen.Offered)
 	}
 }
 
@@ -769,7 +772,7 @@ func Test_machines_pages_only_read(t *testing.T) {
 	h, dir := machines(t, Config{Controller: ctl, Store: s})
 	d, _ := newDir(dir)
 	before := d.stamp()
-	for _, path := range []string{"/machines", "/machines/save", "/machines/new", "/machines/start", "/machines/check", "/machines/secret-set", "/machines/raw", "/parts"} {
+	for _, path := range []string{"/machines", "/machines/save", "/machines/new", "/machines/start", "/machines/check", "/machines/secret-set", "/machines/raw", "/toolkits"} {
 		form := url.Values{"file": {"review.yaml"}, "text": {"flow: x\n"}, "type": {"flow"}, "name": {"x"}, "value": {"v"}}
 		if w := do(h, "POST", path, form); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("POST %s answered %d", path, w.Code)
@@ -780,7 +783,7 @@ func Test_machines_pages_only_read(t *testing.T) {
 			t.Errorf("GET %s answered %d", path, w.Code)
 		}
 	}
-	for _, path := range []string{"/machines?file=review.yaml", "/machines?file=review.yaml&view=text", "/parts"} {
+	for _, path := range []string{"/machines?file=review.yaml", "/machines?file=review.yaml&view=text", "/toolkits"} {
 		body := do(h, "GET", path, nil).Body.String()
 		for _, control := range []string{"<form", "<textarea", "<input", "<button"} {
 			if strings.Contains(body, control) {

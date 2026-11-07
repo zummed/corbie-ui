@@ -1,6 +1,6 @@
 # Machines
 
-The Machines page shows the machines in one directory as the tree `corbie run submit` records: a list of its machines and its pieces, the problems Corbie finds in them, and for the one chosen its location, the secrets and values it uses, its drawing, its text and its definition written out. The Parts page shows the same directory from the tools up: each part, what opens it and what starts that. Every UI but `none` offers both, and both only read: the files are what `corbie run submit` reads and a model edits.
+The Machines page shows the machines in one directory as the tree `corbie run submit` records: a list of its machines and its pieces, the problems Corbie finds in them, and for the one chosen its location, the secrets and values it uses, its drawing, its text and its definition written out. The Toolkits page shows the same directory from the tools up: each toolkit, what offers it and what starts that. Every UI but `none` offers both, and both only read: the files are what `corbie run submit` reads and a model edits.
 
 ## The directory
 
@@ -22,7 +22,7 @@ house/.rook/review.yaml         /house/.rook/review         a machine in a direc
 - A machine is a `.yaml` file whose first key gives a type, and its location is its path under the prefix, without `.yaml`.
 - A piece is a `.yaml` file with no type, or any other file a machine takes a value from, such as `style.md`.
 - A path in a machine may name any file inside the directory. Every path a request names is inside it, and a path that leaves it is refused.
-- The UI reads the directory again only when a file in it changes, by name, size or time of change, or its prefix does, and the Machines and Parts pages share what it read.
+- The UI reads the directory again only when a file in it changes, by name, size or time of change, or its prefix does, and the Machines and Toolkits pages share what it read.
 
 The page gives the prefix above the list, `at /house`.
 
@@ -45,25 +45,25 @@ people.yaml               included by none
 - A machine has its type's icon, its file's name, its first line, its lifetime, and the count of the problems shown at its text. Its name's tooltip gives its location.
 - A piece has its path and how many machines include it: those whose definition written out takes a value from it.
 - A file beside a directory of the same name, and the files below it, have no location. Each is listed with Corbie's problem: `it is beside a directory of the same name, which holds the machine at /house/boiler/x: a location has nothing below it`.
-- When a directory cannot be read, Corbie gives no tree. The page then lists no machine, piece or part, only Corbie's error.
+- When a directory cannot be read, Corbie gives no tree. The page then lists no machine, piece or toolkit, only Corbie's error.
 
 ## Problems
 
-Above the list of Machines and of Parts, each problem of the directory's machines is listed once, at the file Corbie names, with how many machines it breaks:
+Above the list of Machines and of Toolkits, each problem of the directory's machines is listed once, at the file Corbie names, with how many machines it breaks:
 
 ```
 2 PROBLEMS
-parts/messages/part.yaml:5
-tools.tell.does  a tool says what it does, for the model to choose by
+toolkits/messages.yaml:5
+tools.tell.description  a tool says what it is for, for the model to choose by
 breaks 3 machines
-parts/messages/part.yaml:6
-tools.tell.description  "description" is not a field that belongs here
+toolkits/messages.yaml:6
+tools.tell.does  "does" is not a field that belongs here
 breaks 3 machines
 ```
 
 - The place is given as the file writes it, with the line where the text writes it. A place in a file that a machine includes is found in that file.
 - Paths in a problem's text are written from the directory.
-- A problem is drawn the same way above a list, above a file's text and above a part: a box with a rowan border, holding each problem's place, its text and the machines it breaks.
+- A problem is drawn the same way above a list, above a file's text and above a toolkit: a box with a rowan border, holding each problem's place, its text and the machines it breaks.
 - A file an `include:` names that cannot be read is one problem at that file, breaking each machine that includes it, however each writes its path. The other problems of those machines are not listed.
 - A machine with problems that reads without any from a directory below this one is listed under one problem for that directory: `slackbot/ is the top of a tree, and its machines read their paths from there: start the UI in slackbot/`. The machine's own problems are not listed, here or at its text.
 
@@ -146,17 +146,17 @@ HUB              value · set at /house
 
 Acting as a client alone, it lists the names with no state, and one line gives the commands that set them at the machine's location. A machine that uses none shows no section.
 
-## Parts
+## Toolkits
 
-A part is a group of tools under an agent's `open:`. The Parts page lists every part in the directory, with its `does:` and its count of tools, and shows the one chosen:
+A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists every toolkit in the directory, with its `description:` and its count of tools, and shows the one chosen:
 
 ```
-messages                                parts/messages/part.yaml
+messages                                toolkits/messages.yaml
 Drawing   Text
 
 Messages to the people this bot knows.
 
-Opened by                               Started by
+Offered by                              Started by
 helper  agents/helper.yaml              answer  transient: a call, or corbie run submit /bot/agents/helper, starts each run
 
 tell        needs approval
@@ -166,13 +166,13 @@ machine tell.yaml
 
 | Field | What it shows |
 |---|---|
-| Opened by | each agent whose `open:` holds the part, in its own file or written in place in another machine |
+| Offered by | each agent whose `toolkits:` holds the toolkit, in its own file or written in place in another machine |
 | Started by | for an agent in its own file, each machine that runs it with `machine:` and how its location's runs start; for one written in place, the machine it is written in |
-| Tools | each tool's `does:`, its job, and `needs approval` where the job has `approve: true` |
+| Tools | each tool's `description:`, its job, and `needs approval` where the job has `approve: true` |
 
-- A part's file is the file its tools are written in, as the agent written out gives it. Two agents that take a part's tools from the same file open one part, whichever name each gives it.
-- Opening a part with `approve: true` is shown as `opening it needs approval`.
-- A piece with `does:` and `tools:` at its top level that no agent opens is listed under the name of its directory, with a grey `not opened`, and its page says `not opened`. A new part therefore shows before anything uses it.
-- A machine with problems opens no part, since Corbie does not write it out. A part whose file has problems is marked `has problems`, and the problems above it name the machines it breaks.
-- A part's file with problems shows them above the part, as the text does.
-- The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the part's file as the text view does. A part written in place in a machine has no tabs.
+- A toolkit's file is the file its tools are written in, as the agent written out gives it. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
+- Opening a toolkit with `approve: true` is shown as `opening it needs approval`.
+- A piece with `description:` and `tools:` at its top level that no agent offers is listed under the name of its directory, with a grey `not offered`, and its page says `not offered`. A new toolkit therefore shows before anything uses it.
+- A machine with problems offers no toolkit, since Corbie does not write it out. A toolkit whose file has problems is marked `has problems`, and the problems above it name the machines it breaks.
+- A toolkit's file with problems shows them above the toolkit, as the text does.
+- The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the toolkit's file as the text view does. A toolkit written in place in a machine has no tabs.

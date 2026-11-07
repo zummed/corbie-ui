@@ -2,7 +2,7 @@
 
 A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart and an agent, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs. The Machines page makes it narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
 
-Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `flow: who`. A card's tooltip gives its `when:` and a tool's `does:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its parts.
+Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./who.js` or `flow: who`. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 
 A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./who.yaml`.
 
@@ -47,7 +47,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one holder. Each part is a holder inside it, with its name, its tools and its ask. Its tooltip gives the file its tools are written in, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no part are cards beside the parts, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
+2. Its tools are in one holder. Each toolkit is a holder inside it, with its name, its tools and its ask. Its tooltip gives the file its tools are written in, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
 A tool with `approve: true` says so in its card. Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.
@@ -78,6 +78,6 @@ A statechart's run is followed through its steps: from the states it was in befo
 
 The transition the step drawn took is drawn in petrol, its chip's words too, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. The states a run that did not fail ended in are outlined in moss, as states it was in.
 
-A part of an agent is folded where the run has not asked for its tools or its ask by the step drawn. A folded part is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded parts are one below another, in one column after the others, so the parts the run uses are drawn side by side and in view together.
+A toolkit of an agent is folded where the run has not asked for its tools or its ask by the step drawn. A folded toolkit is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded toolkits are one below another, in one column after the others, so the toolkits the run uses are drawn side by side and in view together.
 
-An agent's ask is going while a tool waits for its approval. The tool is outlined in amber, as held, and the ask as going now: a part's ask where the tool is in that part, and the agent's otherwise. A run knows each ask by where it is written, so the run an ask started is linked from that ask's card alone.
+An agent's ask is going while a tool waits for its approval. The tool is outlined in amber, as held, and the ask as going now: a toolkit's ask where the tool is in that toolkit, and the agent's otherwise. A run knows each ask by where it is written, so the run an ask started is linked from that ask's card alone.

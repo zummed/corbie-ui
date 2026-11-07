@@ -27,7 +27,7 @@ type Run struct {
 	// Going are the jobs going after the latest step, and Held those of
 	// them held for the ask. A job is named as the definition names what
 	// asked for it, and an ask by where it is written: `ask` for the
-	// machine's own, `open.<part>.ask` for a part's.
+	// machine's own, `toolkits.<name>.ask` for a toolkit's.
 	Going, Held []string
 	// Children are the runs its jobs started, by the job's name.
 	Children map[string]Child
@@ -167,13 +167,13 @@ func (w *walker) open(at, job string) (string, *drawn) {
 // machine written in place.
 func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
-// PartFile gives the file a part of an agent is included from, as Corbie
-// writes out the agent: the file its tools are written in, or its `does:`
-// where it has no tools, when that is not the file of the agent's own
-// first line. A part written in place gives nothing.
-func PartFile(def *machine.Definition, part string) string {
-	at := "open." + part + "."
-	file := fileOf(def.Lines[at+"does"])
+// ToolkitFile gives the file a toolkit of an agent is included from, as
+// Corbie writes out the agent: the file its tools are written in, or its
+// `description:` where it has no tools, when that is not the file of the
+// agent's own first line. A toolkit written in place gives nothing.
+func ToolkitFile(def *machine.Definition, toolkit string) string {
+	at := "toolkits." + toolkit + "."
+	file := fileOf(def.Lines[at+"description"])
 	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
 		if strings.HasPrefix(place, at+"tools.") {
 			file = fileOf(def.Lines[place])

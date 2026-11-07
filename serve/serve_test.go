@@ -305,9 +305,9 @@ func Test_serve_each_party_opens_its_pages(t *testing.T) {
 		args       []string
 		open, shut []string
 	}{
-		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/controller"}},
-		{[]string{"client"}, []string{"/runs", "/metrics", "/machines"}, []string{"/controller"}},
-		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/controller"}, nil},
+		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}},
+		{[]string{"client"}, []string{"/runs", "/metrics", "/machines", "/toolkits"}, []string{"/controller"}},
+		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/toolkits", "/controller"}, nil},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
 		u, err := started(ctx, config, t.TempDir(), c.args...)

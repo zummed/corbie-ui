@@ -10,12 +10,12 @@ import (
 	"github.com/zummed/corbie/machine"
 )
 
-// A partBox is one column of what the model can call: a part, or the tools
-// in no part, with where its tools and its ask are drawn. file is the file
-// the part is included from, where it is known.
-type partBox struct {
+// A toolkitBox is one column of what the model can call: a toolkit, or the tools
+// in no toolkit, with where its tools and its ask are drawn. file is the file
+// the toolkit is included from, where it is known.
+type toolkitBox struct {
 	name, file string
-	part       bool
+	toolkit    bool
 	folded     bool
 	tools      []string
 	items      map[string]item
@@ -23,19 +23,19 @@ type partBox struct {
 	at         box
 }
 
-// askAt is where a part's ask is written, as a run names it.
-func askAt(part string) string { return "open." + part + ".ask" }
+// askAt is where a toolkit's ask is written, as a run names it.
+func askAt(toolkit string) string { return "toolkits." + toolkit + ".ask" }
 
-// foldedH is how high a folded part is: its name and how many tools it has.
+// foldedH is how high a folded toolkit is: its name and how many tools it has.
 const foldedH = 52.0
 
-func (g *partBox) size() {
+func (g *toolkitBox) size() {
 	g.at.h, g.at.w = 0, cardW
 	if g.folded {
 		g.at.h = foldedH
 		return
 	}
-	if g.part {
+	if g.toolkit {
 		g.at.h, g.at.w = innerTop+inner, cardW+2*inner
 	}
 	if g.ask != nil {
@@ -152,34 +152,34 @@ func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) dra
 	return d
 }
 
-// groupsOf gives each part of an agent, then the tools in no part.
-func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*partBox {
-	var groups []*partBox
-	byName := map[string]*partBox{}
-	for _, part := range sortedKeys(a.Parts) {
-		g := &partBox{name: part, file: PartFile(def, part), part: true, items: map[string]item{}}
-		if ask := a.Parts[part].Ask; ask != nil {
+// groupsOf gives each toolkit of an agent, then the tools in no toolkit.
+func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox {
+	var groups []*toolkitBox
+	byName := map[string]*toolkitBox{}
+	for _, toolkit := range sortedKeys(a.Toolkits) {
+		g := &toolkitBox{name: toolkit, file: ToolkitFile(def, toolkit), toolkit: true, items: map[string]item{}}
+		if ask := a.Toolkits[toolkit].Ask; ask != nil {
 			it := item{name: "ask"}
-			w.describe(&it, askAt(part), ask)
+			w.describe(&it, askAt(toolkit), ask)
 			g.ask = &it
 		}
-		byName[part] = g
+		byName[toolkit] = g
 		groups = append(groups, g)
 	}
-	var free *partBox
+	var free *toolkitBox
 	for _, t := range sortedKeys(a.Tools) {
 		tool := a.Tools[t]
 		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
-		g := byName[tool.Part]
+		g := byName[tool.Toolkit]
 		if g == nil {
 			if free == nil {
-				free = &partBox{name: "", items: map[string]item{}}
+				free = &toolkitBox{name: "", items: map[string]item{}}
 			}
 			g = free
 		}
-		it := item{name: t, title: tool.Does}
+		it := item{name: t, title: tool.Description}
 		w.describe(&it, t, tool.Job)
 		if tool.Job != nil && tool.Job.Approve {
 			it.lines = append(it.lines, "approve: true")
@@ -196,8 +196,8 @@ func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*partBox {
 }
 
 // A column is what is drawn one below another in the holder of an agent's
-// tools: one part, the tools in no part, or the parts folded.
-type column []*partBox
+// tools: one toolkit, the tools in no toolkit, or the toolkits folded.
+type column []*toolkitBox
 
 func (c column) size() (w, h float64) {
 	for _, g := range c {
@@ -208,13 +208,13 @@ func (c column) size() (w, h float64) {
 }
 
 // columnsOf gives each group a column of its own, but on a run's page a
-// part whose tools and ask the run has not asked for is folded, and the
-// parts folded are one column after the others.
-func columnsOf(groups []*partBox, run *Run) []column {
+// toolkit whose tools and ask the run has not asked for is folded, and the
+// toolkits folded are one column after the others.
+func columnsOf(groups []*toolkitBox, run *Run) []column {
 	var columns []column
 	var folded column
 	for _, g := range groups {
-		if run != nil && g.part && !g.used(run) {
+		if run != nil && g.toolkit && !g.used(run) {
 			g.folded = true
 			g.size()
 			folded = append(folded, g)
@@ -228,8 +228,8 @@ func columnsOf(groups []*partBox, run *Run) []column {
 	return columns
 }
 
-// used says a run has asked for a part's ask or one of its tools.
-func (g *partBox) used(run *Run) bool {
+// used says a run has asked for a toolkit's ask or one of its tools.
+func (g *toolkitBox) used(run *Run) bool {
 	if g.ask != nil && jobMark(run, askAt(g.name)) != "never" {
 		return true
 	}
@@ -237,24 +237,24 @@ func (g *partBox) used(run *Run) bool {
 }
 
 // paintGroup draws a column of what the model can call, and says whether a
-// tool in it is one the agent waits on. A part's name is cut to its holder,
+// tool in it is one the agent waits on. A toolkit's name is cut to its holder,
 // and its tooltip gives the file it is included from.
-func (d *drawn) paintGroup(g *partBox, run *Run) bool {
+func (d *drawn) paintGroup(g *toolkitBox, run *Run) bool {
 	b := g.at
 	y := b.y
 	if g.folded {
-		fmt.Fprintf(&d.holders, `<g class="state holder part folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
+		fmt.Fprintf(&d.holders, `<g class="state holder toolkit folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
 			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))),
 			num(b.x+14), num(b.y+39), len(g.tools), word(len(g.tools), "tool"), esc(strings.Join(g.tools, ", ")))
 		d.reach(b)
 		return false
 	}
-	if g.part {
+	if g.toolkit {
 		title := ""
 		if g.file != "" {
 			title = "<title>" + esc(g.file) + "</title>"
 		}
-		fmt.Fprintf(&d.holders, `<g class="state holder part"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
+		fmt.Fprintf(&d.holders, `<g class="state holder toolkit"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
 			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))), title)
 		y += innerTop
 	}
