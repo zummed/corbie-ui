@@ -228,10 +228,10 @@ func (w *walker) describeJob(it *item, at string, job *machine.JobSpec) {
 		it.icon, it.lines = "script", []string{fit("script: " + job.Script)}
 		return
 	case job.Send != nil:
-		it.icon, it.lines = "statechart", []string{fit("send: " + job.Send.Event), fit("to: " + addressOf(&job.Send.To))}
+		it.icon, it.lines = "statechart", []string{fit("send: " + job.Send.Event), fit("to: " + Address(&job.Send.To))}
 		return
 	case job.Call != nil:
-		it.icon, it.lines = "file", []string{fit("call: " + addressOf(job.Call))}
+		it.icon, it.lines = "file", []string{fit("call: " + Address(job.Call))}
 		if c, ok := w.children[at]; ok {
 			it.icon, it.lines, it.href = c.Type, append(it.lines, fit(c.Type+": "+c.Machine)), "/run/"+c.ID
 		} else if w.unfold.Called != nil && job.Call.Expr == "" && !machine.HasExpr(job.Call.At) {

@@ -32,13 +32,15 @@ type toolkit struct {
 	key                            string
 }
 
-// A toolkitTool is a tool of a toolkit: its job's kind, script, machine or
-// call, the file that job names, the location a call names, the names of
-// the input a call fixes, its `when:`, and whether the job needs approval.
+// A toolkitTool is a tool of a toolkit: its job's kind, script, machine,
+// call or send, the file that job names or of the machine at the location
+// it calls or sends to, the location a call names, the event a send sends
+// and the address it sends it to, the names of the input a call fixes, its
+// `when:`, and whether the job needs approval.
 type toolkitTool struct {
-	Name, Description, Job, File, Call, When string
-	Fixed                                    []string
-	Approve                                  bool
+	Name, Description, Job, File, Call, Event, To, When string
+	Fixed                                               []string
+	Approve                                             bool
 }
 
 // An offer is an agent that offers a toolkit, with the `when:` of its entry,
@@ -233,16 +235,29 @@ func fileOf(line string) string {
 }
 
 // toolOf gives a tool as the page shows it, its paths written from the
-// directory: a call's file is that of the machine at the location it calls.
+// directory: a call's or a send's file is that of the machine at the
+// location it calls or sends to. A call is written `call:` or as a job's
+// `call:`.
 func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitTool {
 	out := toolkitTool{Name: name, Description: t.Description, When: t.When}
 	if t.Job == nil {
 		return out
 	}
 	out.Approve = t.Job.Approve
-	if t.Call != "" {
+	called := t.Call
+	if called == "" && t.Job.Call != nil {
+		called = cmp.Or(t.Job.Call.At, t.Job.Call.Expr)
+	}
+	if called != "" {
 		fixed, _ := t.Job.Input.(map[string]any)
-		out.Job, out.Call, out.File, out.Fixed = "call", t.Call, ix.fileAt(t.Call), sortedKeys(fixed)
+		out.Job, out.Call, out.File, out.Fixed = "call", called, ix.fileAt(called), sortedKeys(fixed)
+		return out
+	}
+	if s := t.Job.Send; s != nil {
+		out.Job, out.Event, out.To = "send", s.Event, drawing.Address(&s.To)
+		if s.To.Expr == "" {
+			out.File = ix.fileAt(s.To.At)
+		}
 		return out
 	}
 	if t.Job.IsMachine() {
@@ -276,12 +291,7 @@ func (ix *index) fileAt(at string) string {
 	if !strings.HasPrefix(at, "/") {
 		location = path.Join(ix.Prefix, at)
 	}
-	for _, file := range sortedKeys(ix.machines) {
-		if ix.machines[file].Location == location {
-			return file
-		}
-	}
-	return ""
+	return ix.located[location]
 }
 
 // called gives the address on the Machines page of the machine at a
@@ -384,9 +394,9 @@ func (d *dir) writtenToolkit(ix *index, rel string) (toolkit, bool) {
 	return p, true
 }
 
-// writtenTool gives a tool as a toolkit's file writes it. A call takes its
-// description from the machine at the location it calls; any other job is a
-// script's path, or a mapping.
+// writtenTool gives a tool as a toolkit's file writes it. A tool written
+// `call:` takes its description from the machine at the location it calls;
+// any other job is a script's path, or a mapping.
 func (ix *index) writtenTool(name string, w writtenTool, file string) toolkitTool {
 	t := toolkitTool{Name: name, Description: w.Description, Job: "script", When: condition(w.When)}
 	if w.Call != "" {
@@ -409,6 +419,25 @@ func (ix *index) writtenTool(name string, w writtenTool, file string) toolkitToo
 	if ran, ok := job["machine"]; ok {
 		named, _ := ran.(string)
 		t.Job, t.File = "machine", writtenFrom(file, named)
+	}
+	if called, ok := job["call"].(map[string]any); ok {
+		at, _ := called["at"].(string)
+		fixed, _ := job["input"].(map[string]any)
+		t.Job, t.Call, t.File, t.Fixed = "call", at, ix.fileAt(at), sortedKeys(fixed)
+	}
+	if sent, ok := job["send"].(map[string]any); ok {
+		t.Job, t.File = "send", ""
+		t.Event, _ = sent["event"].(string)
+		switch to := sent["to"].(type) {
+		case string:
+			t.To = to
+		case map[string]any:
+			var a machine.AddressSpec
+			a.At, _ = to["at"].(string)
+			a.Key, _ = to["key"].(string)
+			a.Run, _ = to["run"].(string)
+			t.To, t.File = drawing.Address(&a), ix.fileAt(a.At)
+		}
 	}
 	return t
 }

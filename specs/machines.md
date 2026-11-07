@@ -177,9 +177,10 @@ when: input.asker.scopes.includes('orders:write')
 | instructions | the first line of the toolkit's `instructions:`, or the file they are included from |
 | Offered by | each agent whose `toolkits:` holds the toolkit, in its own file or written in place in another machine, with the `when:` of its entry |
 | Started by | for an agent in its own file, each machine that runs it with `machine:` or calls its location, and how its location's runs start; for one written in place, the machine it is written in |
-| Tools | each tool's `description:`, its job, the input a `call:` fixes, its `when:`, and `needs approval` where the job has `approve: true` |
+| Tools | each tool's `description:`, its job, the input a call fixes, its `when:`, and `needs approval` where the job has `approve: true` |
 
 - A tool written `call:` gives the location it calls, linked to the file of the machine there, and that machine's `description:`.
+- A tool whose job is a call, `job: { call: { at: chat/post } }`, is a call too: it gives the location, linked as above, and keeps its own `description:`. A tool whose job is a send gives its event and its address, its location linked to the file of the machine there, as the agent's drawing writes them: `send ping to chat/post#infra`.
 - A call's location is read from the tree's prefix, or from `/` where it begins with `/`. A location an expression gives is known only when the call runs, and is not followed.
 - A tool with `when:` has a dashed border.
 - A toolkit's file is the file its tools are written in, as the agent written out gives it, where that is not the agent's own file. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.

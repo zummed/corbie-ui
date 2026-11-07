@@ -15,7 +15,7 @@
     <div class="toolcards">{{range .Tools}}<section class="tool{{if .When}} when{{end}}"{{if .When}} title="when: {{.When}}"{{end}}>
       <div class="bar"><span class="tname">{{.Name}}</span>{{if .Approve}}<span class="approve">needs approval</span>{{end}}</div>
       <p title="{{.Description}}">{{.Description}}</p>
-      {{if .Call}}<p class="job">call {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{.Call}}</code></a>{{else}}<code>{{.Call}}</code>{{end}}</p>{{if .Fixed}}<p class="job">input: {{join .Fixed}}</p>{{end}}{{else}}<p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>{{end}}
+      {{if .Call}}<p class="job">call {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{.Call}}</code></a>{{else}}<code>{{.Call}}</code>{{end}}</p>{{if .Fixed}}<p class="job">input: {{join .Fixed}}</p>{{end}}{{else if eq .Job "send"}}<p class="job">send <code>{{.Event}}</code> to {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{.To}}</code></a>{{else}}<code>{{.To}}</code>{{end}}</p>{{else}}<p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>{{end}}
       {{if .When}}<p class="job">when: {{.When}}</p>{{end}}
     </section>{{end}}</div>
   </div>{{end}}{{else}}<div class="body"><p class="dim">no toolkit chosen</p></div>{{end}}

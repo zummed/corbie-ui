@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -451,6 +452,17 @@ func Test_machines_toolkits_page_follows_the_directory(t *testing.T) {
 	}
 }
 
+func toolNamed(t *testing.T, p *toolkit, name string) toolkitTool {
+	t.Helper()
+	for _, tool := range p.Tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("the toolkit %s has no tool %s: %+v", p.Name, name, p.Tools)
+	return toolkitTool{}
+}
+
 // callsProject writes a project whose agent is called by its location, and
 // whose toolkits call machines by theirs.
 func callsProject(t *testing.T) string {
@@ -463,11 +475,17 @@ func callsProject(t *testing.T) string {
 		"agents/support.yaml": "agent: support\n" + agentHead + "toolkits:\n" +
 			"  orders: { include: toolkits/orders.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
 			"tools:\n  who: { call: people/find, input: { table: staff } }\n",
+		"chat/post.yaml": "flow: post\ndescription: Post a message.\nstages:\n  a: { job: { script: ./post.js } }\n",
+		"chat/post.js":   "return 1",
 		"toolkits/orders.yaml": "description: The orders app.\ninstructions: { include: ./orders.md }\ntools:\n" +
-			"  find: { call: people/find, input: { table: customers }, approve: true, when: \"${input.asker.name != ''}\" }\n",
+			"  find: { call: people/find, input: { table: customers }, approve: true, when: \"${input.asker.name != ''}\" }\n" +
+			"  tell: { description: Tell the room., job: { call: { at: chat/post }, input: { room: orders }, approve: true } }\n" +
+			"  ping: { description: Ping the room., job: { send: { to: { at: chat/post }, event: ping } } }\n",
 		"toolkits/orders.md": "Use these for orders.\nAsk first.\n",
 		"toolkits/infra.yaml": "description: The machines.\ninstructions: |\n  Restart only when asked.\n  Say so.\ntools:\n" +
-			"  restart: { call: people/find, input: { table: vms }, when: \"${input.x}\" }\n",
+			"  restart: { call: people/find, input: { table: vms }, when: \"${input.x}\" }\n" +
+			"  tell: { description: Tell the room., job: { call: { at: chat/post }, input: { room: infra }, approve: true } }\n" +
+			"  ping: { description: Ping the room., job: { send: { to: { at: chat/post, key: infra }, event: ping } } }\n",
 		"conversation.yaml": "statechart: conversation\ninitial: talking\nstates:\n  talking:\n    job: { call: { at: agents/support }, input: { text: hi } }\n    on: { done: over, failed: over }\n  over: { end: done }\n",
 		"caller.yaml":       "flow: caller\nstages:\n  a: { job: { call: { at: /" + filepath.Base(dir) + "/agents/support } } }\n",
 		"other.yaml":        "flow: other\nstages:\n  a: { job: { call: { at: /elsewhere/agents/support } } }\n",
@@ -495,18 +513,34 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	if got := strings.Join(starts, ", "); got != "caller.yaml flow, conversation.yaml statechart" {
 		t.Errorf("the agent called by its location is started by %q", got)
 	}
-	find := orders.Tools[0]
+	find := toolNamed(t, orders, "find")
 	if find.Job != "call" || find.Call != "people/find" || find.File != "people/find.yaml" || !slices.Equal(find.Fixed, []string{"table"}) ||
 		!find.Approve || find.When != "input.asker.name != ''" || find.Description != "Find a person by email." {
 		t.Errorf("the call tool is %+v", find)
+	}
+	// A tool whose job is a call is a call, and one whose job is a send is
+	// a send, as the agent's drawing says.
+	if tell := toolNamed(t, orders, "tell"); tell.Job != "call" || tell.Call != "chat/post" || tell.File != "chat/post.yaml" ||
+		!slices.Equal(tell.Fixed, []string{"room"}) || !tell.Approve || tell.Description != "Tell the room." {
+		t.Errorf("a tool whose job is a call is %+v", tell)
+	}
+	if ping := toolNamed(t, orders, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post" || ping.File != "chat/post.yaml" || ping.Call != "" {
+		t.Errorf("a tool whose job is a send is %+v", ping)
 	}
 
 	infra := byDescription(t, v, "The machines.")
 	if infra.Name != "infra" || len(infra.Offered) != 0 || infra.Instructions != "Restart only when asked." {
 		t.Errorf("the toolkit nothing offers is %+v", infra)
 	}
-	if r := infra.Tools[0]; r.Job != "call" || r.File != "people/find.yaml" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
+	if r := toolNamed(t, &infra, "restart"); r.Job != "call" || r.File != "people/find.yaml" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
 		t.Errorf("a call tool in a file nothing offers is %+v", r)
+	}
+	if tell := toolNamed(t, &infra, "tell"); tell.Job != "call" || tell.Call != "chat/post" || tell.File != "chat/post.yaml" ||
+		!slices.Equal(tell.Fixed, []string{"room"}) || !tell.Approve || tell.Description != "Tell the room." {
+		t.Errorf("a tool whose job is a call, in a file nothing offers, is %+v", tell)
+	}
+	if ping := toolNamed(t, &infra, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post#infra" || ping.File != "chat/post.yaml" {
+		t.Errorf("a tool whose job is a send, in a file nothing offers, is %+v", ping)
 	}
 
 	h, err := New(Config{Dir: dir, Interval: time.Second})
@@ -519,6 +553,8 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 		`<code class="when">when: input.asker.scopes.includes(&#39;orders:read&#39;)</code>`,
 		`<section class="tool when" title="when: input.asker.name != &#39;&#39;">`,
 		`<p class="job">call <a href="/machines?file=people%2ffind.yaml" title="people/find.yaml"><code>people/find</code></a></p><p class="job">input: table</p>`,
+		`<p class="job">call <a href="/machines?file=chat%2fpost.yaml" title="chat/post.yaml"><code>chat/post</code></a></p><p class="job">input: room</p>`,
+		`<p class="job">send <code>ping</code> to <a href="/machines?file=chat%2fpost.yaml" title="chat/post.yaml"><code>chat/post</code></a></p>`,
 		"needs approval", ">conversation</a>", ">caller</a>",
 	} {
 		if !strings.Contains(body, want) {
@@ -558,5 +594,45 @@ func Test_machines_toolkits_in_one_directory_are_named_by_their_files(t *testing
 	}
 	if got := strings.Join(ids, ", "); got != "infra toolkits/infra.yaml, orders toolkits/orders.yaml" {
 		t.Errorf("the toolkits are %q", got)
+	}
+}
+
+// A placed agent takes its type from a file .corbieignore lists, and writes
+// a toolkit in place: the toolkit is in the agent's own file, so it has no
+// file it is included from, on the Toolkits page, in the agent's drawing,
+// or in the drawing of a machine that runs it, unfolded.
+func Test_machines_toolkits_written_in_a_placed_agent_are_in_its_file(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		".corbieignore":       "shared/\n",
+		"shared/agent.yaml":   "agent: support\n" + agentHead,
+		"agents/support.yaml": "include: shared/agent.yaml\ntoolkits:\n  notes: { description: written here, tools: { r: { description: r, job: { script: ./r.js } } } }\n",
+		"agents/r.js":         "return 1",
+		"parent.yaml":         "flow: parent\nstages:\n  a: { job: { machine: agents/support.yaml } }\n",
+		"dotted.yaml":         "flow: dotted\nstages:\n  a: { job: { machine: ./agents/support.yaml } }\n",
+	})
+	v := toolkitsView_(t, dir, "")
+	if len(v.Problems) != 0 {
+		t.Fatalf("the project has problems: %+v", v.Problems)
+	}
+	if p := byDescription(t, v, "written here"); p.File != "" {
+		t.Errorf("a toolkit written in a placed agent is included from %q", p.File)
+	}
+	h, err := New(Config{Dir: dir, Interval: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := regexp.MustCompile(`<g class="state holder toolkit">.*?</g>`)
+	for _, address := range []string{"/machines?file=agents/support.yaml", "/machines?file=parent.yaml&open=a", "/machines?file=dotted.yaml&open=a"} {
+		body := do(h, "GET", address, nil).Body.String()
+		found := holder.FindAllString(body, -1)
+		if len(found) != 1 {
+			t.Errorf("%s holds %d toolkits:\n%s", address, len(found), body)
+		}
+		for _, g := range found {
+			if strings.Contains(g, "<title>") {
+				t.Errorf("%s names a file the toolkit is included from: %s", address, g)
+			}
+		}
 	}
 }
