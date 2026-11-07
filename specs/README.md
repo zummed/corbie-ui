@@ -55,7 +55,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Runs](runs.md).** The runs in progress, one line for each root run and the runs under it, and one run: its steps, its drawing as of each step, what it waits on, and what can be sent to it.
 
-**[Machines](machines.md).** The machines and pieces in a directory, read as a tree, read only: the list, the problems Corbie finds in them, and each machine's location, lifetime, who may send to it, the secrets and values it uses, its drawing, its text and its definition written out. The toolkits in the directory, and what offers and starts each.
+**[Machines](machines.md).** The machines in a directory, read as a tree, and its files that are no machine, read only: the list, the problems Corbie finds in them, and each machine's description, location, lifetime, who may send to it, the secrets and values it uses, its drawing, its text and its definition written out. The toolkits in the directory, and what offers and starts each.
 
 **[Drawing](drawing.md).** How a flow, a statechart and an agent are drawn, and how a run's state is shown on the drawing.
 

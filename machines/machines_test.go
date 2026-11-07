@@ -183,7 +183,7 @@ stages:
 allow: [secret:A@net:x]
 `
 
-// listed gives the list as directory, file, first line, lifetime and
+// listed gives the list as directory, file, type and name, lifetime and
 // problem count.
 func listed(ix *index) []string {
 	var out []string
@@ -217,12 +217,12 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("the list is\n%s\nand not\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	var pieces []string
-	for _, p := range ix.Pieces {
-		pieces = append(pieces, fmt.Sprintf("%s %d", p.Path, p.Included))
+	var files []string
+	for _, f := range ix.Files {
+		files = append(files, fmt.Sprintf("%s %t %d", f.Path, f.Listed, f.Included))
 	}
-	if want := []string{"people.yaml 0", "prompt.md 1", "shared/states.yaml 1", "toolkits/toolkit.yaml 1"}; !slices.Equal(pieces, want) {
-		t.Errorf("the pieces are %v, and not %v", pieces, want)
+	if want := []string{"people.yaml true 0", "prompt.md false 1", "shared/states.yaml true 1", "toolkits/toolkit.yaml true 1"}; !slices.Equal(files, want) {
+		t.Errorf("the files are %v, and not %v", files, want)
 	}
 	if ix.Prefix != "/"+filepath.Base(dir) || ix.Groups[len(ix.Groups)-1].Entries[0].Location != ix.Prefix+"/bridges/b" {
 		t.Errorf("the prefix is %q and the locations %+v", ix.Prefix, ix.Groups)
@@ -231,7 +231,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	body := do(h, "GET", "/machines?file=bridges/b.yaml", nil).Body.String()
 	_, list, _ := strings.Cut(body, `id="files"`)
 	list, _, _ = strings.Cut(list, "</nav>")
-	list, piecesList, _ := strings.Cut(list, `<h2 class="kind">Pieces</h2>`)
+	list, filesList, _ := strings.Cut(list, `<h2 class="kind">Files</h2>`)
 	for _, want := range []string{`<h2 class="group" title="bridges">bridges/</h2>`, `<h2 class="group" title=".kit">.kit/</h2>`, `<use href="#g-agent"/>`, "<small>agent: helper · transient</small>", "<small>flow: b · singleton</small>", `title="` + ix.Prefix + `/bridges/b">b.yaml<`, `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=bridges%2fb.yaml" aria-current="page"`} {
 		if !strings.Contains(list, want) {
 			t.Errorf("the list does not show %s:\n%s", want, list)
@@ -242,24 +242,74 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 			t.Errorf("the machines hold %s:\n%s", gone, list)
 		}
 	}
-	for _, want := range []string{">toolkits/toolkit.yaml</span><small>included by 1 machine</small>", ">people.yaml</span><small>included by none</small>"} {
-		if !strings.Contains(piecesList, want) {
-			t.Errorf("the pieces do not show %s:\n%s", want, piecesList)
+	for _, want := range []string{">toolkits/toolkit.yaml</span><small>listed in .corbieignore · included by 1 machine</small>", ">people.yaml</span><small>listed in .corbieignore · included by none</small>", ">prompt.md</span><small>included by 1 machine</small>"} {
+		if !strings.Contains(filesList, want) {
+			t.Errorf("the files do not show %s:\n%s", want, filesList)
 		}
 	}
 	if !strings.Contains(body, ">at "+ix.Prefix+"<") {
 		t.Errorf("the page does not give the prefix:\n%s", body)
 	}
-	piece := do(h, "GET", "/machines?file=shared/states.yaml", nil).Body.String()
-	if !strings.Contains(piece, `<section class="included"><h2>Included by</h2><a href="/machines?file=keyed.yaml">keyed.yaml</a></section>`) || !strings.Contains(piece, ">a piece<") || strings.Contains(piece, ">Drawing<") {
-		t.Errorf("a piece does not show the machines that include it:\n%s", piece)
+	shared := do(h, "GET", "/machines?file=shared/states.yaml", nil).Body.String()
+	if !strings.Contains(shared, `<section class="included"><h2>Included by</h2><a href="/machines?file=keyed.yaml">keyed.yaml</a></section>`) || !strings.Contains(shared, `<span class="facts">listed in .corbieignore</span>`) || strings.Contains(shared, ">Drawing<") {
+		t.Errorf("a listed file does not show the machines that include it:\n%s", shared)
+	}
+	prompt := do(h, "GET", "/machines?file=prompt.md", nil).Body.String()
+	if !strings.Contains(prompt, `<section class="included"><h2>Included by</h2><a href="/machines?file=talker.yaml">talker.yaml</a></section>`) || !strings.Contains(prompt, `<span class="facts">a file</span>`) {
+		t.Errorf("a file a machine includes does not show the machines that include it:\n%s", prompt)
 	}
 	script := do(h, "GET", "/machines?file=.kit/hear.js", nil).Body.String()
-	if !strings.Contains(script, ">a file<") || strings.Contains(script, ">a piece<") || strings.Contains(script, "Included by") {
-		t.Errorf("a script no machine takes a value from is shown as a piece:\n%s", script)
+	if !strings.Contains(script, `<span class="facts">a file</span>`) || strings.Contains(script, "Included by") {
+		t.Errorf("a script no machine takes a value from is shown as one of the files:\n%s", script)
 	}
 	if body := do(h, "GET", "/machines?file=./bridges/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
 		t.Errorf("a path written with ./ is not the file chosen")
+	}
+}
+
+// Every .yaml file is a machine but those .corbieignore lists: one with no
+// type is a machine with a problem, and its type may be written after other
+// keys or come from a file it includes.
+func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
+	dir := project(t)
+	write(t, dir, map[string]string{
+		"loose.yaml":        "people: []\n",
+		"late.yaml":         "stages:\n  a: { job: .kit/hear.js }\nflow: late\n",
+		"placed.yaml":       "include: shared/flow.yaml\n",
+		"shared/flow.yaml":  "flow: placed\nstages:\n  a: { job: .kit/hear.js }\n",
+		"broken-late.yaml":  "colour: blue\nstatechart: broken-late\ninitial: a\nstates:\n  a: { end: done }\n",
+		"two.yaml":          "flow: a\nagent: b\n",
+		"shared/notes.yaml": "flow: noted\n",
+	})
+	d, _ := newDir(dir)
+	ix := d.index("")
+	got := listed(ix)
+	for _, want := range []string{". late.yaml flow: late transient 0", ". placed.yaml flow: placed transient 0", ". broken-late.yaml statechart: broken-late 1", ". loose.yaml 1", ". two.yaml 1"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("the list does not hold %s:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+	if !slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == "loose.yaml" }) {
+		t.Errorf("a .yaml file with no type that .corbieignore does not list gives no problem: %+v", ix.Problems)
+	}
+	for _, f := range ix.Files {
+		if f.Path == "loose.yaml" || f.Path == "two.yaml" {
+			t.Errorf("%s is listed with the files that are no machine", f.Path)
+		}
+	}
+	if f := ix.file("shared/notes.yaml"); f == nil || !f.Listed || f.Included != 0 || slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, "noted") }) {
+		t.Errorf("a listed file with a type is %+v, and the list %v", f, got)
+	}
+	if f := ix.file("shared/flow.yaml"); f == nil || !f.Listed || f.Included != 1 {
+		t.Errorf("a listed file a machine includes is %+v", f)
+	}
+	h, _ := New(Config{Dir: dir, Interval: time.Second})
+	body := do(h, "GET", "/machines?file=loose.yaml", nil).Body.String()
+	if !strings.Contains(body, `<span class="facts">a machine</span>`) || !strings.Contains(body, `aria-label="file"><title>file</title><use href="#g-file"/></svg><span class="name" title="/`+filepath.Base(dir)+`/loose">loose.yaml</span><span class="bad" title="1 problem">1</span><small></small>`) {
+		t.Errorf("a machine with no type is not shown as a machine with a problem:\n%s", body)
+	}
+	if body := do(h, "GET", "/machines?file=shared/flow.yaml", nil).Body.String(); !strings.Contains(body, `<span class="facts">listed in .corbieignore</span>`) || !strings.Contains(body, `<a href="/machines?file=placed.yaml">placed.yaml</a>`) || strings.Contains(body, ">Drawing<") {
+		t.Errorf("a listed file does not show the machines that include it:\n%s", body)
 	}
 }
 
@@ -350,6 +400,7 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 			"one.yaml":       "flow: one\ninclude: ./base.yaml\n",
 			"two.yaml":       "flow: two\ninclude: ./base.yaml\n",
 			"sub/three.yaml": "flow: three\ninclude: base.yaml\n",
+			".corbieignore":  "base.yaml\n",
 		}
 		if base != "" {
 			files["base.yaml"] = base
@@ -369,11 +420,16 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		"proj/a.yaml":     "flow: a\nstages:\n  x: { job: { machine: b.yaml } }\n",
-		"proj/b.yaml":     "flow: b\nstages:\n  x: { job: ./r.js }\n",
-		"proj/r.js":       "return 1",
-		"proj/sub/c.yaml": "flow: c\nstages:\n  x: { job: { machine: b.yaml } }\n",
-		"z.yaml":          "flow: z\nstages: {}\ncolour: blue\n",
+		"proj/a.yaml":        "flow: a\nstages:\n  x: { job: { machine: b.yaml } }\n",
+		"proj/b.yaml":        "flow: b\ndescription: b\nstages:\n  x: { job: ./r.js }\n",
+		"proj/r.js":          "return 1",
+		"proj/sub/c.yaml":    "flow: c\nstages:\n  x: { job: { machine: b.yaml } }\n",
+		"proj/d.yaml":        "agent: d\n" + agentHead + "toolkits:\n  k: { description: k, tools: { b: { call: b } } }\n",
+		"proj/e.yaml":        "agent: e\n" + agentHead + "toolkits:\n  k: { description: k, tools: { f: { call: lib/f } } }\n",
+		"proj/lib/f.yaml":    "flow: f\ndescription: f\nstages:\n  x: { job: ./g.js }\n",
+		"proj/lib/g.js":      "return 1",
+		"proj/.corbieignore": "lib/\n",
+		"z.yaml":             "flow: z\nstages: {}\ncolour: blue\n",
 	})
 	d, _ := newDir(dir)
 	ix := d.index("")
@@ -381,19 +437,25 @@ func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 		t.Fatalf("no problems")
 	}
 	top := ix.Problems[0]
-	if !top.Top || top.File != "proj" || !slices.Equal(top.Breaks, []string{"proj/a.yaml", "proj/sub/c.yaml"}) {
+	// proj/d.yaml calls a location of the tree proj is the top of.
+	// proj/e.yaml calls one proj/.corbieignore lists, so it reads with
+	// problems from proj too.
+	if !top.Top || top.File != "proj" || !slices.Equal(top.Breaks, []string{"proj/a.yaml", "proj/d.yaml", "proj/sub/c.yaml"}) {
 		t.Errorf("the first problem is %+v", top)
 	}
 	for _, p := range ix.Problems[1:] {
-		if p.File != "z.yaml" {
+		if p.File != "z.yaml" && p.File != "proj/e.yaml" {
 			t.Errorf("a machine read from the wrong directory gave %+v", p)
 		}
+	}
+	if !slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == "proj/e.yaml" }) {
+		t.Errorf("a machine that calls a location proj/.corbieignore lists is not listed with its own problems: %+v", ix.Problems)
 	}
 	if got := listed(ix); !slices.Contains(got, "proj proj/a.yaml flow: a 1") {
 		t.Errorf("a machine read from the wrong directory counts other than the one problem shown at it: %v", got)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, "<code>proj/</code> is the top of a tree") || !strings.Contains(body, "breaks 2 machines") {
+	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, "<code>proj/</code> is the top of a tree") || !strings.Contains(body, "breaks 3 machines") {
 		t.Errorf("the page does not say which directory is the top:\n%s", body)
 	}
 	if body := do(h, "GET", "/machines?file=proj/a.yaml", nil).Body.String(); strings.Count(body, "is the top of a tree") != 2 || strings.Contains(body, "cannot be read") {
@@ -628,8 +690,8 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 	h, dir := machines(t, Config{})
 	prefix := "/" + filepath.Base(dir)
 	write(t, dir, map[string]string{
-		"devices/boiler.yaml":   "statechart: boiler\nlifetime: singleton\nreceive: { set: [schedules/*, client:panel], stop: [client:panel] }\ninitial: idle\nstates:\n  idle: { on: { set: idle } }\n",
-		"rooms/thermostat.yaml": "statechart: thermostat\nlifetime: keyed\nlimits: { runs: 3 }\nupdate: restart\nallow: [send:devices/boiler, send:/work/log]\ninitial: on\nstates:\n  on: { on: { set: on } }\n",
+		"devices/boiler.yaml":   "statechart: boiler\ndescription: Turns the boiler on and off.\nlifetime: singleton\nreceive: { set: [schedules/*, client:panel], stop: [client:panel] }\ninitial: idle\nstates:\n  idle: { on: { set: idle } }\n",
+		"rooms/thermostat.yaml": "statechart: thermostat\nlifetime: keyed\nlimits: { runs: 3 }\nupdate: restart\nallow: [send:devices/boiler, send:/work/log]\napprove: [send:devices/boiler, net:hub.lan]\ninitial: on\nstates:\n  on: { on: { set: on } }\n",
 		"services/weather.yaml": "flow: weather\nreceive: [rooms/*]\nstages:\n  a: { job: write.js }\n",
 		"services/hub.yaml":     "flow: hub\nallow: [send:**, send:/**]\nstages:\n  a: { job: write.js }\n",
 		"services/root.yaml":    "flow: root\nallow: [all]\nstages:\n  a: { job: write.js }\n",
@@ -641,6 +703,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 	}
 	for file, want := range map[string][]string{
 		"devices/boiler.yaml": {
+			`<section class="place"><p class="description">Turns the boiler on and off.</p><div class="named">`,
 			"<span>location</span><span>" + prefix + "/devices/boiler</span>",
 			"<span>lifetime</span><span>singleton: the submit starts its one run</span>",
 			"<span>update</span><span>restart: a changed file cancels its runs</span>",
@@ -651,6 +714,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"<span>lifetime</span><span>keyed: a send to a key starts the run for that key, at most 3 running at once</span>",
 			"<span>receives</span><span>from its own tree and its tree's client</span>",
 			"<span>sends to</span><span>devices/boiler, /work/log</span>",
+			"<span>approve</span><span>send:devices/boiler, net:hub.lan</span>",
 		},
 		"services/weather.yaml": {
 			"<span>lifetime</span><span>transient: a call, or corbie run submit " + prefix + "/services/weather, starts each run</span>",
@@ -668,8 +732,14 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			}
 		}
 	}
+	if got := rows("services/weather.yaml"); strings.Contains(got, "description") || strings.Contains(got, "approve") {
+		t.Errorf("a machine with no description: and no approve: shows them:\n%s", got)
+	}
+	if body := do(h, "GET", "/machines?file=services/weather.yaml", nil).Body.String(); !strings.Contains(body, `<small title="Turns the boiler on and off.">statechart: boiler · singleton</small>`) {
+		t.Errorf("the list does not give a machine's description:\n%s", body)
+	}
 	if got := place.FindString(do(h, "GET", "/machines?file=notes.yaml", nil).Body.String()); got != "" {
-		t.Errorf("a piece has a location:\n%s", got)
+		t.Errorf("a listed file has a location:\n%s", got)
 	}
 	// Where the UI offers Runs, a location links to the runs there.
 	h, err := New(Config{Dir: dir, Runs: true, Interval: time.Second, Shell: page.Shell{}})
@@ -711,7 +781,7 @@ func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {
 		t.Errorf("a line of a file has no anchor to link to:\n%s", text)
 	}
 	if body := do(h, "GET", "/machines?file=notes.yaml&view=written", nil).Body.String(); strings.Contains(body, "Written out") || !strings.Contains(body, `<span class="k">a</span>`) {
-		t.Errorf("a piece is written out:\n%s", body)
+		t.Errorf("a listed file is written out:\n%s", body)
 	}
 }
 

@@ -53,7 +53,9 @@ Words:
   - **run**: one execution of a machine, which a client starts, lists and shows.
   - **tree**: a directory a client submitted at a prefix. It belongs to that client.
   - **location**: where a machine lives: its file's path under its tree's prefix, without `.yaml`.
-  - **piece**: a `.yaml` file with no type, or any other file a machine takes a value from. It has no location.
+  - **listed file**: a file the `.corbieignore` at the top of the directory lists. It has no location; a machine may still include it. Every other `.yaml` file is a machine.
+  - **toolkit**: a group of tools under an agent's `toolkits:`, with its `description:`, `instructions:` and tools.
+  - **description**: the `description:` of a machine, a toolkit or a tool: what it is for.
   - **address**: a location, with `#key` at a keyed location, as the command line writes it.
   - **directory**, never "folder". **computer**, never "machine".
   - **controller**, **runner**, **client**: the three kinds of process. **store**: the directory or bucket they share.
