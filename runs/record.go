@@ -466,12 +466,12 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				name := jobOf(a.Name)
 				var w []word
 				switch {
+				case name == instance.AskName:
+					w = say("ask started ", bold(child.Machine))
 				case run.Type == "flow":
 					w = say("stage ", bold(name), " started ", bold(child.Machine))
 				case run.Type == "statechart":
 					w = say("state ", bold(name), " started ", bold(child.Machine))
-				case name == instance.AskName:
-					w = say("ask started ", bold(child.Machine))
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
@@ -737,8 +737,8 @@ func jobFacts(a *instance.Ask, byID map[string]*client.Run) []fact {
 			facts = append(facts, fact{Name: "approve", Text: "true"})
 		}
 		if shown, _ := j.Shown.(map[string]any); shown != nil {
-			if part, _ := shown["part"].(string); part != "" {
-				facts = append(facts, fact{Name: "part", Text: part})
+			if toolkit, _ := shown["toolkit"].(string); toolkit != "" {
+				facts = append(facts, fact{Name: "toolkit", Text: toolkit})
 			}
 		}
 	}

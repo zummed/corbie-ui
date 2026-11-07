@@ -215,7 +215,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		shell.Offered = append(shell.Offered, "Runs")
 	}
 	if !o.asNone {
-		shell.Offered = append(shell.Offered, "Machines", "Parts")
+		shell.Offered = append(shell.Offered, "Machines", "Toolkits")
 	}
 	if p.controller != nil {
 		shell.Offered = append(shell.Offered, "Controller")
@@ -234,8 +234,8 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		}
 		mux.Handle("/machines", areaMachines)
 		mux.Handle("/machines/", areaMachines)
-		mux.Handle("/parts", areaMachines)
-		mux.Handle("/parts/", areaMachines)
+		mux.Handle("/toolkits", areaMachines)
+		mux.Handle("/toolkits/", areaMachines)
 	}
 	if u.noStore == nil {
 		home = "/runs"

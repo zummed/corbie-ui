@@ -57,7 +57,8 @@ Ended        a run with no parent that ended in the window, newest first
 A location's lifetime is read only in a tree of the UI's client, so a singleton in another client's tree is in Busy or Idle. The window is 1h, 6h, 24h or 7d, and 6h by default. A line of Busy, Idle or Singletons reads:
 
 ```
-running  Zummed in DM: Please tell…#slack:D1  chat › … › ask › question [open, waiting]  timer unanswered due 10 Nov 20:29  20:29
+running  slack dm: Please restart…#slack:D1:U1:support  conversation › turn [answer]                                       20:29
+running  support wants to run restart.                  slack-chat-ask [open, waiting]  timer unanswered due 10 Nov 20:29  20:29
 ```
 
 - The line begins with the root's status and its name. A long address is cut in its middle, since keys differ at their end, and a title at its end, before its key.
@@ -71,9 +72,10 @@ An ended line holds its status, name, machine, the number of runs under it where
 A click on a line opens its root's page, whose Steps follow the newest row. The `▸` at the line's start unfolds it to its root's own row, where the root runs, and then the runs the root started, newest first: those running and those that ended in the window. This is how a person finds one message in a long conversation:
 
 ```
-running  chat [waiting]                                   timer quiet due 20:36         3 Nov 20:34
-done       message  message › … › attend               done from attend · 8 runs     3 Nov 20:36  1.7s
-done       message  message › say › slack-say          done from say · 14 runs       3 Nov 20:34  4.1s
+running  conversation [answering]                         child turn         3 Nov 20:34
+running    Please restart web-1   turn [answer]                              3 Nov 20:36
+done       Done: web-1 restarted  reply          done from slack             3 Nov 20:35  0.4s
+done       What runs on web-1?    turn           done from answer            3 Nov 20:34  9.2s
 ```
 
 ```
@@ -120,7 +122,7 @@ Start                   a run, with input; transient locations             corbi
 A run's page opens from its line in the list. Its title line holds the run: its machine, type, status and title, then its address, which links to the page narrowed to its location, then its machine's file, then its ID, when it started, and when it ended and how long it took. Under it is the run's path, each run a link:
 
 ```
-slack-listen ⇢ chat › message › answer › helper › approval › ask › question
+turn ⇢ support › approval
 ```
 
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send or a call started the root, the run that sent or called comes first, with `⇢`; its tooltip says which, where the root is in a tree of the UI's client. The run itself is in bold, and the run of the step selected is lit. Holding the pointer over a run shows its title, its address and its ID, as over a name.
@@ -132,23 +134,23 @@ On the left are four tabs: Steps, Waiting on, Output and Children. On the right 
 Steps lists what happened in the run and in every run under it, one row each, read from the record as `corbie run show --record` reads it. A row holds its time to the second, with its date where that is not the date the run started, its run's machine in the colour of the machine's type, and what happened:
 
 ```
-statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started message
-flow         stage who started who · stage who done · stage refuse skipped · stage brief failed
-agent        turn 2 to claude-sonnet-5-5 · turn 2 called tell(person: “zummed”, text: “The…”) · open done · held tell for approval · ask started approval
-any run      started · started by /home/bridges/slack · done · failed (denied) · cancelled
+statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started turn
+flow         stage asker done · stage files skipped · stage answer failed
+agent        turn 2 to claude-sonnet-5-5 · turn 2 called restart(vm: “web-1”) · open done
+any run      started · started by /acme/gromit/slack/gromit · held restart for approval · ask started approval · done · failed (denied) · cancelled
 ```
 
 Sends and calls between runs read:
 
 ```
-⇠ set from /home/rooms/thermostat#kitchen                 an event a run sent; links to that run
-⇠ set from client:panel                                   an event a client sent
-⇢ sent set to /home/devices/boiler · boiler               links to the run that took it
-⇢ sent message to /home/chat#slack:C1 · started chat      the send started a run at a keyed location
-⇢ sent set to /home/rooms/thermostat#hall · undelivered   its details say why
-⇢ sent ack to /home/rooms/thermostat#hall · thermostat    a reply to a keyed run gives its key
-⇢ sent ack to client:panel · undelivered                  a reply to a client, which has no inbox
-⇢ called /home/services/weather · weather                 a call job; links to the run it started
+⇠ set from /home/rooms/thermostat#kitchen                                        an event a run sent; links to that run
+⇠ set from client:panel                                                          an event a client sent
+⇢ sent set to /home/devices/boiler · boiler                                      links to the run that took it
+⇢ sent message to /acme/conversation#slack:C1:U1:support · started conversation  the send started a run at a keyed location
+⇢ sent set to /home/rooms/thermostat#hall · undelivered                          its details say why
+⇢ sent ack to /home/rooms/thermostat#hall · thermostat                           a reply to a keyed run gives its key
+⇢ sent ack to client:panel · undelivered                                         a reply to a client, which has no inbox
+⇢ called /home/services/weather · weather                                        a call job; links to the run it started
 ```
 
 - Holding the pointer over a row's machine shows its run's title, its address and its ID.
@@ -158,7 +160,7 @@ Sends and calls between runs read:
 - The controller notes in the sender's record a send that was not delivered, or whose event went to another run, as when another send took the key first. The send's row says it, and the note has no row of its own.
 - An undelivered send gives the reason in its details: the receiver's `receive:` does not list the sender, no run is running there, the location's limit of runs is reached, the run is a flow or an agent, which takes no events, the run was cancelled while it kept the event under `defer:`, or the address is a client, which has no inbox.
 - A send a layer of the sender refused is `denied`: a send job's row says so, and a statechart's send ends its run `failed (denied)`, whose details give what was refused, the layer and the fix.
-- The row that started a child ends with the child's title where it has one, its status, its steps and those of the runs under it, and how long it took: `stage helper started helper · running · 22 steps`. The child's rows fold into that row.
+- The row that started a child ends with the child's title where it has one, its status, its steps and those of the runs under it, and how long it took: `state answering started turn · running · 22 steps`. The child's rows fold into that row.
 - An ended child is folded, and a running one open. Open all and Fold all fold every group.
 - On the page of a run in another client's tree, there are no Steps.
 
@@ -214,7 +216,7 @@ a child                     its root's file, unfolded down the cards of the jobs
 The details of a row have four tabs, and Open opens the row's run's page:
 
 ```
-What happened   the row's facts: the job and its machine or script, a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
+What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` Corbie shows on the job), a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
 Output          what it gave back
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine

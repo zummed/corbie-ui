@@ -66,31 +66,31 @@ func lineNames(s section) []string {
 
 func Test_runs_list_roots_by_section(t *testing.T) {
 	runs := []*client.Run{
-		run("a-client/01", "slack-bridge", "flow", "cancelled", 9*time.Hour, 5*time.Hour, func(r *client.Run) { r.Location = "/rook/bridges/slack" }),
-		run("a-client/02", "slack-bridge", "flow", "running", 5*time.Hour, 0, func(r *client.Run) { r.Location = "/rook/bridges/slack" }),
-		run("a-client/03", "slack-listen", "statechart", "running", 5*time.Hour, 0, func(r *client.Run) { r.Parent, r.Jobs, r.Location = "a-client/02", 1, "/rook/bridges/slack" }),
-		run("a-client/04", "chat", "statechart", "running", 4*time.Hour, 0, func(r *client.Run) { r.Location, r.Key = "/rook/chat", "slack:C1/1" }),
-		run("a-client/05", "message", "flow", "running", 4*time.Hour, 0, func(r *client.Run) { r.Parent, r.Location = "a-client/04", "/rook/chat" }),
-		run("a-client/06", "question", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Parent, r.Timers, r.Location = "a-client/05", 1, "/rook/chat" }),
-		run("a-client/07", "question", "statechart", "running", 2*time.Hour, 0, func(r *client.Run) { r.Parent, r.Timers, r.Location = "a-client/05", 1, "/rook/chat" }),
-		run("a-client/08", "who", "flow", "done", 4*time.Hour, 4*time.Hour, func(r *client.Run) { r.Parent, r.Location = "a-client/05", "/rook/chat" }),
-		run("a-client/09", "chat", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/rook/chat", "slack:C1/2", 1 }),
-		run("a-client/10", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/rook/chat", "slack:C1/3", 1 }),
+		run("a-client/01", "gromit", "statechart", "cancelled", 9*time.Hour, 5*time.Hour, func(r *client.Run) { r.Location = "/acme/gromit/slack/gromit" }),
+		run("a-client/02", "gromit", "statechart", "running", 5*time.Hour, 0, func(r *client.Run) { r.Location = "/acme/gromit/slack/gromit" }),
+		run("a-client/03", "slack-listen", "statechart", "running", 5*time.Hour, 0, func(r *client.Run) { r.Parent, r.Jobs, r.Location = "a-client/02", 1, "/acme/gromit/slack/gromit" }),
+		run("a-client/04", "conversation", "statechart", "running", 4*time.Hour, 0, func(r *client.Run) { r.Location, r.Key = "/acme/conversation", "slack:C1:U1:support" }),
+		run("a-client/05", "turn", "flow", "running", 4*time.Hour, 0, func(r *client.Run) { r.Parent, r.Location = "a-client/04", "/acme/conversation" }),
+		run("a-client/06", "slack-chat-ask", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Parent, r.Timers, r.Location = "a-client/05", 1, "/acme/conversation" }),
+		run("a-client/07", "slack-chat-ask", "statechart", "running", 2*time.Hour, 0, func(r *client.Run) { r.Parent, r.Timers, r.Location = "a-client/05", 1, "/acme/conversation" }),
+		run("a-client/08", "people-find", "flow", "done", 4*time.Hour, 4*time.Hour, func(r *client.Run) { r.Parent, r.Location = "a-client/05", "/acme/conversation" }),
+		run("a-client/09", "conversation", "statechart", "running", 3*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/acme/conversation", "slack:C1:U2:support", 1 }),
+		run("a-client/10", "conversation", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/acme/conversation", "slack:C1:U3:support", 1 }),
 		run("b-client/11", "door", "statechart", "waiting", 0, 0, func(r *client.Run) { r.Location = "/house/door" }),
 		run("b-client/12", "digest", "flow", "failed", 20*time.Minute, 15*time.Minute, func(r *client.Run) { r.Failure, r.Location = "error", "/work/digest" }),
 		run("b-client/13", "digest", "flow", "done", 30*time.Hour, 29*time.Hour, func(r *client.Run) { r.Location = "/work/digest" }),
 		run("b-client/14", "fetch", "flow", "done", 19*time.Minute, 18*time.Minute, func(r *client.Run) { r.Parent, r.Location = "b-client/12", "/work/digest" }),
 	}
 	facts := map[string]fixed{
-		"a-client/01": {Tree: "/rook", Lifetime: "singleton"},
-		"a-client/02": {Tree: "/rook", Lifetime: "singleton"},
-		"a-client/04": {Tree: "/rook", Lifetime: "keyed"},
+		"a-client/01": {Tree: "/acme", Lifetime: "singleton"},
+		"a-client/02": {Tree: "/acme", Lifetime: "singleton"},
+		"a-client/04": {Tree: "/acme", Lifetime: "keyed"},
 	}
 	v := listOf(runs, noSteps, facts, narrowingOf(url.Values{}), at, "a-client")
 	for _, c := range []struct {
 		s    section
 		want string
-	}{{v.Busy, "/house/door /rook/chat#slack:C1/1"}, {v.Idle, "/rook/chat#slack:C1/3 /rook/chat#slack:C1/2"}, {v.Singletons, "/rook/bridges/slack"}, {v.Ended, "/work/digest /rook/bridges/slack"}} {
+	}{{v.Busy, "/house/door /acme/conversation#slack:C1:U1:support"}, {v.Idle, "/acme/conversation#slack:C1:U3:support /acme/conversation#slack:C1:U2:support"}, {v.Singletons, "/acme/gromit/slack/gromit"}, {v.Ended, "/work/digest /acme/gromit/slack/gromit"}} {
 		if got := strings.Join(lineNames(c.s), " "); got != c.want {
 			t.Errorf("%s holds %s, not %s", c.s.Name, got, c.want)
 		}
@@ -100,7 +100,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	for _, l := range busy.Chain {
 		chain = append(chain, l.Machine)
 	}
-	if strings.Join(chain, " ") != "chat message question" || busy.Chain[2].ID != "a-client/07" || busy.Waits != "timer" {
+	if strings.Join(chain, " ") != "conversation turn slack-chat-ask" || busy.Chain[2].ID != "a-client/07" || busy.Waits != "timer" {
 		t.Errorf("the chain to the deepest running run is %v, waiting on %q", busy.Chain, busy.Waits)
 	}
 	if got := v.Singletons.Lines[0].Waits; got != "job" {
@@ -118,13 +118,13 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	if html, err := render("ended", v); err != nil || !strings.Contains(string(html), "1 run under it") || strings.Contains(string(html), "0 runs") {
 		t.Errorf("the ended lines are drawn as %v:\n%s", err, html)
 	}
-	long := []*client.Run{run("a-client/1", "chat", "statechart", "running", time.Hour, 0, nil)}
-	for i, m := range []string{"message", "answer", "helper", "ask", "question"} {
+	long := []*client.Run{run("a-client/1", "conversation", "statechart", "running", time.Hour, 0, nil)}
+	for i, m := range []string{"turn", "support", "approval", "slack-chat-ask", "press"} {
 		parent := long[i].ID
 		long = append(long, run(fmt.Sprintf("a-client/%d", i+2), m, "flow", "running", time.Hour, 0, func(r *client.Run) { r.Parent = parent }))
 	}
 	l := listOf(long, noSteps, nil, narrowingOf(url.Values{}), at, "").Busy.Lines[0]
-	if len(l.Front) != 1 || l.Between != "chat › message › answer › helper › ask › question" || len(l.Back) != 1 || l.Back[0].Machine != "question" {
+	if len(l.Front) != 1 || l.Between != "conversation › turn › support › approval › slack-chat-ask › press" || len(l.Back) != 1 || l.Back[0].Machine != "press" {
 		t.Errorf("a chain of six is shown as %v, %q and %v", l.Front, l.Between, l.Back)
 	}
 	if got := v.Idle.Lines[0].Waits; got != "timer" {
@@ -181,8 +181,8 @@ func Test_runs_locations_are_listed_by_tree(t *testing.T) {
 }
 
 func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
-	runs := []*client.Run{run("a-client/00", "chat", "statechart", "running", 9*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/rook/chat", "slack:C1", 1 })}
-	// Thirty messages, one each quarter of an hour: the oldest six ended before
+	runs := []*client.Run{run("a-client/00", "conversation", "statechart", "running", 9*time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Timers = "/acme/conversation", "slack:C1:U1:support", 1 })}
+	// Thirty turns, one each quarter of an hour: the oldest six ended before
 	// the window, and the newest runs.
 	for i := range 30 {
 		id := fmt.Sprintf("a-client/%02d", i+1)
@@ -192,20 +192,20 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 			ended = 0
 		}
 		status := map[bool]string{true: "running", false: "done"}[ended == 0]
-		runs = append(runs, run(id, "message", "flow", status, ago, ended, func(r *client.Run) { r.Parent = "a-client/00" }))
+		runs = append(runs, run(id, "turn", "flow", status, ago, ended, func(r *client.Run) { r.Parent = "a-client/00" }))
 	}
 	runs = append(runs,
 		run("a-client/40", "answer", "flow", "running", 5*time.Minute, 0, func(r *client.Run) { r.Parent = "a-client/30" }),
-		run("a-client/41", "question", "statechart", "running", 4*time.Minute, 0, func(r *client.Run) { r.Parent, r.Tickets = "a-client/40", []string{"verdict"} }),
-		run("a-client/42", "attend", "flow", "done", 25*time.Minute, 24*time.Minute, func(r *client.Run) { r.Parent = "a-client/28" }),
-		run("a-client/43", "helper", "agent", "done", 24*time.Minute, 23*time.Minute, func(r *client.Run) { r.Parent = "a-client/42" }),
+		run("a-client/41", "slack-chat-ask", "statechart", "running", 4*time.Minute, 0, func(r *client.Run) { r.Parent, r.Tickets = "a-client/40", []string{"verdict"} }),
+		run("a-client/42", "answer", "flow", "done", 25*time.Minute, 24*time.Minute, func(r *client.Run) { r.Parent = "a-client/28" }),
+		run("a-client/43", "support", "agent", "done", 24*time.Minute, 23*time.Minute, func(r *client.Run) { r.Parent = "a-client/42" }),
 	)
 	steps := map[string]*instance.Step{
-		"a-client/28": {Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "attend"}}}},
+		"a-client/28": {Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "answer"}}}},
 		"a-client/27": {State: instance.State{Error: &machine.Error{Error: "the model refused"}}},
 	}
 	l := listOf(runs, func(r *client.Run) *instance.Step { return steps[r.ID] }, nil, narrowingOf(url.Values{}), at, "a-client").Busy.Lines[0]
-	if len(l.Rows) != 21 || !l.Rows[0].Own || l.Rows[0].Says != "child message, timer" || l.More != 4 {
+	if len(l.Rows) != 21 || !l.Rows[0].Own || l.Rows[0].Says != "child turn, timer" || l.More != 4 {
 		t.Fatalf("the line unfolds to %d rows, the first %+v, with %d more", len(l.Rows), l.Rows[0], l.More)
 	}
 	var ids []string
@@ -218,15 +218,15 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 	if html, err := render("line", l); err != nil || !strings.Contains(string(html), ">2 runs</span>") || strings.Contains(string(html), "0 runs") || strings.Contains(string(html), "<i>·</i></span>") {
 		t.Errorf("a row gives the runs under it where there are none, or %v:\n%s", err, html)
 	}
-	newest, attended, failed := l.Rows[1], l.Rows[3], l.Rows[4]
-	if newest.Name != "message" || len(newest.Front) != 3 || newest.Front[2].Machine != "question" || newest.Says != "ticket verdict" || newest.Under != 2 || newest.Took != "" {
-		t.Errorf("a running message is the row %+v", newest)
+	newest, answered, failed := l.Rows[1], l.Rows[3], l.Rows[4]
+	if newest.Name != "turn" || len(newest.Front) != 3 || newest.Front[2].Machine != "slack-chat-ask" || newest.Says != "ticket verdict" || newest.Under != 2 || newest.Took != "" {
+		t.Errorf("a running turn is the row %+v", newest)
 	}
-	if len(attended.Front) != 3 || attended.Front[2].Machine != "helper" || attended.Says != "done from attend" || attended.Under != 2 || attended.Took != "1m 0s" || attended.When != page.When(at.Add(-45*time.Minute), at) {
-		t.Errorf("an ended message is the row %+v", attended)
+	if len(answered.Front) != 3 || answered.Front[2].Machine != "support" || answered.Says != "done from answer" || answered.Under != 2 || answered.Took != "1m 0s" || answered.When != page.When(at.Add(-45*time.Minute), at) {
+		t.Errorf("an ended turn is the row %+v", answered)
 	}
 	if failed.Says != "the model refused" {
-		t.Errorf("a failed message ended with %q", failed.Says)
+		t.Errorf("a failed turn ended with %q", failed.Says)
 	}
 
 	// On the page, a click on the line opens its root's page, and the
@@ -450,11 +450,11 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	// Each ask a step starts is named by where it is written, in the order
 	// the step held the first job of each, and a job's failure that ended
 	// the run is noted.
-	tell := &machine.Job{Name: "tell", AskAt: "open.messages.ask"}
+	restart := &machine.Job{Name: "restart", AskAt: "toolkits.infra.ask", Shown: map[string]any{"toolkit": "infra"}}
 	entries := []client.Entry{{ID: "a-client/1", Step: 1,
 		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
 		Asks: []instance.Ask{
-			{Kind: instance.AskHold, Name: "tell#1", Job: tell},
+			{Kind: instance.AskHold, Name: "restart#1", Job: restart},
 			{Kind: instance.AskHold, Name: "look#1", Job: &machine.Job{Name: "look"}},
 			{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/2"},
 			{Kind: instance.AskChild, Name: "ask#2", Child: "a-client/3"},
@@ -464,15 +464,47 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		"a-client/3": {ID: "a-client/3", Machine: "own", Type: "flow"},
 	}
 	st := &instance.State{Jobs: map[string]*instance.Going{
-		"tell":  {Job: *tell, Held: true},
-		"ask#1": {Job: machine.Job{Name: "ask"}, ForAsk: []string{"tell"}},
+		"restart": {Job: *restart, Held: true},
+		"ask#1":   {Job: machine.Job{Name: "ask"}, ForAsk: []string{"restart"}},
 	}}
 	m := marksOf("a-client/1", entries, "failed", st, byID)
-	if m.Children["open.messages.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
+	if m.Children["toolkits.infra.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
 		t.Errorf("the asks' runs are known as %+v", m.Children)
 	}
-	if strings.Join(m.Going, " ") != "open.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
+	if strings.Join(m.Going, " ") != "toolkits.infra.ask restart" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
+	}
+
+	// A tool's job names the toolkit it is from, as Corbie shows it.
+	var held *stepRow
+	for _, r := range rowsOf("a-client/1", entries, byID, nil, at, at) {
+		if r.Kind == "held" && strings.Contains(r.Said(), "restart") {
+			held = &r
+		}
+	}
+	if held == nil || !slices.Contains(held.Facts, fact{Name: "toolkit", Text: "infra"}) {
+		t.Errorf("the held tool does not name its toolkit: %+v", held)
+	}
+
+	// A flow's and a statechart's ask is no stage or state: its row says the
+	// ask started its run.
+	for _, kind := range []string{"flow", "statechart"} {
+		asked := []client.Entry{{ID: "a-client/4", Step: 1,
+			Asks: []instance.Ask{
+				{Kind: instance.AskHold, Name: "ship#1", Job: &machine.Job{Name: "ship", Approve: true}},
+				{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/5"},
+			}}}
+		of := map[string]*client.Run{
+			"a-client/4": {ID: "a-client/4", Machine: "deploy", Type: kind},
+			"a-client/5": {ID: "a-client/5", Machine: "approval", Type: "flow", Parent: "a-client/4"},
+		}
+		var said []string
+		for _, r := range rowsOf("a-client/4", asked, of, nil, at, at) {
+			said = append(said, r.Said())
+		}
+		if !slices.Contains(said, "held ship for approval") || !slices.Contains(said, "ask started approval") {
+			t.Errorf("a %s's ask is shown as %q", kind, said)
+		}
 	}
 
 	// A child's rows are under the row that started it, and an ended child
@@ -482,24 +514,24 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		{ID: "a-client/1", Step: 1, Time: now, Shown: map[string]any{"states": []string{"answering"}},
 			Events: []instance.Arrived{{Event: machine.Event{Name: "start"}}},
 			Asks:   []instance.Ask{{Kind: instance.AskChild, Name: "answering", Child: "a-client/2"}}},
-		{ID: "a-client/2", Step: 1, Time: now, Shown: map[string]any{"stages": map[string]any{"who": "running"}}},
-		{ID: "a-client/2", Step: 2, Time: now, Status: "done", Shown: map[string]any{"stages": map[string]any{"who": "done"}},
-			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "who"}}}},
+		{ID: "a-client/2", Step: 1, Time: now, Shown: map[string]any{"stages": map[string]any{"asker": "running"}}},
+		{ID: "a-client/2", Step: 2, Time: now, Status: "done", Shown: map[string]any{"stages": map[string]any{"asker": "done"}},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "asker"}}}},
 	}
 	byID = map[string]*client.Run{
-		"a-client/1": {ID: "a-client/1", Machine: "chat", Type: "statechart", Status: "running"},
-		"a-client/2": {ID: "a-client/2", Machine: "message", Type: "flow", Status: "done", Parent: "a-client/1", Started: now, Ended: now.Add(time.Second)},
+		"a-client/1": {ID: "a-client/1", Machine: "conversation", Type: "statechart", Status: "running"},
+		"a-client/2": {ID: "a-client/2", Machine: "turn", Type: "flow", Status: "done", Parent: "a-client/1", Started: now, Ended: now.Add(time.Second)},
 	}
 	rows := rowsOf("a-client/1", tree, byID, nil, now, now)
 	var said []string
 	for _, r := range rows {
 		said = append(said, r.Said())
 	}
-	if strings.Join(said, "; ") != "started; entered answering; state answering started message" {
+	if strings.Join(said, "; ") != "started; entered answering; state answering started turn" {
 		t.Fatalf("the run's rows are %q", said)
 	}
 	g := rows[2].Group
-	if g == nil || !g.Ended || g.Steps != 2 || len(g.Rows) != 2 || g.Rows[0].Said() != "stage who done" || g.Rows[0].Depth != 1 || g.Rows[1].Said() != "done" {
+	if g == nil || !g.Ended || g.Steps != 2 || len(g.Rows) != 2 || g.Rows[0].Said() != "stage asker done" || g.Rows[0].Depth != 1 || g.Rows[1].Said() != "done" {
 		t.Errorf("the child's rows are not under the row that started it: %+v", g)
 	}
 
@@ -547,24 +579,24 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	// run, a call links to the run it started, and the path begins with the
 	// run whose send started the root.
 	sent := at.Add(-time.Hour)
-	key := "slack:C1"
+	key := "slack:C1:U1:support"
 	byID := map[string]*client.Run{
-		"a-client/1": {ID: "a-client/1", Machine: "listen", Type: "statechart", Status: "running", Location: "/rook/bridges/slack"},
-		"a-client/2": {ID: "a-client/2", Machine: "question", Type: "statechart", Status: "done", Location: "/rook/question"},
+		"a-client/1": {ID: "a-client/1", Machine: "slack-listen", Type: "statechart", Status: "running", Location: "/acme/gromit/slack/gromit"},
+		"a-client/2": {ID: "a-client/2", Machine: "slack-chat-ask", Type: "statechart", Status: "done", Location: "/acme/gromit/slack/chat/ask"},
 		"a-client/3": {ID: "a-client/3", Machine: "boiler", Type: "statechart", Status: "running", Location: "/home/devices/boiler"},
-		"a-client/4": {ID: "a-client/4", Machine: "chat", Type: "statechart", Status: "running", StartedBy: "a-client/1", Location: "/rook/chat", Key: key},
-		"a-client/5": {ID: "a-client/5", Machine: "message", Type: "flow", Status: "running", Parent: "a-client/4", Location: "/rook/chat"},
+		"a-client/4": {ID: "a-client/4", Machine: "conversation", Type: "statechart", Status: "running", StartedBy: "a-client/1", Location: "/acme/conversation", Key: key},
+		"a-client/5": {ID: "a-client/5", Machine: "turn", Type: "flow", Status: "running", Parent: "a-client/4", Location: "/acme/conversation"},
 		"a-client/6": {ID: "a-client/6", Machine: "weather", Type: "flow", Status: "done", Location: "/home/weather"},
 	}
 	sends := client.Entry{ID: "a-client/1", Step: 3, Time: sent, Status: "running",
 		Events: []instance.Arrived{
-			{Event: machine.Event{Name: "answer", Sender: &machine.Address{At: "/rook/chat", Key: &key, Run: "a-client/4"}}},
+			{Event: machine.Event{Name: "answer", Sender: &machine.Address{At: "/acme/conversation", Key: &key, Run: "a-client/4"}}},
 			{Event: machine.Event{Name: "poke", Sender: &machine.Address{Client: "panel"}}},
 		},
 		Asks: []instance.Ask{
-			{Kind: instance.AskEvent, Location: "/rook/chat", Key: key, Run: "a-client/4", To: "a-client/4", Event: &machine.Event{Name: "message"}},
+			{Kind: instance.AskEvent, Location: "/acme/conversation", Key: key, Run: "a-client/4", To: "a-client/4", Event: &machine.Event{Name: "message"}},
 			{Kind: instance.AskEvent, Location: "/home/devices/boiler", To: "a-client/3", Event: &machine.Event{Name: "set"}},
-			{Kind: instance.AskEvent, Location: "/rook/chat", Key: "slack:C2", Undelivered: true, Text: "the limit of 2 runs at /rook/chat is reached", Event: &machine.Event{Name: "message"}},
+			{Kind: instance.AskEvent, Location: "/acme/conversation", Key: "slack:C2:U1:support", Undelivered: true, Text: "the limit of 2 runs at /acme/conversation is reached", Event: &machine.Event{Name: "message"}},
 			{Kind: instance.AskCall, Name: "weather", Location: "/home/weather", Run: "a-client/6", Job: &machine.Job{Input: map[string]any{"days": 2}}},
 			{Kind: instance.AskEvent, Client: "panel", Undelivered: true, Text: "a client has no inbox", Event: &machine.Event{Name: "ack"}},
 		}}
@@ -574,11 +606,11 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		said = append(said, r.Said())
 	}
 	if strings.Join(said, "\n") != strings.Join([]string{
-		"⇠ answer from /rook/chat#slack:C1",
+		"⇠ answer from /acme/conversation#slack:C1:U1:support",
 		"⇠ poke from client:panel",
-		"⇢ sent message to /rook/chat#slack:C1 · started chat",
+		"⇢ sent message to /acme/conversation#slack:C1:U1:support · started conversation",
 		"⇢ sent set to /home/devices/boiler · boiler",
-		"⇢ sent message to /rook/chat#slack:C2 · undelivered",
+		"⇢ sent message to /acme/conversation#slack:C2:U1:support · undelivered",
 		"⇢ called /home/weather · weather",
 		"⇢ sent ack to client:panel · undelivered",
 	}, "\n") {
@@ -595,19 +627,19 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	if linkIn(rows[0]) != "a-client/4" || linkIn(rows[1]) != "" || linkIn(rows[2]) != "a-client/4" || linkIn(rows[3]) != "a-client/3" || linkIn(rows[5]) != "a-client/6" {
 		t.Errorf("the sends link to %q %q %q %q %q", linkIn(rows[0]), linkIn(rows[1]), linkIn(rows[2]), linkIn(rows[3]), linkIn(rows[5]))
 	}
-	if rows[4].Facts[len(rows[4].Facts)-1].Text != "the limit of 2 runs at /rook/chat is reached" || rows[5].In == nil || rows[2].Kind != "send" || rows[4].Kind != "send undelivered" || rows[0].Kind != "got" {
+	if rows[4].Facts[len(rows[4].Facts)-1].Text != "the limit of 2 runs at /acme/conversation is reached" || rows[5].In == nil || rows[2].Kind != "send" || rows[4].Kind != "send undelivered" || rows[0].Kind != "got" {
 		t.Errorf("an undelivered send says %+v as %q, and a call was given %v", rows[4].Facts, rows[4].Kind, rows[5].In)
 	}
 	said = nil
-	for _, l := range lines(sends, "listen", sent) {
+	for _, l := range lines(sends, "slack-listen", sent) {
 		said = append(said, l.Text)
 	}
 	if strings.Join(said, "\n") != strings.Join([]string{
-		"answer from /rook/chat#slack:C1 a-client/4",
+		"answer from /acme/conversation#slack:C1:U1:support a-client/4",
 		"poke from client:panel",
-		"send message to /rook/chat#slack:C1 · started a-client/4",
+		"send message to /acme/conversation#slack:C1:U1:support · started a-client/4",
 		"send set to /home/devices/boiler · a-client/3",
-		"send message to /rook/chat#slack:C2 · undelivered: the limit of 2 runs at /rook/chat is reached",
+		"send message to /acme/conversation#slack:C2:U1:support · undelivered: the limit of 2 runs at /acme/conversation is reached",
 		"send ack to client:panel · undelivered: a client has no inbox",
 	}, "\n") {
 		t.Errorf("the record of the sends says\n%s", strings.Join(said, "\n"))
@@ -619,7 +651,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		t.Errorf("a step's time is %q", rows[0].Time)
 	}
 	started := rowsOf("a-client/4", []client.Entry{{ID: "a-client/4", Step: 1, Time: sent, Status: "running"}}, byID, nil, at, sent)
-	if len(started) != 1 || started[0].Said() != "started by /rook/bridges/slack" || linkIn(started[0]) != "a-client/1" {
+	if len(started) != 1 || started[0].Said() != "started by /acme/gromit/slack/gromit" || linkIn(started[0]) != "a-client/1" {
 		t.Errorf("a run a send started begins with %+v", started)
 	}
 
@@ -629,12 +661,12 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	// gives the run's key.
 	notes := []client.Entry{{ID: "a-client/1", Step: 4, Time: sent, Status: "running", Asks: []instance.Ask{
 		{Kind: instance.AskEvent, Location: "/home/devices/boiler", To: "a-client/3", Event: &machine.Event{Name: "off"}, Message: "a-client.1.00000004.0001.send"},
-		{Kind: instance.AskEvent, Location: "/rook/chat", Key: key, To: "a-client/7", Event: &machine.Event{Name: "message"}, Message: "a-client.1.00000004.0002.send"},
-		{Kind: instance.AskEvent, Location: "/rook/chat", To: "a-client/4", Direct: true, Event: &machine.Event{Name: "pong"}, Message: "a-client.1.00000004.0003.send"},
+		{Kind: instance.AskEvent, Location: "/acme/conversation", Key: key, To: "a-client/7", Event: &machine.Event{Name: "message"}, Message: "a-client.1.00000004.0002.send"},
+		{Kind: instance.AskEvent, Location: "/acme/conversation", To: "a-client/4", Direct: true, Event: &machine.Event{Name: "pong"}, Message: "a-client.1.00000004.0003.send"},
 	}}}
 	for i, n := range []struct{ message, text string }{
-		{"a-client.1.00000004.0001.send.note", "the event off sent to /home/devices/boiler was not delivered: /home/devices/boiler does not receive off from the run a-client/1 at /rook/bridges/slack"},
-		{"a-client.1.00000004.0002.send.moved.4", "the event message sent to /rook/chat#slack:C1 went to the run a-client/4, not a-client/7"},
+		{"a-client.1.00000004.0001.send.note", "the event off sent to /home/devices/boiler was not delivered: /home/devices/boiler does not receive off from the run a-client/1 at /acme/gromit/slack/gromit"},
+		{"a-client.1.00000004.0002.send.moved.4", "the event message sent to /acme/conversation#slack:C1:U1:support went to the run a-client/4, not a-client/7"},
 	} {
 		notes = append(notes, client.Entry{ID: "a-client/1", Step: 5 + i, Time: sent, Status: "running",
 			Events: []instance.Arrived{{Event: machine.Event{Name: "note", Data: n.text}, Source: "ctl/inbox/ctl/" + n.message, Own: true}},
@@ -647,12 +679,12 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	}
 	if strings.Join(said, "\n") != strings.Join([]string{
 		"⇢ sent off to /home/devices/boiler · undelivered",
-		"⇢ sent message to /rook/chat#slack:C1 · chat",
-		"⇢ sent pong to /rook/chat#slack:C1 · chat",
+		"⇢ sent message to /acme/conversation#slack:C1:U1:support · conversation",
+		"⇢ sent pong to /acme/conversation#slack:C1:U1:support · conversation",
 	}, "\n") {
 		t.Errorf("the noted sends are\n%s", strings.Join(said, "\n"))
 	}
-	if len(rows) == 3 && (rows[0].Facts[len(rows[0].Facts)-1].Text != "/home/devices/boiler does not receive off from the run a-client/1 at /rook/bridges/slack" || linkIn(rows[1]) != "a-client/4" || linkIn(rows[0]) != "") {
+	if len(rows) == 3 && (rows[0].Facts[len(rows[0].Facts)-1].Text != "/home/devices/boiler does not receive off from the run a-client/1 at /acme/gromit/slack/gromit" || linkIn(rows[1]) != "a-client/4" || linkIn(rows[0]) != "") {
 		t.Errorf("an undelivered send says %+v, and a moved one links to %q", rows[0].Facts, linkIn(rows[1]))
 	}
 
@@ -668,7 +700,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		ended := func(data string) []instance.Arrived {
 			return []instance.Arrived{{Event: machine.Event{Name: end, From: "answering", Data: data}}}
 		}
-		runs := map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "chat", Type: typ, Status: "running"}}
+		runs := map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "conversation", Type: typ, Status: "running"}}
 		return rowsOf("a-client/1", []client.Entry{
 			{ID: "a-client/1", Step: 1, Time: sent, Status: "running", Asks: []instance.Ask{job("answering", "a-client/2", "first")}},
 			{ID: "a-client/1", Step: 2, Time: sent, Status: "running", Events: ended("one"), Asks: []instance.Ask{job("answering#2", "a-client/3", "second")}},
@@ -694,7 +726,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		{ID: "a-client/1", Time: sent, Job: "hearing#2", Name: "late", Data: "no"},
 	}
 	cut, own := cutAt(record, &stepRow{Run: link{ID: "a-client/1"}, Step: 3})
-	if len(cut) != 3 || len(own) != 2 || lines(own[0], "listen", sent)[0].Text != "hearing#2 answer: yes" || own[1].Step != 3 {
+	if len(cut) != 3 || len(own) != 2 || lines(own[0], "slack-listen", sent)[0].Text != "hearing#2 answer: yes" || own[1].Step != 3 {
 		t.Errorf("step 3 is cut as %+v, and its details hold %+v", cut, own)
 	}
 
@@ -703,7 +735,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	for _, l := range pathOf(byID["a-client/5"], byID, under, map[string]fixed{"a-client/4": {}}) {
 		path = append(path, fmt.Sprintf("%s %q", l.Machine, l.Sent))
 	}
-	if strings.Join(path, ", ") != `listen "", chat "a send", message ""` {
+	if strings.Join(path, ", ") != `slack-listen "", conversation "a send", turn ""` {
 		t.Errorf("the path is %v", path)
 	}
 	if got := pathOf(byID["a-client/4"], byID, under, nil)[1].Sent; got != "a send or a call" {
@@ -918,23 +950,27 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 func Test_runs_a_child_is_named_by_its_title(t *testing.T) {
 	// A child with a title is named by it on its row and in Children, and
 	// one with none by its machine, though it is at its parent's location.
-	chat := run("c-client/1", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key = "/rook/chat", "slack:D1" })
-	titled := run("c-client/2", "message", "flow", "running", time.Minute, 0, func(r *client.Run) { r.Parent, r.Location, r.Title = chat.ID, "/rook/chat", "Zummed: hello" })
-	bare := run("c-client/4", "say", "flow", "running", 3*time.Minute, 0, func(r *client.Run) { r.Parent, r.Location = chat.ID, "/rook/chat" })
-	v := listOf([]*client.Run{chat, titled, bare}, noSteps, nil, narrowing{}, at, "")
+	conversation := run("c-client/1", "conversation", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key = "/acme/conversation", "slack:D1:U1:support" })
+	titled := run("c-client/2", "turn", "flow", "running", time.Minute, 0, func(r *client.Run) {
+		r.Parent, r.Location, r.Title = conversation.ID, "/acme/conversation", "Zummed: hello"
+	})
+	bare := run("c-client/4", "reply", "flow", "running", 3*time.Minute, 0, func(r *client.Run) { r.Parent, r.Location = conversation.ID, "/acme/conversation" })
+	v := listOf([]*client.Run{conversation, titled, bare}, noSteps, nil, narrowing{}, at, "")
 	var names []string
 	for _, r := range v.Busy.Lines[0].Rows[1:] {
 		names = append(names, r.Name)
 	}
-	if got := strings.Join(names, ", "); got != "say, Zummed: hello" || v.Busy.Lines[0].Name != "/rook/chat#slack:D1" {
+	if got := strings.Join(names, ", "); got != "reply, Zummed: hello" || v.Busy.Lines[0].Name != "/acme/conversation#slack:D1:U1:support" {
 		t.Errorf("the line %s unfolds to rows named %s", v.Busy.Lines[0].Name, got)
 	}
 	// A keyed run with a title is named by it, followed by its key.
-	dm := run("c-client/5", "chat", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Key, r.Title = "/rook/chat", "slack:D2", "Zummed in DM" })
+	dm := run("c-client/5", "conversation", "statechart", "running", time.Hour, 0, func(r *client.Run) {
+		r.Location, r.Key, r.Title = "/acme/conversation", "slack:D2:U1:support", "slack dm: hello"
+	})
 	for _, c := range []struct {
 		r              *client.Run
 		name, key, tip string
-	}{{titled, "Zummed: hello", "", "Zummed: hello\n/rook/chat\nc-client/2"}, {bare, "say", "", "/rook/chat\nc-client/4"}, {chat, "/rook/chat#slack:D1", "", "/rook/chat#slack:D1\nc-client/1"}, {dm, "Zummed in DM", "#slack:D2", "Zummed in DM\n/rook/chat#slack:D2\nc-client/5"}} {
+	}{{titled, "Zummed: hello", "", "Zummed: hello\n/acme/conversation\nc-client/2"}, {bare, "reply", "", "/acme/conversation\nc-client/4"}, {conversation, "/acme/conversation#slack:D1:U1:support", "", "/acme/conversation#slack:D1:U1:support\nc-client/1"}, {dm, "slack dm: hello", "#slack:D2:U1:support", "slack dm: hello\n/acme/conversation#slack:D2:U1:support\nc-client/5"}} {
 		if got := childOf(c.r, at); got.Name != c.name || got.Key != c.key || got.Tip != c.tip || got.Machine != c.r.Machine {
 			t.Errorf("Children lists %s as %+v", c.r.ID, got)
 		}
@@ -1149,7 +1185,7 @@ func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
 		status string
 		follow bool
 	}{{"running", true}, {"done", false}} {
-		html, err := render("steps", runView{Run: run("a-client/1", "chat", "statechart", c.status, time.Hour, 0, nil)})
+		html, err := render("steps", runView{Run: run("a-client/1", "conversation", "statechart", c.status, time.Hour, 0, nil)})
 		if err != nil {
 			t.Fatal(err)
 		}

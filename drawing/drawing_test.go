@@ -285,12 +285,12 @@ func Test_drawing_arrows_and_chips_are_apart(t *testing.T) {
 
 type point struct{ x, y float64 }
 
-// A segment is a straight piece of an arrow, across or down.
+// A segment is a straight part of an arrow, across or down.
 type segment struct{ p, q point }
 
 type rect struct{ x, y, w, h float64 }
 
-// geometry reads a drawing's arrows, each as its straight pieces, and its
+// geometry reads a drawing's arrows, each as its segments, and its
 // chips, cards and holders.
 func geometry(t *testing.T, svg string) ([][]segment, []rect, []rect, []rect) {
 	t.Helper()
@@ -335,8 +335,7 @@ func geometry(t *testing.T, svg string) ([][]segment, []rect, []rect, []rect) {
 	return lines, rects(`<rect class="chip[^"]*"`), cards, rects(`holder"><rect`)
 }
 
-// passes says a piece of an arrow goes through the inside of a box, grown
-// by grow.
+// passes says a segment goes through the inside of a box, grown by grow.
 func passes(b rect, s segment, grow float64) bool {
 	x0, y0, x1, y1 := b.x-grow, b.y-grow, b.x+b.w+grow, b.y+b.h+grow
 	if s.p.y == s.q.y {
@@ -345,7 +344,7 @@ func passes(b rect, s segment, grow float64) bool {
 	return s.p.x > x0 && s.p.x < x1 && max(s.p.y, s.q.y) > y0 && min(s.p.y, s.q.y) < y1
 }
 
-// overlap says two pieces of arrows run along one line for more than a
+// overlap says two segments run along one line for more than a
 // point.
 func overlap(a, b segment) bool {
 	if a.p.y == a.q.y && b.p.y == b.q.y && math.Abs(a.p.y-b.p.y) < 1 {
@@ -357,7 +356,7 @@ func overlap(a, b segment) bool {
 	return false
 }
 
-// on says a point is on a piece of an arrow.
+// on says a point is on a segment.
 func on(p point, s segment) bool {
 	return p.x >= min(s.p.x, s.q.x)-0.5 && p.x <= max(s.p.x, s.q.x)+0.5 && p.y >= min(s.p.y, s.q.y)-0.5 && p.y <= max(s.p.y, s.q.y)+0.5
 }
@@ -461,8 +460,8 @@ func Test_drawing_run_is_marked_on_the_drawing(t *testing.T) {
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 tools:
-  shelf: { does: a shelf, args: { shelf: string }, job: ./w.js }
-  helper: { does: a helper, args: { topic: string }, job: { machine: ./two.yaml } }
+  shelf: { description: a shelf, args: { shelf: string }, job: ./w.js }
+  helper: { description: a helper, args: { topic: string }, job: { machine: ./two.yaml } }
 `, map[string]string{"w.js": script, "two.yaml": "flow: two\nstages:\n  a: { job: ./w.js }\n"})
 	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: map[string]any{"turn": 2.0, "waiting": "tools"}, Asked: []string{"shelf"}}}, Going: []string{"shelf"}})
 	if got := group(t, svg, "shelf"); got != "state tool now" {
@@ -487,26 +486,26 @@ tools:
 
 	// An agent waiting on the ask: the ask is going, the tool it holds is
 	// held, and a tool used at an earlier step is done. Each ask is named by
-	// where it is written: the part's ask is going, and the agent's never
+	// where it is written: the toolkit's ask is going, and the agent's never
 	// ran.
 	helper := definition(t, `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 ask: { machine: ./own.yaml }
 tools:
-  look: { does: looks, job: ./w.js }
-  idle: { does: idles, job: ./w.js }
-open:
+  look: { description: looks, job: ./w.js }
+  idle: { description: idles, job: ./w.js }
+toolkits:
   messages:
-    does: messages
+    description: messages
     ask: { machine: ./approval.yaml }
     tools:
-      tell: { does: tells someone, job: { script: ./w.js, approve: true } }
+      tell: { description: tells someone, job: { script: ./w.js, approve: true } }
 `, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n", "own.yaml": "flow: own\nstages:\n  a: { job: ./w.js }\n"})
 	svg = draw(t, helper, &Run{
-		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"open.messages.ask"}}},
-		Going: []string{"tell", "open.messages.ask"}, Held: []string{"tell"},
-		Children: map[string]Child{"open.messages.ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
+		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"toolkits.messages.ask"}}},
+		Going: []string{"tell", "toolkits.messages.ask"}, Held: []string{"tell"},
+		Children: map[string]Child{"toolkits.messages.ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
 	})
 	for name, want := range map[string]string{"tell": "state tool held", "look": "state tool done", "idle": "state tool never"} {
 		if got := group(t, svg, name); got != want {
@@ -519,10 +518,10 @@ open:
 		got = append(got, a[1]+": "+a[2])
 	}
 	if strings.Join(got, "; ") != "state ask now: flow: approval; state ask never: machine: ./own.yaml" {
-		t.Errorf("the part's ask and the agent's are drawn as %q", got)
+		t.Errorf("the toolkit's ask and the agent's are drawn as %q", got)
 	}
 	if strings.Count(svg, `href="/run/a-client/2"`) != 1 {
-		t.Errorf("the run the part's ask started is linked from another card:\n%s", svg)
+		t.Errorf("the run the toolkit's ask started is linked from another card:\n%s", svg)
 	}
 
 	// A run that ended: a flow's stage still running is marked by how the run
@@ -592,13 +591,13 @@ model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 limits: { turns: 7 }
 tools:
-  look: { does: looks at a thing, job: ./w.js }
-open:
+  look: { description: looks at a thing, job: ./w.js }
+toolkits:
   messages:
-    does: messages
+    description: messages
     ask: { machine: ./approval.yaml }
     tools:
-      tell: { does: tells someone, job: { script: ./w.js, approve: true } }
+      tell: { description: tells someone, job: { script: ./w.js, approve: true } }
 `, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
 	svg, _ := Draw(def, nil)
 	_, model := centre(t, svg, "claude-sonnet-5-5")
@@ -616,11 +615,11 @@ open:
 		}
 	}
 	x := func(name string) float64 { v, _ := centre(t, svg, name); return v }
-	if tools, parts := regexp.MustCompile(`class="name"[^>]*>tools<`).FindStringIndex(text), regexp.MustCompile(`class="name"[^>]*>messages<`).FindStringIndex(text); parts == nil || tools == nil {
-		t.Errorf("the part and the tools are not held in boxes of their own")
+	if tools, toolkits := regexp.MustCompile(`class="name"[^>]*>tools<`).FindStringIndex(text), regexp.MustCompile(`class="name"[^>]*>messages<`).FindStringIndex(text); toolkits == nil || tools == nil {
+		t.Errorf("the toolkit and the tools are not held in boxes of their own")
 	}
 	if x("tell") == x("look") {
-		t.Errorf("the part and the tools are not side by side")
+		t.Errorf("the toolkit and the tools are not side by side")
 	}
 	if n := strings.Count(text, `class="edge`); n != 2 {
 		t.Errorf("%d arrows, and an agent has one from its model to its tools and one to its reply:\n%s", n, text)
@@ -629,6 +628,24 @@ open:
 	for _, svg := range []string{text, string(running)} {
 		if strings.Contains(svg, "blob_read") || strings.Contains(svg, ">open<") {
 			t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
+		}
+	}
+
+	// A toolkit included from a file gives that file in its tooltip: the
+	// file its tools are written in, or its description: where it has none.
+	def = definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+toolkits:
+  messages: { include: ./messages.yaml }
+  notes: { include: ./notes.yaml }
+`, map[string]string{"w.js": script,
+		"messages.yaml": "description: messages\ntools:\n  tell: { description: tells, job: ./w.js }\n",
+		"notes.yaml":    "description: notes\ntools: {}\n"})
+	text = draw(t, def, nil)
+	for _, want := range []string{">messages</text><title>messages.yaml</title>", ">notes</text><title>notes.yaml</title>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("a toolkit's tooltip does not give its file, %s:\n%s", want, text)
 		}
 	}
 }
@@ -734,49 +751,49 @@ func must(svg template.HTML, err error) template.HTML {
 	return svg
 }
 
-func Test_drawing_unused_part_is_folded(t *testing.T) {
+func Test_drawing_unused_toolkit_is_folded(t *testing.T) {
 	def := definition(t, `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 tools:
-  look: { does: looks, job: ./w.js }
-open:
+  look: { description: looks, job: ./w.js }
+toolkits:
   bins:
-    does: bins
+    description: bins
     tools:
-      days: { does: bin days, job: ./w.js }
-      put: { does: puts out, job: ./w.js }
+      days: { description: bin days, job: ./w.js }
+      put: { description: puts out, job: ./w.js }
   home:
-    does: home
+    description: home
     tools:
-      lights: { does: lights, job: ./w.js }
+      lights: { description: lights, job: ./w.js }
   net:
-    does: net
+    description: net
     tools:
-      ping: { does: pings, job: ./w.js }
+      ping: { description: pings, job: ./w.js }
   servers:
-    does: servers
+    description: servers
     tools:
-      disk: { does: disks, job: ./w.js }
+      disk: { description: disks, job: ./w.js }
 `, map[string]string{"w.js": script})
 	svg := draw(t, def, &Run{Steps: []Step{{Asked: []string{"lights"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"ping"}}}, Going: []string{"ping"}})
-	for name, want := range map[string]string{"bins": "state holder part folded", "servers": "state holder part folded", "home": "state holder part", "net": "state holder part"} {
+	for name, want := range map[string]string{"bins": "state holder toolkit folded", "servers": "state holder toolkit folded", "home": "state holder toolkit", "net": "state holder toolkit"} {
 		if got := group(t, svg, name); got != want {
-			t.Errorf("part %s is drawn as %q, not %q", name, got, want)
+			t.Errorf("toolkit %s is drawn as %q, not %q", name, got, want)
 		}
 	}
 	for _, hidden := range []string{">days</text>", ">put</text>", ">disk</text>"} {
 		if strings.Contains(svg, hidden) {
-			t.Errorf("a tool of a folded part is drawn as a card: %s", hidden)
+			t.Errorf("a tool of a folded toolkit is drawn as a card: %s", hidden)
 		}
 	}
 	if !strings.Contains(svg, ">2 tools<") || !strings.Contains(svg, "<title>days, put</title>") {
-		t.Errorf("a folded part does not give how many tools it has and name them")
+		t.Errorf("a folded toolkit does not give how many tools it has and name them")
 	}
-	at := func(part string) (float64, float64) {
-		m := regexp.MustCompile(`<rect x="([0-9.]+)" y="([0-9.]+)"[^>]*/><text class="name"[^>]*>` + part + `<`).FindStringSubmatch(svg)
+	at := func(toolkit string) (float64, float64) {
+		m := regexp.MustCompile(`<rect x="([0-9.]+)" y="([0-9.]+)"[^>]*/><text class="name"[^>]*>` + toolkit + `<`).FindStringSubmatch(svg)
 		if m == nil {
-			t.Fatalf("part %s has no holder", part)
+			t.Fatalf("toolkit %s has no holder", toolkit)
 		}
 		x, _ := strconv.ParseFloat(m[1], 64)
 		y, _ := strconv.ParseFloat(m[2], 64)
@@ -788,15 +805,15 @@ open:
 	nx, _ := at("net")
 	lx, _ := centre(t, template.HTML(svg), "look")
 	if bx != sx || sy <= by {
-		t.Errorf("the folded parts are not one below another: bins at %v,%v and servers at %v,%v", bx, by, sx, sy)
+		t.Errorf("the folded toolkits are not one below another: bins at %v,%v and servers at %v,%v", bx, by, sx, sy)
 	}
 	if !(hx < nx && nx < lx && lx < bx) {
-		t.Errorf("the folded parts are not after the others: home %v, net %v, look %v, folded %v", hx, nx, lx, bx)
+		t.Errorf("the folded toolkits are not after the others: home %v, net %v, look %v, folded %v", hx, nx, lx, bx)
 	}
 
 	page, _ := Draw(def, nil)
 	if strings.Contains(string(page), "folded") || !strings.Contains(string(page), ">disk</text>") {
-		t.Errorf("a drawing of no run folds a part")
+		t.Errorf("a drawing of no run folds a toolkit")
 	}
 }
 
@@ -827,5 +844,106 @@ stages:
 	run := draw(t, def, &Run{Children: map[string]Child{"weather": {ID: "lab/7", Machine: "weather", Type: "flow"}}})
 	if !strings.Contains(run, `<a href="/run/lab/7">`) || !strings.Contains(run, ">flow: weather<") || !strings.Contains(run, ">call: services/weather<") {
 		t.Errorf("a call's card does not link to the run it called:\n%s", run)
+	}
+}
+
+func Test_drawing_conditions_approvals_and_calls_are_marked(t *testing.T) {
+	// A toolkit or a tool with when: has a dashed border and its condition
+	// in its tooltip.
+	def := definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+toolkits:
+  orders:
+    include: ./orders.yaml
+    when: "${input.asker.scopes.includes('orders')}"
+  notes:
+    description: notes
+    tools:
+      jot: { description: jots, job: ./w.js }
+tools:
+  look: { description: looks, job: ./w.js, when: "${input.look}" }
+`, map[string]string{"w.js": script, "orders.yaml": "description: orders\ntools:\n  read: { description: reads, job: ./w.js }\n"})
+	svg := draw(t, def, nil)
+	for _, want := range []string{
+		`<g class="state holder toolkit when"><rect`,
+		`>orders</text><title>orders.yaml` + "\n" + `when: input.asker.scopes.includes(&#39;orders&#39;)</title>`,
+		`<g class="state holder toolkit"><rect`,
+		"<title>looks\nwhen: input.look</title>",
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("the drawing does not hold %q:\n%s", want, svg)
+		}
+	}
+	if got := group(t, svg, "look"); got != "state tool when" {
+		t.Errorf("a tool with when: is drawn as %q", got)
+	}
+	if got := group(t, svg, "jot"); got != "state tool" {
+		t.Errorf("a tool with no when: is drawn as %q", got)
+	}
+	folded := draw(t, def, &Run{Steps: []Step{{Asked: []string{"jot"}}}})
+	if !strings.Contains(folded, `<g class="state holder toolkit when folded">`) || !strings.Contains(folded, "<title>read\nwhen: input.asker") {
+		t.Errorf("a folded toolkit with when: is not dashed with its condition:\n%s", folded)
+	}
+
+	// A job of any machine with approve: true says so, and a stage or a
+	// state whose job is held for the ask is marked held.
+	flow := definition(t, `flow: deploy
+ask: { machine: ./approval.yaml }
+stages:
+  plan: { job: ./w.js }
+  ship: { job: { script: ./w.js, approve: true }, follows: [plan] }
+  pipeline: { job: { call: { at: ci/pipeline }, approve: true }, follows: [plan] }
+  later: { job: { call: { at: "${input.at}" } }, follows: [plan] }
+  far: { job: { call: { at: /work/ci/pipeline } }, follows: [plan] }
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
+	if strings.Count(svg, ">approve: true<") != 2 {
+		t.Errorf("the jobs with approve: true do not say so:\n%s", svg)
+	}
+	for name, want := range map[string]string{"ship": "state stage held", "pipeline": "state stage now"} {
+		if got := group(t, svg, name); got != want {
+			t.Errorf("stage %s is drawn as %q, not %q", name, got, want)
+		}
+	}
+	chart := definition(t, `statechart: deploys
+ask: { machine: ./approval.yaml }
+initial: shipping
+states:
+  shipping:
+    job: { script: ./w.js, approve: true }
+    on: { done: over }
+  over: { end: done }
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+	svg = draw(t, chart, &Run{Steps: []Step{{Shown: states("shipping")}}, Going: []string{"shipping"}, Held: []string{"shipping"}})
+	if got := group(t, svg, "shipping"); got != "state held" || !strings.Contains(svg, ">approve: true<") {
+		t.Errorf("a state whose job is held is drawn as %q:\n%s", got, svg)
+	}
+
+	// On the Machines page a call's card links to the machine at the
+	// location it writes out; one an expression gives has no link.
+	draft, err := machine.Parse([]byte(`flow: deploy
+stages:
+  pipeline: { job: { call: { at: ci/pipeline } } }
+  later: { job: { call: { at: "${input.at}" } } }
+  gone: { job: { call: { at: ci/gone } } }
+`), machine.Given(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	u := Unfold{Href: func(string) string { return "" }, Called: func(at string) string {
+		asked = append(asked, at)
+		if at == "ci/pipeline" {
+			return "/machines?file=ci/pipeline.yaml"
+		}
+		return ""
+	}}
+	page := string(must(Unfolded(draft, u)))
+	if !strings.Contains(page, `<a href="/machines?file=ci/pipeline.yaml"><g class="state stage">`) || strings.Count(page, "<a href") != 1 {
+		t.Errorf("a call's card does not link to the machine it calls:\n%s", page)
+	}
+	if slices.Contains(asked, "${input.at}") {
+		t.Errorf("a location an expression gives is looked up: %v", asked)
 	}
 }

@@ -1,12 +1,14 @@
 // Package machines is the Machines page: the machines in one directory, each
-// drawn and shown as text, with the problems Corbie finds in them. The Parts
-// page shows the same directory from the tools up. Both only read.
+// drawn and shown as text, with the problems Corbie finds in them. The
+// Toolkits page shows the same directory from the tools up. Both only read.
 package machines
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"embed"
+	"encoding/json/v2"
 	"fmt"
 	"html/template"
 	"maps"
@@ -23,6 +25,7 @@ import (
 	"github.com/zummed/corbie-ui/controller"
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/machine"
@@ -51,7 +54,7 @@ type handler struct {
 	index *indexed
 }
 
-//go:embed machines.html parts.html machines.js
+//go:embed machines.html toolkits.html machines.js
 var files embed.FS
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
@@ -59,15 +62,16 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"plural": plural,
 	"short":  short,
 	"join":   func(s []string) string { return strings.Join(s, ", ") },
-}).ParseFS(files, "machines.html", "parts.html"))
+	"isDir":  func(p string) bool { return strings.HasSuffix(p, "/") },
+}).ParseFS(files, "machines.html", "toolkits.html"))
 
-// Pages is the Machines and Parts pages.
+// Pages is the Machines and Toolkits pages.
 type Pages struct {
 	http.Handler
 	h *handler
 }
 
-// New gives the Machines and Parts pages.
+// New gives the Machines and Toolkits pages.
 func New(c Config) (*Pages, error) {
 	d, err := newDir(c.Dir)
 	if err != nil {
@@ -77,8 +81,8 @@ func New(c Config) (*Pages, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
-	mux.HandleFunc("GET /parts", h.showParts)
-	mux.HandleFunc("GET /parts/stream", h.streamParts)
+	mux.HandleFunc("GET /toolkits", h.showToolkits)
+	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
 	mux.HandleFunc("GET /machines/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		data, _ := files.ReadFile("machines.js")
@@ -115,7 +119,8 @@ func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) 
 }
 
 // view is the Machines page as it is drawn. View is the tab chosen:
-// drawing, text or written.
+// drawing, text or written. File is the file chosen where it is no machine
+// and is listed in .corbieignore or included.
 type view struct {
 	Dir, DirFull string
 	*index
@@ -129,21 +134,22 @@ type view struct {
 	Found      []problem
 	Place      *place
 	Uses       []use
-	Piece      bool
+	File       *entry
 	Included   []string
 	Controller bool
 	Runs       bool
 	Drawing    template.HTML
 }
 
-// A place is where a machine lives and how its runs start, as its file
-// says: its location, its lifetime, what a changed file does to its runs,
-// how many may run at once, who may send to it and call it, and the
-// locations it may send to and call.
+// A place is what a machine is for, where it lives and how its runs start,
+// as its file says: its description, its location, its lifetime, what a
+// changed file does to its runs, how many may run at once, who may send to
+// it and call it, the locations it may send to and call, and the
+// permissions a job uses only after its ask approves.
 type place struct {
-	Location, Lifetime, Started, Update, Updated string
-	Runs                                         int
-	Receives, Sends                              []string
+	Description, Location, Lifetime, Started, Update, Updated string
+	Runs                                                      int
+	Receives, Sends, Approve                                  []string
 }
 
 // A use is a secret or a value a machine uses, and, acting as the
@@ -200,7 +206,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		v.Piece = ix.piece(v.Open)
+		v.File = ix.file(v.Open)
 		v.Included = ix.included[v.Open]
 		switch {
 		case v.Drawable && v.View == "written":
@@ -211,7 +217,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 			for _, at := range q["open"] {
 				open[at] = true
 			}
-			u := drawing.Unfold{Open: open, Href: hrefs(v.Open, open)}
+			u := drawing.Unfold{File: v.Open, Open: open, Href: hrefs(v.Open, open), Called: ix.called}
 			if v.Drawing, err = drawing.Unfolded(m.Draft, u); err != nil {
 				page.Error(w, http.StatusInternalServerError, err.Error())
 				return
@@ -230,7 +236,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 	page.Write(w, s)
 }
 
-// opened reads the file chosen, its type and first line, the problems found in
+// opened reads the file chosen, its type and name, the problems found in
 // it, and the mark by which the page knows any of them changed.
 func (h *handler) opened(v *view) ([]byte, error) {
 	src, base, err := h.dir.read(v.Open)
@@ -243,11 +249,11 @@ func (h *handler) opened(v *view) ([]byte, error) {
 			base += m.Draft.Hash() + fmt.Sprint(m.Draft.Definition.Lines)
 		}
 		var name string
-		v.Kind, name = firstLine(src)
+		v.Kind, name = typeIn(src)
 		if m.Draft != nil {
 			v.Kind, name = m.Draft.Definition.Type, m.Draft.Definition.Name
 		}
-		v.First = v.Kind + ": " + name
+		v.First = cmp.Or(typeAndName(v.Kind, name), "a machine")
 	}
 	v.Base = hash(fmt.Appendf([]byte(base), "%v%v", v.Found, v.index.included[v.Open]))
 	return src, nil
@@ -256,28 +262,61 @@ func (h *handler) opened(v *view) ([]byte, error) {
 // placeOf gives where a machine lives and how its runs start.
 func placeOf(m *client.Machine) *place {
 	def := m.Draft.Definition
-	p := &place{Location: m.Location, Lifetime: def.Lifetime, Update: def.Update, Runs: def.Runs}
+	p := &place{Description: def.Description, Location: m.Location, Lifetime: def.Lifetime, Update: def.Update, Runs: def.Runs, Approve: def.Approve}
 	p.Started = startedBy(def.Lifetime, m.Location)
 	p.Updated = "a changed file leaves its runs to finish on the definition they started with"
 	if def.Update == machine.UpdateRestart {
 		p.Updated = "a changed file cancels its runs"
 	}
 	for _, event := range sortedKeys(def.Receive) {
-		from := strings.Join(def.Receive[event], ", ")
+		from := cmp.Or(strings.Join(def.Receive[event], ", "), "none")
 		if event == "" {
 			p.Receives = append(p.Receives, "every event from "+from)
 		} else {
 			p.Receives = append(p.Receives, event+" from "+from)
 		}
 	}
+	tools := calledBy(def)
 	for _, entry := range def.Allow {
 		if to, ok := strings.CutPrefix(entry, "send:"); ok {
-			p.Sends = append(p.Sends, sendsTo(to))
+			p.Sends = append(p.Sends, sendsTo(to)+byTools(tools[to]))
+			delete(tools, to)
 		} else if entry == "all" {
 			p.Sends = append(p.Sends, "all (every location)")
 		}
 	}
+	for _, at := range sortedKeys(tools) {
+		p.Sends = append(p.Sends, at+byTools(tools[at]))
+	}
 	return p
+}
+
+// calledBy gives the location each tool of an agent written `call:` calls,
+// which the tool may send to, with the tools that call it.
+func calledBy(def *machine.Definition) map[string][]string {
+	var a agent.Agent
+	if def.Type != "agent" || json.Unmarshal(def.Body, &a) != nil {
+		return nil
+	}
+	tools := map[string][]string{}
+	for _, name := range sortedKeys(a.Tools) {
+		if at := a.Tools[name].Call; at != "" {
+			tools[at] = append(tools[at], name)
+		}
+	}
+	return tools
+}
+
+// byTools gives the note on a location the tools named call, or nothing
+// where none does.
+func byTools(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return " (by the tool " + names[0] + ")"
+	}
+	return " (by the tools " + strings.Join(names, ", ") + ")"
 }
 
 // sendsTo gives a send: entry as written, with what a pattern of every
@@ -415,7 +454,7 @@ type codeLine struct {
 	Bad   bool
 }
 
-// A span is a piece of a line: a key, an expression, a comment, or plain,
+// A span is part of a line: a key, an expression, a comment, or plain,
 // and where it links to.
 type span struct {
 	Class, Text, Href string

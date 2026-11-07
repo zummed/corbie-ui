@@ -40,13 +40,13 @@ A UI listens on this computer only, and refuses a `--listen` address of any othe
 ## What each party opens
 
 ```
-the directory   Machines and Parts, to read; every UI but none
+the directory   Machines and Toolkits, to read; every UI but none
 no party        Runs, with every run's status; /metrics
 client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value
 controller      Controller, with its trees, secrets and values; cancelling any run
 ```
 
-With nothing named after `corbie ui`, a store that cannot be opened leaves the directory alone: the UI prints why, and offers Machines and Parts. A party or `none` named needs the store, and the UI refuses to start without it.
+With nothing named after `corbie ui`, a store that cannot be opened leaves the directory alone: the UI prints why, and offers Machines and Toolkits. A party or `none` named needs the store, and the UI refuses to start without it.
 
 A page or an action the UI's parties may not use is not offered, and a request for one is refused. What the store lets the parties read limits the rest.
 

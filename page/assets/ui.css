@@ -139,9 +139,9 @@ table.list { width: 100%; border-collapse: collapse; font: 400 13px/1 var(--mono
 .list tr.moved td { animation: moved 1.2s var(--ease); }
 /* a list of links: one row for each, with an icon, a name, a count at the right and an optional second dim line */
 div.list { font: 400 13px/1.3 var(--mono); }
-div.list > a { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; column-gap: 9px; row-gap: 3px; min-height: 31px; padding: 6px 16px; border-bottom: 1px solid var(--line); transition: background .15s; }
-div.list > a > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-div.list > a > small { grid-column: 2 / -1; font-size: 11.5px; color: var(--ink2); }
+div.list > a, div.list > .row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; column-gap: 9px; row-gap: 3px; min-height: 31px; padding: 6px 16px; border-bottom: 1px solid var(--line); transition: background .15s; }
+div.list > a > *, div.list > .row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+div.list > a > small, div.list > .row > small { grid-column: 2 / -1; font-size: 11.5px; color: var(--ink2); }
 div.list > a:hover { background: var(--hover); }
 div.list > a[aria-current] { background: color-mix(in srgb, var(--ink) 9%, var(--plate)); }
 div.list > a[aria-current] .name { font-weight: 500; }
@@ -383,7 +383,8 @@ svg.machine { flex: none; height: auto; }
 .machine a:hover text.fold { fill: var(--accent); }
 .machine .tag { font: 500 10.5px var(--mono); fill: var(--accent); }
 .machine .holder > rect { fill: color-mix(in srgb, var(--plate) 50%, transparent); stroke: var(--line); stroke-width: 1; }
-.machine .holder.part > rect { fill: var(--paper); }
+.machine .holder.toolkit > rect { fill: var(--paper); }
+.machine .holder.when > rect { stroke-dasharray: 5 3; }
 .machine .holder .name { font: 500 12px var(--mono); fill: var(--ink2); }
 .machine .start { fill: var(--ink2); }
 .machine .edge { fill: none; stroke: color-mix(in srgb, var(--ink2) 55%, var(--paper)); stroke-width: 1.3; }
@@ -405,6 +406,8 @@ svg.machine { flex: none; height: auto; }
 .files .unread { color: var(--rowan); }
 .files .unread a { text-decoration: underline; text-underline-offset: 3px; }
 .files h2.kind { margin: 0; padding: 18px 16px 8px; border-bottom: 1px solid var(--line); }
+.files h2.kind a { float: right; font: 400 11.5px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink2); }
+.files h2.kind a:hover, .files h2.kind a[aria-current] { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .files h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files .bad { min-width: 19px; height: 19px; padding: 0 6px; border-radius: 999px; font: 500 11px/19px var(--mono); text-align: center; color: var(--rowan); background: color-mix(in srgb, var(--rowan) 15%, transparent); }
 .files .chip { height: 19px; padding: 0 8px; border-radius: 999px; font: 500 11px/19px var(--sans); color: var(--ink2); background: var(--hover); white-space: nowrap; }
@@ -421,6 +424,7 @@ svg.machine { flex: none; height: auto; }
 .view > section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .view > .drawn { flex: 1 0 auto; border: 0; }
 .view .named { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 18px; font: 12.5px/1.4 var(--mono); overflow-wrap: anywhere; }
+.place .description { margin: 0 0 10px; font: 13px/1.5 var(--mono); }
 .uses p { margin: 10px 0 0; font-size: 12px; }
 .included { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 12.5px var(--mono); }
 .included h2 { flex-basis: 100%; }
@@ -433,15 +437,16 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 .code .k { color: var(--accent); } .code .x { color: var(--amber); } .code .c { color: var(--ink2); }
 .code a.c:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .code .l:target { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.view.part > .body { max-width: 1040px; }
-.view.part .does { margin: 0 0 18px; font: 13px/1.5 var(--mono); }
-.view.part .opened td { vertical-align: middle; padding-block: 6px; }
-.view.part .opened td.wrap { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.view.part .start { display: inline-flex; align-items: center; gap: 7px; }
-.view.part small { font: 11.5px var(--mono); color: var(--ink2); }
-.view.part > .body > p.dim { margin: 0; font: 13px var(--mono); }
-.view.part .body h2 { margin-top: 26px; }
-.view.part .approve, .tool .approve { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); white-space: nowrap; }
+.view.toolkit > .body { max-width: 1040px; }
+.view.toolkit .description { margin: 0 0 18px; font: 13px/1.5 var(--mono); }
+.view.toolkit .offered td { vertical-align: middle; padding-block: 6px; }
+.view.toolkit .offered td.wrap { line-height: 1.6; }
+.view.toolkit .offered td.wrap .start { margin-right: 14px; }
+.view.toolkit .start { display: inline-flex; align-items: center; gap: 7px; }
+.view.toolkit small { font: 11.5px var(--mono); color: var(--ink2); }
+.view.toolkit > .body > p.dim { margin: 0; font: 13px var(--mono); }
+.view.toolkit .body h2 { margin-top: 26px; }
+.view.toolkit .approve, .tool .approve { padding: 2px 8px; border-radius: 999px; font: 500 11px var(--sans); color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); white-space: nowrap; }
 .toolcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 .tool { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--plate); }
 .tool .bar { display: flex; align-items: center; gap: 8px; }
@@ -449,10 +454,13 @@ pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 
 .tool .approve { margin-left: auto; }
 .tool p { display: -webkit-box; margin: 8px 0 0; overflow: hidden; font: 12.5px/1.45 var(--sans); color: var(--ink2); -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .tool p.job { display: block; font: 11.5px var(--mono); }
+.tool.when { border-style: dashed; }
+.view.toolkit .instructions { margin: -10px 0 18px; font: 12.5px/1.5 var(--mono); color: var(--ink2); }
+.view.toolkit code.when { margin-left: 8px; font: 11.5px var(--mono); color: var(--ink2); }
 @media (max-width: 760px) {
   .ide { grid-template-columns: minmax(0, 1fr); }
   .ide > .handle { display: none; }
-  .view.part .opened { display: block; overflow-x: auto; }
+  .view.toolkit .offered { display: block; overflow-x: auto; }
 }
 
 /* controller */

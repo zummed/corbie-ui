@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
+	"go.yaml.in/yaml/v3"
 )
 
 // A dir is the directory of machines: every path a request names is inside
@@ -133,22 +134,25 @@ func fromFile(file, name string) string {
 	return path.Clean(name)
 }
 
-// firstLine gives a definition's type and name from its first line that is
-// not a comment or the mark that begins a document, or nothing when it does
-// not begin as a definition does.
-func firstLine(src []byte) (string, string) {
-	for line := range strings.Lines(string(src)) {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "---" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		kind, name, ok := strings.Cut(line, ":")
-		if _, known := machine.TypeOf(strings.TrimSpace(kind)); !ok || !known {
-			return "", ""
-		}
-		return strings.TrimSpace(kind), strings.TrimSpace(name)
+// typeIn gives the type and name of a machine Corbie could not read: its one
+// key at the top level that names a type of machine, and that key's text, or
+// nothing where it has none or more than one.
+func typeIn(src []byte) (string, string) {
+	var top map[string]any
+	if yaml.Unmarshal(src, &top) != nil {
+		return "", ""
 	}
-	return "", ""
+	var kinds []string
+	for key := range top {
+		if _, known := machine.TypeOf(key); known {
+			kinds = append(kinds, key)
+		}
+	}
+	if len(kinds) != 1 {
+		return "", ""
+	}
+	name, _ := top[kinds[0]].(string)
+	return kinds[0], name
 }
 
 // sortedKeys gives a map's keys in order.
