@@ -20,6 +20,7 @@ import (
 type index struct {
 	Prefix   string
 	machines map[string]*client.Machine
+	located  map[string]string // the file of the machine at each location
 	own      map[string][]problem
 	Groups   []group
 	Files    []entry
@@ -72,7 +73,7 @@ func (c *indexed) current(at string) *index {
 // a tree at the prefix at, or at the prefix a submit gives it by default
 // where at is "".
 func (d *dir) index(at string) *index {
-	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, listed: map[string]bool{}, included: map[string][]string{}}
+	ix := &index{machines: map[string]*client.Machine{}, located: map[string]string{}, own: map[string][]problem{}, listed: map[string]bool{}, included: map[string][]string{}}
 	tree, err := client.ReadTree(d.root, at)
 	if err != nil {
 		ix.Unread = err.Error()
@@ -82,6 +83,9 @@ func (d *dir) index(at string) *index {
 	found := tree.Machines
 	for _, m := range found {
 		ix.machines[m.Path] = m
+		if m.Location != "" {
+			ix.located[m.Location] = m.Path
+		}
 		if m.Problem != nil {
 			ix.own[m.Path] = slices.SortedStableFunc(slices.Values(d.problemsOf(m.Path, m.Problem)), byPlace)
 		}

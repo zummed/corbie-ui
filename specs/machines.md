@@ -166,28 +166,41 @@ Acting as a client alone, it lists the names with no state, and one line gives t
 A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists every toolkit in the directory, with its `description:` and its count of tools, and shows the one chosen:
 
 ```
-messages                                toolkits/messages.yaml
+orders                                   toolkits/orders.yaml
 Drawing   Text
 
-Messages to the people this bot knows.
+The orders app.
+instructions toolkits/orders.md
 
-Offered by                              Started by
-helper  agents/helper.yaml              answer  transient: a call, or corbie run submit /bot/agents/helper, starts each run
+Offered by                                                         Started by
+support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, or corbie run submit /acme/agents/support, starts each run
 
-tell        needs approval
-Say a text to a person, by their name in people.yaml.
-machine tell.yaml
+read_file
+Read one file of a project.
+call gitlab/files/read
+input: project
+
+change_file                                                        needs approval
+Change a file of a project.
+call gitlab/commits/create
+input: project
+when: input.asker.scopes.includes('orders:write')
 ```
 
 | Field | What it shows |
 |---|---|
-| Offered by | each agent whose `toolkits:` holds the toolkit, in its own file or written in place in another machine |
-| Started by | for an agent in its own file, each machine that runs it with `machine:` and how its location's runs start; for one written in place, the machine it is written in |
-| Tools | each tool's `description:`, its job, and `needs approval` where the job has `approve: true` |
+| instructions | the first line of the toolkit's `instructions:`, or the file they are included from |
+| Offered by | each agent whose `toolkits:` holds the toolkit, in its own file or written in place in another machine, with the `when:` of its entry |
+| Started by | for an agent in its own file, each machine that runs it with `machine:` or calls its location, and how its location's runs start; for one written in place, the machine it is written in |
+| Tools | each tool's `description:`, its job, the input a call fixes, its `when:`, and `needs approval` where the job has `approve: true` |
 
-- A toolkit's file is the file its tools are written in, as the agent written out gives it. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
+- A tool written `call:` gives the location it calls, linked to the file of the machine there, and that machine's `description:`.
+- A tool whose job is a call, `job: { call: { at: chat/post } }`, is a call too: it gives the location, linked as above, and keeps its own `description:`. A tool whose job is a send gives its event and its address, its location linked to the file of the machine there, as the agent's drawing writes them: `send ping to chat/post#infra`.
+- A call's location is read from the tree's prefix, or from `/` where it begins with `/`. A location an expression gives is known only when the call runs, and is not followed.
+- A tool with `when:` has a dashed border.
+- A toolkit's file is the file its tools are written in, as the agent written out gives it, where that is not the agent's own file. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
 - Opening a toolkit with `approve: true` is shown as `opening it needs approval`.
-- A listed file, or a file a machine includes, with `description:` and `tools:` at its top level that no agent offers is listed under the name of its directory, with a grey `not offered`, and its page says `not offered`. A new toolkit therefore shows before anything uses it.
+- A `.yaml` file `.corbieignore` lists, in a listed directory or not, or one a machine includes, with `description:` and `tools:` at its top level and no type, that no agent offers is listed under its file's name without `.yaml`, with a grey `not offered`, and its page says `not offered`. A new toolkit therefore shows before anything uses it.
 - A machine with problems offers no toolkit, since Corbie does not write it out. A toolkit whose file has problems is marked `has problems`, and the problems above it name the machines it breaks.
 - A toolkit's file with problems shows them above the toolkit, as the text does.
 - The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the toolkit's file as the text view does. A toolkit written in place in a machine has no tabs.

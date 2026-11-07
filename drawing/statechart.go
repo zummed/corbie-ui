@@ -293,14 +293,14 @@ func (ch *chart) sent(holder, name, event string, sends []statechart.Send) {
 		ch.states[key] = &statechart.State{}
 		ch.parent[key] = holder
 		ch.kids[holder] = append(ch.kids[holder], key)
-		ch.items[key] = item{name: addressOf(send.Address), icon: "statechart", lines: []string{"send " + send.Event}}
+		ch.items[key] = item{name: Address(send.Address), icon: "statechart", lines: []string{"send " + send.Event}}
 		ch.sends = append(ch.sends, rule{from: name, event: event, to: key, send: true})
 	}
 }
 
-// addressOf writes an address as the command line does: the location, with
+// Address writes an address as the command line does: the location, with
 // #key or a run's ID after it, or the one expression that gives it.
-func addressOf(a *machine.AddressSpec) string {
+func Address(a *machine.AddressSpec) string {
 	switch {
 	case a.Expr != "":
 		return a.Expr
@@ -667,7 +667,8 @@ func tags(s *statechart.State) []string {
 	return lines
 }
 
-// chartMarks are a run's states, as the drawing marks them.
+// chartMarks are a run's states, as the drawing marks them: a state the run
+// is in whose job is held for the ask is marked held.
 type chartMarks struct {
 	run      *Run
 	now, was map[string]bool // in now, and in at any step
@@ -749,6 +750,8 @@ func (m chartMarks) of(name string) string {
 	switch {
 	case m.run == nil:
 		return ""
+	case m.now[name] && !m.run.Ended && slices.Contains(m.run.Held, name):
+		return "held"
 	case m.now[name] && !m.run.Ended:
 		return "now"
 	case m.now[name] && m.run.Failed:

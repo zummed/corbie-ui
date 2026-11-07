@@ -6,15 +6,17 @@
   {{template "problems" $.Found}}
   {{if $.ShowText}}<pre class="code" aria-label="{{.File}}">{{template "code" $.Text}}</pre>{{else}}<div class="body">
     <p class="description">{{.Description}}</p>
+    {{if .InstructionsFile}}<p class="instructions">instructions <a href="/machines?file={{.InstructionsFile}}" title="{{.InstructionsFile}}"><code>{{.InstructionsFile}}</code></a></p>{{else if .Instructions}}<p class="instructions" title="instructions">{{.Instructions}}</p>{{end}}
     {{if .Offered}}<table class="list offered"><thead><tr><th>Offered by</th><th>Started by</th></tr></thead><tbody>{{range .Offered}}<tr>
-      <td><a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="agent"><use href="#g-agent"/></svg>{{.Name}}</a> <small>{{.File}}</small></td>
+      <td><a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="agent"><use href="#g-agent"/></svg>{{.Name}}</a> <small>{{.File}}</small>{{if .When}} <code class="when">when: {{.When}}</code>{{end}}</td>
       <td class="wrap">{{range .Starts}}<a class="start" href="/machines?file={{.File}}" title="{{.File}}"><svg class="g m" role="img" aria-label="{{.Type}}"><use href="#g-{{.Type}}"/></svg>{{.Name}}</a>{{end}}{{if .Lifetime}}<span class="dim">{{.Lifetime}}: {{.Started}}</span>{{end}}</td>
     </tr>{{end}}</tbody></table>{{else if .Broken}}<p class="dim">offered only by machines with problems, which the problems above name</p>{{else}}<p class="dim">not offered</p>{{end}}
     <h2>Tools</h2>
-    <div class="toolcards">{{range .Tools}}<section class="tool">
+    <div class="toolcards">{{range .Tools}}<section class="tool{{if .When}} when{{end}}"{{if .When}} title="when: {{.When}}"{{end}}>
       <div class="bar"><span class="tname">{{.Name}}</span>{{if .Approve}}<span class="approve">needs approval</span>{{end}}</div>
       <p title="{{.Description}}">{{.Description}}</p>
-      <p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>
+      {{if .Call}}<p class="job">call {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{.Call}}</code></a>{{else}}<code>{{.Call}}</code>{{end}}</p>{{if .Fixed}}<p class="job">input: {{join .Fixed}}</p>{{end}}{{else if eq .Job "send"}}<p class="job">send <code>{{.Event}}</code> to {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{.To}}</code></a>{{else}}<code>{{.To}}</code>{{end}}</p>{{else}}<p class="job">{{.Job}} {{if .File}}<a href="/machines?file={{.File}}" title="{{.File}}"><code>{{base .File}}</code></a>{{end}}</p>{{end}}
+      {{if .When}}<p class="job">when: {{.When}}</p>{{end}}
     </section>{{end}}</div>
   </div>{{end}}{{else}}<div class="body"><p class="dim">no toolkit chosen</p></div>{{end}}
 </div>{{end}}

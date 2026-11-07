@@ -80,9 +80,7 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 		s := f.Stages[n]
 		it := item{name: n}
 		w.describe(&it, n, s.Job)
-		if s.When != "" {
-			it.title = "when: " + s.When
-		}
+		it.title = titleOf("", s.When)
 		items[n] = it
 	}
 	at := map[string]box{}
@@ -132,7 +130,7 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 		s, b := f.Stages[n], at[n]
 		class := "state stage"
 		if run != nil {
-			class += " " + stageMark(stages[n], run)
+			class += " " + stageMark(n, stages[n], run)
 		}
 		if s.When != "" {
 			class += " when"
@@ -171,13 +169,16 @@ func reaches(after map[string][]string, reach map[string]map[string]bool, n stri
 }
 
 // stageMark is how a stage's status is marked. A stage still running when
-// its run ended is marked by how the run ended.
-func stageMark(status string, run *Run) string {
+// its run ended is marked by how the run ended, and one whose job is held
+// for the ask is marked held.
+func stageMark(name, status string, run *Run) string {
 	switch {
 	case status == "running" && run.Failed:
 		return "failed"
 	case status == "running" && run.Ended:
 		return "cancelled"
+	case status == "running" && slices.Contains(run.Held, name):
+		return "held"
 	case status == "running":
 		return "now"
 	}
