@@ -42,7 +42,7 @@ rooms/
 thermostat.yaml    statechart: thermostat · keyed
 FILES                                         .corbieignore
 .rook/                    listed in .corbieignore
-people.yaml               listed in .corbieignore · included by none
+people/scopes.yaml        listed in .corbieignore · included by none
 shared/                   listed in .corbieignore
 shared/boiler-job.yaml    listed in .corbieignore · included by 1 machine
 style.md                  included by 1 machine
