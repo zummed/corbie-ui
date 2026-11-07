@@ -221,7 +221,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	for _, f := range ix.Files {
 		files = append(files, fmt.Sprintf("%s %t %d", f.Path, f.Listed, f.Included))
 	}
-	if want := []string{"people.yaml true 0", "prompt.md false 1", "shared/states.yaml true 1", "toolkits/toolkit.yaml true 1"}; !slices.Equal(files, want) {
+	if want := []string{"people.yaml true 0", "prompt.md false 1", "shared/ true 0", "shared/states.yaml true 1", "toolkits/ true 0", "toolkits/toolkit.yaml true 1"}; !slices.Equal(files, want) {
 		t.Errorf("the files are %v, and not %v", files, want)
 	}
 	if ix.Prefix != "/"+filepath.Base(dir) || ix.Groups[len(ix.Groups)-1].Entries[0].Location != ix.Prefix+"/bridges/b" {
@@ -231,7 +231,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	body := do(h, "GET", "/machines?file=bridges/b.yaml", nil).Body.String()
 	_, list, _ := strings.Cut(body, `id="files"`)
 	list, _, _ = strings.Cut(list, "</nav>")
-	list, filesList, _ := strings.Cut(list, `<h2 class="kind">Files</h2>`)
+	list, filesList, _ := strings.Cut(list, `<h2 class="kind">Files<a href="/machines?file=.corbieignore">.corbieignore</a></h2>`)
 	for _, want := range []string{`<h2 class="group" title="bridges">bridges/</h2>`, `<h2 class="group" title=".kit">.kit/</h2>`, `<use href="#g-agent"/>`, "<small>agent: helper · transient</small>", "<small>flow: b · singleton</small>", `title="` + ix.Prefix + `/bridges/b">b.yaml<`, `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=bridges%2fb.yaml" aria-current="page"`} {
 		if !strings.Contains(list, want) {
 			t.Errorf("the list does not show %s:\n%s", want, list)
@@ -242,7 +242,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 			t.Errorf("the machines hold %s:\n%s", gone, list)
 		}
 	}
-	for _, want := range []string{">toolkits/toolkit.yaml</span><small>listed in .corbieignore · included by 1 machine</small>", ">people.yaml</span><small>listed in .corbieignore · included by none</small>", ">prompt.md</span><small>included by 1 machine</small>"} {
+	for _, want := range []string{">toolkits/toolkit.yaml</span><small>listed in .corbieignore · included by 1 machine</small>", ">people.yaml</span><small>listed in .corbieignore · included by none</small>", ">prompt.md</span><small>included by 1 machine</small>", `<div class="row"><span></span><span class="name" title="shared/">shared/</span><small>listed in .corbieignore</small></div>`} {
 		if !strings.Contains(filesList, want) {
 			t.Errorf("the files do not show %s:\n%s", want, filesList)
 		}
@@ -280,11 +280,18 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 		"broken-late.yaml":  "colour: blue\nstatechart: broken-late\ninitial: a\nstates:\n  a: { end: done }\n",
 		"two.yaml":          "flow: a\nagent: b\n",
 		"shared/notes.yaml": "flow: noted\n",
+		"broken.yaml":       "flow: broken\nstages: [ { a:\n",
+		"nul.yaml":          "flow:\nstages:\n  a: { job: .kit/hear.js }\n",
+		".corbieignore":     "toolkits/\npeople.yaml\nshared/\n.rook/\n",
+		".rook/AGENTS.md":   "Read this.\n",
+		".rook/x.js":        "return 1",
+		".rook/post.yaml":   "flow: post\nstages:\n  a: { job: ./x.js }\n",
+		"post.yaml":         "include: .rook/post.yaml\n",
 	})
 	d, _ := newDir(dir)
 	ix := d.index("")
 	got := listed(ix)
-	for _, want := range []string{". late.yaml flow: late transient 0", ". placed.yaml flow: placed transient 0", ". broken-late.yaml statechart: broken-late 1", ". loose.yaml 1", ". two.yaml 1"} {
+	for _, want := range []string{". late.yaml flow: late transient 0", ". placed.yaml flow: placed transient 0", ". broken-late.yaml statechart: broken-late 1", ". loose.yaml 1", ". two.yaml 1", ". broken.yaml 1", ". post.yaml flow: post transient 0"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("the list does not hold %s:\n%s", want, strings.Join(got, "\n"))
 		}
@@ -303,7 +310,31 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 	if f := ix.file("shared/flow.yaml"); f == nil || !f.Listed || f.Included != 1 {
 		t.Errorf("a listed file a machine includes is %+v", f)
 	}
+	// A machine whose one type key has no name is listed by its type alone.
+	if !slices.ContainsFunc(got, func(l string) bool { return strings.HasPrefix(l, ". nul.yaml flow ") }) {
+		t.Errorf("a machine with a type and no name is not listed by its type alone:\n%s", strings.Join(got, "\n"))
+	}
+	// A listed directory is one row; a file below it is a row only where a
+	// machine includes it.
+	var files []string
+	for _, f := range ix.Files {
+		files = append(files, fmt.Sprintf("%s %t %d", f.Path, f.Listed, f.Included))
+	}
+	if want := []string{".rook/ true 0", ".rook/post.yaml true 1"}; !slices.Equal(slices.DeleteFunc(files, func(f string) bool { return !strings.HasPrefix(f, ".rook/") }), want) {
+		t.Errorf("the files under a listed directory are %v, and not %v", files, want)
+	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
+	if body := do(h, "GET", "/machines?file=.rook/AGENTS.md", nil).Body.String(); !strings.Contains(body, `<span class="facts">listed in .corbieignore</span>`) || !strings.Contains(body, "no machine takes a value from this file") {
+		t.Errorf("a file in a listed directory is not headed as listed:\n%s", body)
+	}
+	if body := do(h, "GET", "/machines?file=.corbieignore", nil).Body.String(); !strings.Contains(body, `<a href="/machines?file=.corbieignore" aria-current="page">.corbieignore</a></h2>`) || !strings.Contains(body, ".rook/") {
+		t.Errorf("the Files heading does not open .corbieignore:\n%s", body)
+	}
+	for file, head := range map[string]string{"broken.yaml": "a machine", "nul.yaml": "flow"} {
+		if body := do(h, "GET", "/machines?file="+file, nil).Body.String(); !strings.Contains(body, `<span class="facts">`+head+`</span>`) {
+			t.Errorf("%s is not headed %q:\n%s", file, head, body)
+		}
+	}
 	body := do(h, "GET", "/machines?file=loose.yaml", nil).Body.String()
 	if !strings.Contains(body, `<span class="facts">a machine</span>`) || !strings.Contains(body, `aria-label="file"><title>file</title><use href="#g-file"/></svg><span class="name" title="/`+filepath.Base(dir)+`/loose">loose.yaml</span><span class="bad" title="1 problem">1</span><small></small>`) {
 		t.Errorf("a machine with no type is not shown as a machine with a problem:\n%s", body)
@@ -414,6 +445,24 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		if got := listed(ix); slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, " base.yaml ") }) {
 			t.Errorf("with a %s file included, the list is %v", name, got)
 		}
+	}
+
+	// A file the include: names that .corbieignore does not list is a
+	// machine: where it cannot be read, its own problem is the one problem,
+	// breaking it and each machine that includes it.
+	dir = t.TempDir()
+	write(t, dir, map[string]string{
+		"one.yaml":  "flow: one\ninclude: ./base.yaml\n",
+		"two.yaml":  "flow: two\ninclude: ./base.yaml\n",
+		"base.yaml": "stages: [ { a: \n",
+	})
+	d, _ = newDir(dir)
+	ix = d.index("")
+	if len(ix.Problems) != 1 || ix.Problems[0].File != "base.yaml" || !slices.Equal(ix.Problems[0].Breaks, []string{"base.yaml", "one.yaml", "two.yaml"}) {
+		t.Errorf("an unlisted file two machines include, which cannot be read, gives the problems %+v", ix.Problems)
+	}
+	if at := ix.at("one.yaml"); len(at) != 1 || at[0].File != "base.yaml" || len(at[0].Breaks) != 3 {
+		t.Errorf("a machine that includes it shows the problems %+v", at)
 	}
 }
 

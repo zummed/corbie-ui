@@ -5,6 +5,7 @@ package machines
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
@@ -59,6 +60,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"plural": plural,
 	"short":  short,
 	"join":   func(s []string) string { return strings.Join(s, ", ") },
+	"isDir":  func(p string) bool { return strings.HasSuffix(p, "/") },
 }).ParseFS(files, "machines.html", "toolkits.html"))
 
 // Pages is the Machines and Toolkits pages.
@@ -115,8 +117,8 @@ func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) 
 }
 
 // view is the Machines page as it is drawn. View is the tab chosen:
-// drawing, text or written. File is the file chosen where it is in the list
-// of files that are no machine.
+// drawing, text or written. File is the file chosen where it is no machine
+// and is listed in .corbieignore or included.
 type view struct {
 	Dir, DirFull string
 	*index
@@ -249,10 +251,7 @@ func (h *handler) opened(v *view) ([]byte, error) {
 		if m.Draft != nil {
 			v.Kind, name = m.Draft.Definition.Type, m.Draft.Definition.Name
 		}
-		v.First = "a machine"
-		if v.Kind != "" {
-			v.First = v.Kind + ": " + name
-		}
+		v.First = cmp.Or(typeAndName(v.Kind, name), "a machine")
 	}
 	v.Base = hash(fmt.Appendf([]byte(base), "%v%v", v.Found, v.index.included[v.Open]))
 	return src, nil

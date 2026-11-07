@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"path"
@@ -249,11 +250,16 @@ func startedBy(lifetime, location string) string {
 }
 
 // unoffered gives each file in the directory that is no machine, is written
-// as a toolkit and that no agent offers.
+// as a toolkit and that no agent offers: a listed file, in a listed directory
+// or not, or one a machine includes.
 func (d *dir) unoffered(ix *index, known []toolkit) []toolkit {
+	files := maps.Clone(ix.listed)
+	for file := range ix.included {
+		files[file] = true
+	}
 	var found []toolkit
-	for _, file := range ix.Files {
-		if p, ok := d.writtenToolkit(file.Path); ok && !slices.ContainsFunc(known, func(k toolkit) bool { return k.File == file.Path }) {
+	for _, file := range sortedKeys(files) {
+		if p, ok := d.writtenToolkit(file); ok && !slices.ContainsFunc(known, func(k toolkit) bool { return k.File == file }) {
 			found = append(found, p)
 		}
 	}

@@ -14,14 +14,17 @@ import (
 
 // An index is what the pages show of the directory, read once each time a
 // file in it changes or its prefix does: each machine as Corbie reads it, at
-// its location under the prefix, the list, the files that are no machine,
-// each problem once, and the toolkits.
+// its location under the prefix, the list, the files and directories that
+// are no machine, whether the directory has a .corbieignore, the files it
+// lists, each problem once, and the toolkits.
 type index struct {
 	Prefix   string
 	machines map[string]*client.Machine
 	own      map[string][]problem
 	Groups   []group
 	Files    []entry
+	Ignore   bool
+	listed   map[string]bool
 	included map[string][]string
 	Problems []problem
 	Unread   string
@@ -36,8 +39,9 @@ type group struct {
 
 // An entry is one machine or one other file in the list: its file; a
 // machine's type and name, location, lifetime, description and how
-// many problems it has; and whether .corbieignore lists another file and how
-// many machines include it.
+// many problems it has; and whether .corbieignore lists another file or
+// directory, a directory's path ending in /, and how many machines include
+// it.
 type entry struct {
 	Path, Type, First, Location, Lifetime, Description string
 	Problems, Included                                 int
@@ -68,7 +72,7 @@ func (c *indexed) current(at string) *index {
 // a tree at the prefix at, or at the prefix a submit gives it by default
 // where at is "".
 func (d *dir) index(at string) *index {
-	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, included: map[string][]string{}}
+	ix := &index{machines: map[string]*client.Machine{}, own: map[string][]problem{}, listed: map[string]bool{}, included: map[string][]string{}}
 	tree, err := client.ReadTree(d.root, at)
 	if err != nil {
 		ix.Unread = err.Error()
@@ -80,6 +84,16 @@ func (d *dir) index(at string) *index {
 		ix.machines[m.Path] = m
 		if m.Problem != nil {
 			ix.own[m.Path] = slices.SortedStableFunc(slices.Values(d.problemsOf(m.Path, m.Problem)), byPlace)
+		}
+	}
+	// A file an include: names that cannot be read and is itself a machine
+	// gives the problem it has as a machine, so the machines that include
+	// it are broken by that one problem.
+	for _, problems := range ix.own {
+		for i, p := range problems {
+			if mine := ix.own[p.File]; p.included && len(mine) > 0 && mine[0].File == p.File {
+				problems[i] = mine[0]
+			}
 		}
 	}
 	ix.Problems = d.problemsOnce(ix.own)
@@ -97,9 +111,7 @@ func (d *dir) index(at string) *index {
 		} else if src, _, err := d.read(m.Path); err == nil {
 			en.Type, en.First = typeIn(src)
 		}
-		if en.Type != "" {
-			en.First = en.Type + ": " + en.First
-		}
+		en.First = typeAndName(en.Type, en.First)
 		groups[path.Dir(m.Path)] = append(groups[path.Dir(m.Path)], en)
 	}
 	for _, at := range sortedKeys(groups) {
@@ -109,34 +121,48 @@ func (d *dir) index(at string) *index {
 	if err != nil {
 		ix.Unread = err.Error()
 	}
-	listed := func(file string) bool {
-		return slices.ContainsFunc(tree.Listed, func(l string) bool { return l == file || strings.HasSuffix(l, "/") && strings.HasPrefix(file, l) })
+	for _, file := range files {
+		ix.Ignore = ix.Ignore || file == ".corbieignore"
+		if slices.ContainsFunc(tree.Listed, func(l string) bool { return l == file || strings.HasSuffix(l, "/") && strings.HasPrefix(file, l) }) {
+			ix.listed[file] = true
+		}
 	}
 	shown := map[string]bool{}
-	for _, file := range files {
-		shown[file] = listed(file)
+	for _, l := range tree.Listed {
+		shown[l] = true
 	}
 	for file := range ix.included {
 		shown[file] = true
 	}
 	for _, file := range sortedKeys(shown) {
-		if shown[file] {
-			ix.Files = append(ix.Files, entry{Path: file, Listed: listed(file), Included: len(ix.included[file])})
-		}
+		ix.Files = append(ix.Files, entry{Path: file, Listed: ix.listed[file] || slices.Contains(tree.Listed, file), Included: len(ix.included[file])})
 	}
 	ix.toolkits = d.toolkitsOf(ix)
 	return ix
 }
 
-// file gives the entry of a file in the list of files that are no machine:
-// one .corbieignore lists, or one a machine takes a value from.
+// file gives the entry of a file that is no machine: one .corbieignore
+// lists, itself or in a directory it lists, or one a machine takes a value
+// from.
 func (ix *index) file(name string) *entry {
 	for i := range ix.Files {
 		if ix.Files[i].Path == name {
 			return &ix.Files[i]
 		}
 	}
+	if ix.listed[name] {
+		return &entry{Path: name, Listed: true}
+	}
 	return nil
+}
+
+// typeAndName gives a machine's type and name as the list and its page
+// head them: the type alone where the name is empty.
+func typeAndName(kind, name string) string {
+	if kind == "" || name == "" {
+		return kind
+	}
+	return kind + ": " + name
 }
 
 // filesOf gives the files a definition written out takes its values from,
