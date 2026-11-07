@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"embed"
+	"encoding/json/v2"
 	"fmt"
 	"html/template"
 	"maps"
@@ -24,6 +25,7 @@ import (
 	"github.com/zummed/corbie-ui/controller"
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/machine"
@@ -281,7 +283,32 @@ func placeOf(m *client.Machine) *place {
 			p.Sends = append(p.Sends, "all (every location)")
 		}
 	}
+	p.Sends = append(p.Sends, calledBy(def)...)
 	return p
+}
+
+// calledBy gives the location each tool of an agent written `call:` calls,
+// which the tool may send to, with the tools that call it.
+func calledBy(def *machine.Definition) []string {
+	var a agent.Agent
+	if def.Type != "agent" || json.Unmarshal(def.Body, &a) != nil {
+		return nil
+	}
+	tools := map[string][]string{}
+	for _, name := range sortedKeys(a.Tools) {
+		if at := a.Tools[name].Call; at != "" {
+			tools[at] = append(tools[at], name)
+		}
+	}
+	var out []string
+	for _, at := range sortedKeys(tools) {
+		by := "tool "
+		if len(tools[at]) > 1 {
+			by = "tools "
+		}
+		out = append(out, at+" (by the "+by+strings.Join(tools[at], ", ")+")")
+	}
+	return out
 }
 
 // sendsTo gives a send: entry as written, with what a pattern of every

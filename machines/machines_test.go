@@ -745,6 +745,10 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"services/hub.yaml":     "flow: hub\nallow: [send:**, send:/**]\nstages:\n  a: { job: write.js }\n",
 		"services/root.yaml":    "flow: root\nallow: [all]\nstages:\n  a: { job: write.js }\n",
 		"services/closed.yaml":  "flow: closed\nreceive: []\nstages:\n  a: { job: write.js }\n",
+		"services/find.yaml":    "flow: find\ndescription: Find a person.\nstages:\n  a: { job: write.js }\n",
+		"services/look.yaml":    "flow: look\ndescription: Look a room up.\nstages:\n  a: { job: write.js }\n",
+		"services/asker.yaml": "agent: asker\n" + agentHead + "allow: [send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n" +
+			"toolkits:\n  rooms: { description: the rooms, tools: { room: { call: services/look } } }\n",
 	})
 	place := regexp.MustCompile(`(?s)<section class="place">.*?</section>`)
 	rows := func(file string) string {
@@ -775,6 +779,8 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"services/hub.yaml":    {"<span>sends to</span><span>** (every location in its tree), /** (every location)</span>"},
 		"services/root.yaml":   {"<span>sends to</span><span>all (every location)</span>"},
 		"services/closed.yaml": {"<span>receives</span><span>every event from none<br>and anything from its tree's client</span>"},
+		// A tool written call: may send to the location it calls.
+		"services/asker.yaml": {"<span>sends to</span><span>devices/boiler, services/find (by the tools again, who), services/look (by the tool room)</span>"},
 	} {
 		got := rows(file)
 		for _, w := range want {
