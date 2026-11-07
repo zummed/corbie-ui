@@ -47,7 +47,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one holder. Each toolkit is a holder inside it, with its name, its tools and its ask. Its tooltip gives the file its tools are written in, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
+2. Its tools are in one holder. Each toolkit is a holder inside it, with its name, its tools and its ask. Its tooltip gives the file its tools are written in, or its `description:` where it has no tools, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
 A tool with `approve: true` says so in its card. Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.

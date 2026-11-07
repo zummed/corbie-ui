@@ -631,6 +631,24 @@ toolkits:
 			t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
 		}
 	}
+
+	// A toolkit included from a file gives that file in its tooltip: the
+	// file its tools are written in, or its description: where it has none.
+	def = definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+toolkits:
+  messages: { include: ./messages.yaml }
+  notes: { include: ./notes.yaml }
+`, map[string]string{"w.js": script,
+		"messages.yaml": "description: messages\ntools:\n  tell: { description: tells, job: ./w.js }\n",
+		"notes.yaml":    "description: notes\ntools: {}\n"})
+	text = draw(t, def, nil)
+	for _, want := range []string{">messages</text><title>messages.yaml</title>", ">notes</text><title>notes.yaml</title>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("a toolkit's tooltip does not give its file, %s:\n%s", want, text)
+		}
+	}
 }
 
 func Test_drawing_machine_unfolds_in_its_card(t *testing.T) {

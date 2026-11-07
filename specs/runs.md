@@ -214,7 +214,7 @@ a child                     its root's file, unfolded down the cards of the jobs
 The details of a row have four tabs, and Open opens the row's run's page:
 
 ```
-What happened   the row's facts: the job and its machine or script, a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
+What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` Corbie shows on the job), a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
 Output          what it gave back
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine

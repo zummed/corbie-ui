@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -302,12 +303,12 @@ func Test_serve_acts_as_the_parties_named(t *testing.T) {
 func Test_serve_each_party_opens_its_pages(t *testing.T) {
 	config := lab(t, t.TempDir(), "lab")
 	for _, c := range []struct {
-		args       []string
-		open, shut []string
+		args               []string
+		open, shut, header []string
 	}{
-		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}},
-		{[]string{"client"}, []string{"/runs", "/metrics", "/machines", "/toolkits"}, []string{"/controller"}},
-		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/toolkits", "/controller"}, nil},
+		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}, nil},
+		{[]string{"client"}, []string{"/runs", "/metrics", "/machines", "/toolkits"}, []string{"/controller"}, []string{"/machines Machines", "/toolkits Toolkits"}},
+		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/toolkits", "/controller"}, nil, []string{"/machines Machines", "/toolkits Toolkits", "/controller Controller"}},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
 		u, err := started(ctx, config, t.TempDir(), c.args...)
@@ -320,6 +321,16 @@ func Test_serve_each_party_opens_its_pages(t *testing.T) {
 			}
 		}
 		page := ask(u.handler, "GET", "/runs").Body.String()
+		// The header offers each page after Runs by its word.
+		var offered []string
+		if nav := regexp.MustCompile(`<nav><a href="/runs"[^>]*>Runs</a>(.*?)<a href="/manual/"`).FindStringSubmatch(page); nav != nil {
+			for _, m := range regexp.MustCompile(`<a href="(/[a-z]+)">([A-Za-z]+)</a>`).FindAllStringSubmatch(nav[1], -1) {
+				offered = append(offered, m[1]+" "+m[2])
+			}
+		}
+		if want := c.header; !slices.Equal(offered, want) {
+			t.Errorf("as %s, the header offers %q", strings.Join(c.args, " "), offered)
+		}
 		for _, path := range c.shut {
 			if w := ask(u.handler, "GET", path); w.Code != http.StatusNotFound {
 				t.Errorf("as %s, %s answered %d", strings.Join(c.args, " "), path, w.Code)

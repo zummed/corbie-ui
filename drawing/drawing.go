@@ -169,8 +169,8 @@ func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
 // ToolkitFile gives the file a toolkit of an agent is included from, as
 // Corbie writes out the agent: the file its tools are written in, or its
-// `description:` where it has no tools, when that is not the file of the
-// agent's own first line. A toolkit written in place gives nothing.
+// `description:` where it has no tools, when that is not the file the
+// agent's type is written in. A toolkit written in place gives nothing.
 func ToolkitFile(def *machine.Definition, toolkit string) string {
 	at := "toolkits." + toolkit + "."
 	file := fileOf(def.Lines[at+"description"])

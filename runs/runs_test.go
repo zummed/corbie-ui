@@ -450,7 +450,7 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	// Each ask a step starts is named by where it is written, in the order
 	// the step held the first job of each, and a job's failure that ended
 	// the run is noted.
-	tell := &machine.Job{Name: "tell", AskAt: "toolkits.messages.ask"}
+	tell := &machine.Job{Name: "tell", AskAt: "toolkits.messages.ask", Shown: map[string]any{"toolkit": "messages"}}
 	entries := []client.Entry{{ID: "a-client/1", Step: 1,
 		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
 		Asks: []instance.Ask{
@@ -473,6 +473,17 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	}
 	if strings.Join(m.Going, " ") != "toolkits.messages.ask tell" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
+	}
+
+	// A tool's job names the toolkit it is from, as Corbie shows it.
+	var held *stepRow
+	for _, r := range rowsOf("a-client/1", entries, byID, nil, at, at) {
+		if r.Kind == "held" && strings.Contains(r.Said(), "tell") {
+			held = &r
+		}
+	}
+	if held == nil || !slices.Contains(held.Facts, fact{Name: "toolkit", Text: "messages"}) {
+		t.Errorf("the held tool does not name its toolkit: %+v", held)
 	}
 
 	// A child's rows are under the row that started it, and an ended child

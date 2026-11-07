@@ -202,7 +202,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 		t.Errorf("an agent does not say what starts it:\n%s", body)
 	}
 	body := do(h, "GET", "/toolkits?toolkit=new", nil).Body.String()
-	for _, want := range []string{`<span class="chip">not offered</span>`, `<p class="dim">not offered</p>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/toolkits?toolkit=new&amp;view=text">Text</a>`} {
+	for _, want := range []string{`<small>1 tool · something new</small>`, `<span class="chip">not offered</span>`, `<p class="dim">not offered</p>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/toolkits?toolkit=new&amp;view=text">Text</a>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %q:\n%s", want, body)
 		}
