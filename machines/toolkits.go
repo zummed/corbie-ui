@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,7 +15,6 @@ import (
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/machine"
-	"go.yaml.in/yaml/v3"
 )
 
 // A toolkit is a group of tools under an agent's `toolkits:`, as the
@@ -86,11 +84,10 @@ type toolkitIndex struct {
 	toolkits map[string]*toolkit
 }
 
-// toolkitsOf reads every toolkit in the directory: those that its machines
-// offer, and through them the machines they name and call, and those that
-// no agent offers. A machine with problems offers none, since Corbie does
-// not write it out.
-func (d *dir) toolkitsOf(ix *index) []toolkit {
+// toolkitsOf reads every toolkit an agent in the directory offers, and
+// through them the machines they name and call. A machine with
+// problems offers none, since Corbie does not write it out.
+func toolkitsOf(ix *index) []toolkit {
 	px := &toolkitIndex{ix: ix, byFile: map[string]*node{}, above: map[string][]string{}, toolkits: map[string]*toolkit{}}
 	for _, file := range sortedKeys(ix.machines) {
 		if m := ix.machines[file]; m.Draft != nil {
@@ -109,7 +106,6 @@ func (d *dir) toolkitsOf(ix *index) []toolkit {
 		slices.SortFunc(p.Offered, func(a, b offer) int { return strings.Compare(a.File+a.Name, b.File+b.Name) })
 		toolkits = append(toolkits, *p)
 	}
-	toolkits = append(toolkits, d.unoffered(ix, toolkits)...)
 	for i := range toolkits {
 		toolkits[i].Broken = toolkits[i].File != "" && slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == toolkits[i].File })
 	}
@@ -330,130 +326,6 @@ func startedBy(lifetime, location string) string {
 		return "a send to a key starts the run for that key"
 	}
 	return "a call, or corbie run submit " + location + ", starts each run"
-}
-
-// unoffered gives each file that is no machine, is written as a toolkit and
-// that no agent offers: a file .corbieignore lists, in a listed directory or
-// not, or one a machine includes.
-func (d *dir) unoffered(ix *index, known []toolkit) []toolkit {
-	files := maps.Clone(ix.listed)
-	for file := range ix.included {
-		files[file] = true
-	}
-	var found []toolkit
-	for _, file := range sortedKeys(files) {
-		if p, ok := d.writtenToolkit(ix, file); ok && !slices.ContainsFunc(known, func(k toolkit) bool { return k.File == file }) {
-			found = append(found, p)
-		}
-	}
-	return found
-}
-
-// A writtenTool is a tool as a toolkit's file writes it.
-type writtenTool struct {
-	Description, Call, When string
-	Job                     any
-	Input                   map[string]any
-	Approve                 bool
-}
-
-// writtenToolkit reads a .yaml file with `description:` and `tools:` at its
-// top level, and no key that gives a type, as a toolkit. A toolkit has no
-// name until an agent offers it, so it goes by its file's name.
-func (d *dir) writtenToolkit(ix *index, rel string) (toolkit, bool) {
-	if !strings.HasSuffix(rel, ".yaml") {
-		return toolkit{}, false
-	}
-	src, _, err := d.read(rel)
-	if err != nil {
-		return toolkit{}, false
-	}
-	var top map[string]any
-	if yaml.Unmarshal(src, &top) != nil {
-		return toolkit{}, false
-	}
-	for key := range top {
-		if _, typed := machine.TypeOf(key); typed {
-			return toolkit{}, false
-		}
-	}
-	var written struct {
-		Description  string
-		Instructions any
-		Tools        map[string]writtenTool
-	}
-	if yaml.Unmarshal(src, &written) != nil || written.Description == "" || written.Tools == nil {
-		return toolkit{}, false
-	}
-	p := toolkit{Name: strings.TrimSuffix(path.Base(rel), ".yaml"), Description: written.Description, File: rel, key: rel}
-	switch in := written.Instructions.(type) {
-	case string:
-		p.Instructions, _, _ = strings.Cut(strings.TrimSpace(in), "\n")
-	case map[string]any:
-		included, _ := in["include"].(string)
-		p.InstructionsFile = writtenFrom(rel, included)
-	}
-	for _, tool := range sortedKeys(written.Tools) {
-		p.Tools = append(p.Tools, ix.writtenTool(tool, written.Tools[tool], rel))
-	}
-	return p, true
-}
-
-// writtenTool gives a tool as a toolkit's file writes it. A tool written
-// `call:` takes its description from the machine at the location it calls;
-// any other job is a script's path, or a mapping.
-func (ix *index) writtenTool(name string, w writtenTool, file string) toolkitTool {
-	t := toolkitTool{Name: name, Description: w.Description, Job: "script", When: condition(w.When)}
-	if w.Call != "" {
-		t.Job, t.Call, t.File, t.Fixed, t.Approve = "call", w.Call, ix.fileAt(w.Call), sortedKeys(w.Input), w.Approve
-		if m := ix.machines[t.File]; m != nil && m.Draft != nil {
-			t.Description = m.Draft.Definition.Description
-		}
-		return t
-	}
-	written := w.Job
-	job, _ := written.(map[string]any)
-	if job == nil {
-		script, _ := written.(string)
-		t.File = writtenFrom(file, script)
-		return t
-	}
-	t.Approve, _ = job["approve"].(bool)
-	script, _ := job["script"].(string)
-	t.File = writtenFrom(file, script)
-	if ran, ok := job["machine"]; ok {
-		named, _ := ran.(string)
-		t.Job, t.File = "machine", writtenFrom(file, named)
-	}
-	if called, ok := job["call"].(map[string]any); ok {
-		at, _ := called["at"].(string)
-		fixed, _ := job["input"].(map[string]any)
-		t.Job, t.Call, t.File, t.Fixed = "call", at, ix.fileAt(at), sortedKeys(fixed)
-	}
-	if sent, ok := job["send"].(map[string]any); ok {
-		t.Job, t.File = "send", ""
-		t.Event, _ = sent["event"].(string)
-		switch to := sent["to"].(type) {
-		case string:
-			t.To = to
-		case map[string]any:
-			var a machine.AddressSpec
-			a.At, _ = to["at"].(string)
-			a.Key, _ = to["key"].(string)
-			a.Run, _ = to["run"].(string)
-			t.To, t.File = drawing.Address(&a), ix.fileAt(a.At)
-		}
-	}
-	return t
-}
-
-// condition gives a `when:` as Corbie keeps it: the expression, without the
-// ${ } it is written in.
-func condition(when string) string {
-	if src, ok := machine.OneExpr(when); ok {
-		return src
-	}
-	return when
 }
 
 // toolkitsPage reads the Toolkits page as an address asks for it: the

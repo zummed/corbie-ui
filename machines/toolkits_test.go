@@ -17,7 +17,7 @@ import (
 )
 
 // toolkitsProject adds to a project another agent that offers the toolkit, written in
-// place, on a timer; a toolkit nothing offers; a machine with problems; a machine
+// place, on a timer; a toolkit file no agent offers; a machine with problems; a machine
 // in a dotted directory that nothing names; and another toolkit of the same name.
 func toolkitsProject(t *testing.T) string {
 	t.Helper()
@@ -126,20 +126,18 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	for _, p := range v.Toolkits {
 		ids = append(ids, p.ID)
 	}
-	if got := strings.Join(ids, " "); got != "kept messages messages-2 new toolkit yml zed" {
+	if got := strings.Join(ids, " "); got != "kept messages messages-2 yml zed" {
 		t.Fatalf("the toolkits are %q: %+v", got, v.Unread)
 	}
 	if v.Open == nil || v.Open.ID != "kept" {
 		t.Errorf("the first toolkit is not open: %+v", v.Open)
 	}
 
-	var kept, shared, own, unoffered, zed, yml *toolkit
+	var kept, shared, own, zed, yml *toolkit
 	for i := range v.Toolkits {
 		switch v.Toolkits[i].ID {
 		case "kept":
 			kept = &v.Toolkits[i]
-		case "new":
-			unoffered = &v.Toolkits[i]
 		case "zed":
 			zed = &v.Toolkits[i]
 		case "yml":
@@ -184,9 +182,6 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if s := yml.Offered[0].Starts; len(s) != 1 || s[0].File != "side.yaml" {
 		t.Errorf("the machine above a .yml file is %+v", s)
 	}
-	if len(unoffered.Offered) != 0 || unoffered.File != "toolkits/new.yaml" || !unoffered.Tools[0].Approve || unoffered.Tools[0].File != "toolkits/try.js" {
-		t.Errorf("the toolkit nothing offers is %+v", unoffered)
-	}
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(dir, link); err != nil {
 		t.Fatal(err)
@@ -202,19 +197,19 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if body := do(h, "GET", "/toolkits?toolkit=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, or corbie run submit /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
 		t.Errorf("an agent does not say what starts it:\n%s", body)
 	}
-	body := do(h, "GET", "/toolkits?toolkit=new", nil).Body.String()
-	for _, want := range []string{`<small>1 tool · something new</small>`, `<span class="chip">not offered</span>`, `<p class="dim">not offered</p>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/toolkits?toolkit=new&amp;view=text">Text</a>`} {
+	body := do(h, "GET", "/toolkits?toolkit=messages-2", nil).Body.String()
+	for _, want := range []string{`<small>1 tool · messages</small>`, "needs approval", `<div class="problems"><h2>`, `href="/machines?file=bad.yaml&amp;view=text"`, `<a href="/toolkits?toolkit=messages-2&amp;view=text">Text</a>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %q:\n%s", want, body)
 		}
 	}
-	for _, gone := range []string{`class="bad"`, "allow", "For<", "Approved by", "timer"} {
+	for _, gone := range []string{`class="bad"`, "allow", "For<", "Approved by", "timer", "something new"} {
 		if strings.Contains(body, gone) {
 			t.Errorf("the page shows %q:\n%s", gone, body)
 		}
 	}
-	text := do(h, "GET", "/toolkits?toolkit=new&view=text", nil).Body.String()
-	if !strings.Contains(text, `<pre class="code" aria-label="toolkits/new.yaml"><span class="l" id="L1"><span class="k">description</span>`) || strings.Contains(text, `class="toolcards"`) {
+	text := do(h, "GET", "/toolkits?toolkit=kept&view=text", nil).Body.String()
+	if !strings.Contains(text, `<pre class="code" aria-label="toolkits/kept/toolkit.yaml"><span class="l" id="L1"><span class="k">description</span>`) || strings.Contains(text, `class="toolcards"`) {
 		t.Errorf("the toolkit's Text tab does not show its file:\n%s", text)
 	}
 	if w := do(h, "GET", "/toolkits?toolkit=gone", nil); w.Code != http.StatusNotFound {
@@ -230,17 +225,17 @@ func Test_machines_toolkits_show_the_problems_in_their_file(t *testing.T) {
 	write(t, dir, map[string]string{
 		".corbieignore":     "toolkits/\n",
 		"a.yaml":            "agent: a\n" + agentHead + "toolkits:\n  net: { include: ./toolkits/net.yaml }\n",
-		"b.yaml":            "flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n",
+		"b.yaml":            "flow: b\ninclude: ./toolkits/net.yaml\nstages:\n  x: { job: { script: r.js } }\n",
 		"r.js":              "return 1",
-		"toolkits/net.yaml": "description: the network\ntools:\n  r:\n    does: r\n    job: { script: r.js }\n",
+		"toolkits/net.yaml": "description: the network\ntools:\n  r: { description: r, job: { script: r.js } }\n",
 	})
 	v := toolkitsView_(t, dir, "net")
-	// The agent that offers the toolkit has problems, so it offers nothing,
-	// and the toolkit's file is marked as having problems, not as unoffered.
-	if v.Open == nil || len(v.Open.Offered) != 0 || !v.Open.Broken || v.Open.File != "toolkits/net.yaml" {
+	// The agent offers the toolkit; the flow that includes its file has a
+	// problem there, so the toolkit is marked as having problems.
+	if v.Open == nil || len(v.Open.Offered) != 1 || !v.Open.Broken || v.Open.File != "toolkits/net.yaml" {
 		t.Fatalf("the toolkit is %+v", v.Open)
 	}
-	if len(v.Found) == 0 || v.Found[0].File != "toolkits/net.yaml" || len(v.Found[0].Breaks) != 2 || v.Found[0].Line == 0 {
+	if len(v.Found) != 1 || v.Found[0].File != "toolkits/net.yaml" || !slices.Equal(v.Found[0].Breaks, []string{"b.yaml"}) || v.Found[0].Line != 2 {
 		t.Errorf("the problems in the toolkit's file are %+v", v.Found)
 	}
 	if !slices.EqualFunc(v.Problems, v.Found, func(a, b problem) bool { return a.File == b.File && a.Line == b.Line && a.Text == b.Text }) {
@@ -250,8 +245,22 @@ func Test_machines_toolkits_show_the_problems_in_their_file(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := do(h, "GET", "/toolkits?toolkit=net", nil).Body.String(); !strings.Contains(body, `<span class="chip">has problems</span>`) || !strings.Contains(body, "offered only by machines with problems") || strings.Contains(body, "not offered") {
-		t.Errorf("a toolkit offered only by machines with problems is shown as\n%s", body)
+	if body := do(h, "GET", "/toolkits?toolkit=net", nil).Body.String(); !strings.Contains(body, `<span class="chip">has problems</span>`) || !strings.Contains(body, `<div class="problems"><h2>1 problem</h2>`) {
+		t.Errorf("a toolkit whose file has problems is shown as\n%s", body)
+	}
+
+	// An agent with problems offers nothing: its toolkit is not listed,
+	// and the problems in the toolkit's file are listed above the list.
+	write(t, dir, map[string]string{
+		"b.yaml":            "flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n",
+		"toolkits/net.yaml": "description: the network\ntools:\n  r:\n    does: r\n    job: { script: r.js }\n",
+	})
+	v = toolkitsView_(t, dir, "")
+	if len(v.Toolkits) != 0 {
+		t.Errorf("a toolkit offered only by a machine with problems is listed: %+v", v.Toolkits)
+	}
+	if len(v.Problems) == 0 || v.Problems[0].File != "toolkits/net.yaml" || len(v.Problems[0].Breaks) != 2 || v.Problems[0].Line == 0 {
+		t.Errorf("the problems in the toolkit's file are %+v", v.Problems)
 	}
 }
 
@@ -326,16 +335,11 @@ func Test_machines_toolkits_in_place_keep_their_own_files(t *testing.T) {
 	if files["x p"] != "toolkits/x.yaml" || files["y p-2"] != "toolkits/y.yaml" {
 		t.Errorf("the files are %v", files)
 	}
-	if !strings.Contains(fmt.Sprint(files), "toolkits/notes/toolkit.yaml") {
-		t.Errorf("a file nothing offers is hidden by a toolkit with its description: %v", files)
+	if strings.Contains(fmt.Sprint(files), "toolkits/notes/toolkit.yaml") {
+		t.Errorf("a file no agent offers is a toolkit: %v", files)
 	}
-	if len(v.Toolkits) != 5 {
+	if len(v.Toolkits) != 4 {
 		t.Errorf("two toolkits of one name with different description: are one: %v", files)
-	}
-	for _, p := range v.Toolkits {
-		if p.File == "toolkits/notes/toolkit.yaml" && (len(p.Tools) != 1 || p.Tools[0].File != "toolkits/notes/r.js") {
-			t.Errorf("a job written as a path gave %+v", p.Tools)
-		}
 	}
 }
 
@@ -475,6 +479,7 @@ func callsProject(t *testing.T) string {
 		"agents/support.yaml": "agent: support\n" + agentHead + "toolkits:\n" +
 			"  orders: { include: toolkits/orders.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
 			"tools:\n  who: { call: people/find, input: { table: staff } }\n",
+		"agents/ops.yaml": "agent: ops\n" + agentHead + "toolkits:\n  infra: { include: toolkits/infra.yaml }\n",
 		"chat/post.yaml": "flow: post\ndescription: Post a message.\nstages:\n  a: { job: { script: ./post.js } }\n",
 		"chat/post.js":   "return 1",
 		"toolkits/orders.yaml": "description: The orders app.\ninstructions: { include: ./orders.md }\ntools:\n" +
@@ -529,18 +534,14 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	}
 
 	infra := byDescription(t, v, "The machines.")
-	if infra.Name != "infra" || len(infra.Offered) != 0 || infra.Instructions != "Restart only when asked." {
-		t.Errorf("the toolkit nothing offers is %+v", infra)
+	if infra.Name != "infra" || len(infra.Offered) != 1 || infra.Instructions != "Restart only when asked." {
+		t.Errorf("the toolkit is %+v", infra)
 	}
 	if r := toolNamed(t, &infra, "restart"); r.Job != "call" || r.File != "people/find.yaml" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
-		t.Errorf("a call tool in a file nothing offers is %+v", r)
-	}
-	if tell := toolNamed(t, &infra, "tell"); tell.Job != "call" || tell.Call != "chat/post" || tell.File != "chat/post.yaml" ||
-		!slices.Equal(tell.Fixed, []string{"room"}) || !tell.Approve || tell.Description != "Tell the room." {
-		t.Errorf("a tool whose job is a call, in a file nothing offers, is %+v", tell)
+		t.Errorf("a call tool is %+v", r)
 	}
 	if ping := toolNamed(t, &infra, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post#infra" || ping.File != "chat/post.yaml" {
-		t.Errorf("a tool whose job is a send, in a file nothing offers, is %+v", ping)
+		t.Errorf("a tool whose job is a send to a key is %+v", ping)
 	}
 
 	h, err := New(Config{Dir: dir, Interval: time.Second})
@@ -578,22 +579,48 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	}
 }
 
-func Test_machines_toolkits_in_one_directory_are_named_by_their_files(t *testing.T) {
+// A file written as a toolkit is a toolkit only where an agent's
+// toolkits: names it; any other is a file, listed or included.
+func Test_machines_toolkits_no_agent_offers_are_files(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		".corbieignore":        "toolkits/\n",
+		".corbieignore":        "toolkits/\nshared.yaml\n",
 		"r.js":                 "return 1",
+		"a.yaml":               "agent: a\n" + agentHead + "toolkits:\n  orders: { include: ./toolkits/orders.yaml }\n",
+		"b.yaml":               "flow: b\ninclude: ./shared.yaml\nstages:\n  x: { job: { script: r.js } }\n",
+		"shared.yaml":          "description: shared\n",
 		"toolkits/orders.yaml": "description: orders\ntools:\n  r: { description: r, job: { script: r.js } }\n",
 		"toolkits/infra.yaml":  "description: infra\ntools:\n  r: { description: r, job: { script: r.js } }\n",
-		"toolkits/typed.yaml":  "description: typed\ntools: {}\nflow: typed\n",
 	})
 	v := toolkitsView_(t, dir, "")
 	var ids []string
 	for _, p := range v.Toolkits {
 		ids = append(ids, p.ID+" "+p.File)
 	}
-	if got := strings.Join(ids, ", "); got != "infra toolkits/infra.yaml, orders toolkits/orders.yaml" {
+	if got := strings.Join(ids, ", "); got != "orders toolkits/orders.yaml" {
 		t.Errorf("the toolkits are %q", got)
+	}
+	h, err := New(Config{Dir: dir, Interval: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := do(h, "GET", "/toolkits?toolkit=infra", nil); body.Code != http.StatusNotFound {
+		t.Errorf("a toolkit file no agent offers answered %d", body.Code)
+	}
+	body := do(h, "GET", "/machines", nil).Body.String()
+	for _, want := range []string{
+		`<span class="name" title="toolkits/">toolkits/</span><small>listed in .corbieignore</small>`,
+		`<span class="name" title="toolkits/orders.yaml">toolkits/orders.yaml</span><small>listed in .corbieignore · included by 1 machine</small>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the Files list does not hold %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `title="toolkits/infra.yaml"`) {
+		t.Errorf("a file below a listed directory that no machine includes has a row of its own:\n%s", body)
+	}
+	if body := do(h, "GET", "/machines?file=toolkits/infra.yaml", nil).Body.String(); !strings.Contains(body, "listed in .corbieignore") || !strings.Contains(body, "no machine takes a value from this file") {
+		t.Errorf("a toolkit file no agent offers is shown as\n%s", body)
 	}
 }
 

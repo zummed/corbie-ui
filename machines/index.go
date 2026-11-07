@@ -141,7 +141,7 @@ func (d *dir) index(at string) *index {
 	for _, file := range sortedKeys(shown) {
 		ix.Files = append(ix.Files, entry{Path: file, Listed: ix.listed[file] || slices.Contains(tree.Listed, file), Included: len(ix.included[file])})
 	}
-	ix.toolkits = d.toolkitsOf(ix)
+	ix.toolkits = toolkitsOf(ix)
 	return ix
 }
 

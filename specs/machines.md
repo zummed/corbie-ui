@@ -163,7 +163,7 @@ Acting as a client alone, it lists the names with no state, and one line gives t
 
 ## Toolkits
 
-A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists every toolkit in the directory, with its `description:` and its count of tools, and shows the one chosen:
+A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists each toolkit an agent's `toolkits:` names, written in place or included from a file, with its `description:` and its count of tools, and shows the one chosen:
 
 ```
 orders                                   toolkits/orders.yaml
@@ -200,7 +200,7 @@ when: input.asker.scopes.includes('orders:write')
 - A tool with `when:` has a dashed border.
 - A toolkit's file is the file its tools are written in, as the agent written out gives it, where that is not the agent's own file. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
 - Opening a toolkit with `approve: true` is shown as `opening it needs approval`.
-- A `.yaml` file `.corbieignore` lists, in a listed directory or not, or one a machine includes, with `description:` and `tools:` at its top level and no type, that no agent offers is listed under its file's name without `.yaml`, with a grey `not offered`, and its page says `not offered`. A new toolkit therefore shows before anything uses it.
+- A file no agent's `toolkits:` includes is not on the Toolkits page, whatever it holds. The Machines page lists it in Files as any other file.
 - A machine with problems offers no toolkit, since Corbie does not write it out. A toolkit whose file has problems is marked `has problems`, and the problems above it name the machines it breaks.
 - A toolkit's file with problems shows them above the toolkit, as the text does.
 - The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the toolkit's file as the text view does. A toolkit written in place in a machine has no tabs.
