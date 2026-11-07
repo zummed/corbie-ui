@@ -264,17 +264,18 @@ func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitToo
 		}
 		return out
 	}
-	out.Job, out.File = "script", writtenFrom(".", t.Job.Script)
+	out.Job, out.File = "script", writtenFrom(t.Job.Script)
 	return out
 }
 
-// writtenFrom gives a path a file writes from the directory, or nothing for one
-// of Corbie's own scripts or one an expression gives.
-func writtenFrom(file, name string) string {
+// writtenFrom gives the path of a script an agent written out names, from the
+// directory, or nothing for one of Corbie's own scripts or one an expression
+// gives.
+func writtenFrom(name string) string {
 	if name == "" || strings.HasPrefix(name, "corbie:") || machine.HasExpr(name) {
 		return ""
 	}
-	return fromFile(file, name)
+	return path.Clean(name)
 }
 
 // fileAt gives the file of the machine at a location a definition writes

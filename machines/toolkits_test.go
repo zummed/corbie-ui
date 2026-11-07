@@ -480,8 +480,8 @@ func callsProject(t *testing.T) string {
 			"  orders: { include: toolkits/orders.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
 			"tools:\n  who: { call: people/find, input: { table: staff } }\n",
 		"agents/ops.yaml": "agent: ops\n" + agentHead + "toolkits:\n  infra: { include: toolkits/infra.yaml }\n",
-		"chat/post.yaml": "flow: post\ndescription: Post a message.\nstages:\n  a: { job: { script: ./post.js } }\n",
-		"chat/post.js":   "return 1",
+		"chat/post.yaml":  "flow: post\ndescription: Post a message.\nstages:\n  a: { job: { script: ./post.js } }\n",
+		"chat/post.js":    "return 1",
 		"toolkits/orders.yaml": "description: The orders app.\ninstructions: { include: ./orders.md }\ntools:\n" +
 			"  find: { call: people/find, input: { table: customers }, approve: true, when: \"${input.asker.name != ''}\" }\n" +
 			"  tell: { description: Tell the room., job: { call: { at: chat/post }, input: { room: orders }, approve: true } }\n" +

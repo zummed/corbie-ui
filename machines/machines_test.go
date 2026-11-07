@@ -749,6 +749,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"services/look.yaml":    "flow: look\ndescription: Look a room up.\nstages:\n  a: { job: write.js }\n",
 		"services/asker.yaml": "agent: asker\n" + agentHead + "allow: [send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n" +
 			"toolkits:\n  rooms: { description: the rooms, tools: { room: { call: services/look } } }\n",
+		"services/both.yaml": "agent: both\n" + agentHead + "allow: [send:services/find, send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n",
 	})
 	place := regexp.MustCompile(`(?s)<section class="place">.*?</section>`)
 	rows := func(file string) string {
@@ -781,6 +782,8 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"services/closed.yaml": {"<span>receives</span><span>every event from none<br>and anything from its tree's client</span>"},
 		// A tool written call: may send to the location it calls.
 		"services/asker.yaml": {"<span>sends to</span><span>devices/boiler, services/find (by the tools again, who), services/look (by the tool room)</span>"},
+		// A location allow: sends to that a tool also calls is listed once.
+		"services/both.yaml": {"<span>sends to</span><span>services/find (by the tools again, who), devices/boiler</span>"},
 	} {
 		got := rows(file)
 		for _, w := range want {

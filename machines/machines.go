@@ -276,20 +276,24 @@ func placeOf(m *client.Machine) *place {
 			p.Receives = append(p.Receives, event+" from "+from)
 		}
 	}
+	tools := calledBy(def)
 	for _, entry := range def.Allow {
 		if to, ok := strings.CutPrefix(entry, "send:"); ok {
-			p.Sends = append(p.Sends, sendsTo(to))
+			p.Sends = append(p.Sends, sendsTo(to)+byTools(tools[to]))
+			delete(tools, to)
 		} else if entry == "all" {
 			p.Sends = append(p.Sends, "all (every location)")
 		}
 	}
-	p.Sends = append(p.Sends, calledBy(def)...)
+	for _, at := range sortedKeys(tools) {
+		p.Sends = append(p.Sends, at+byTools(tools[at]))
+	}
 	return p
 }
 
 // calledBy gives the location each tool of an agent written `call:` calls,
 // which the tool may send to, with the tools that call it.
-func calledBy(def *machine.Definition) []string {
+func calledBy(def *machine.Definition) map[string][]string {
 	var a agent.Agent
 	if def.Type != "agent" || json.Unmarshal(def.Body, &a) != nil {
 		return nil
@@ -300,15 +304,19 @@ func calledBy(def *machine.Definition) []string {
 			tools[at] = append(tools[at], name)
 		}
 	}
-	var out []string
-	for _, at := range sortedKeys(tools) {
-		by := "tool "
-		if len(tools[at]) > 1 {
-			by = "tools "
-		}
-		out = append(out, at+" (by the "+by+strings.Join(tools[at], ", ")+")")
+	return tools
+}
+
+// byTools gives the note on a location the tools named call, or nothing
+// where none does.
+func byTools(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return " (by the tool " + names[0] + ")"
 	}
-	return out
+	return " (by the tools " + strings.Join(names, ", ") + ")"
 }
 
 // sendsTo gives a send: entry as written, with what a pattern of every

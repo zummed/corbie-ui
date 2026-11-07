@@ -98,7 +98,7 @@ approve    send:devices/boiler
 | lifetime | `singleton`, `keyed` or `transient`, what starts its runs, and `limits: { runs: }` |
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event, `none` for an empty list; with no `receive:`, its own tree and its tree's client |
-| sends to | the `send:` entries of its `allow:`, with `**` read as every location in its tree, `/**` and `all` as every location; for an agent, the location each tool written `call:` calls, `people/find (by the tool who)`; `none` where there are none |
+| sends to | the `send:` entries of its `allow:`, with `**` read as every location in its tree, `/**` and `all` as every location; for an agent, the location each tool written `call:` calls, `people/find (by the tool who)`, a location `allow:` also names given once, with its tools; `none` where there are none |
 | approve | the permissions its `approve:` lists, which a job uses only after the ask approves it; no row where there are none |
 
 A machine with no `description:` shows no line above the rows.
@@ -200,7 +200,7 @@ when: input.asker.scopes.includes('orders:write')
 - A tool with `when:` has a dashed border.
 - A toolkit's file is the file its tools are written in, as the agent written out gives it, where that is not the agent's own file. Two agents that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
 - Opening a toolkit with `approve: true` is shown as `opening it needs approval`.
-- A file no agent's `toolkits:` includes is not on the Toolkits page, whatever it holds. The Machines page lists it in Files as any other file.
+- A file no agent's `toolkits:` includes is not on the Toolkits page, whatever it holds. It is a file like any other: in the Machines page's Files it has a row of its own where `.corbieignore` lists it or a machine includes it, and below a listed directory, with nothing including it, it is under its directory's row and has none of its own.
 - A machine with problems offers no toolkit, since Corbie does not write it out. A toolkit whose file has problems is marked `has problems`, and the problems above it name the machines it breaks.
 - A toolkit's file with problems shows them above the toolkit, as the text does.
 - The tabs Drawing and Text choose the view, as on the Machines page, and Text shows the toolkit's file as the text view does. A toolkit written in place in a machine has no tabs.
