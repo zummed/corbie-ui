@@ -5,6 +5,7 @@ package machines
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
@@ -59,6 +60,7 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"plural": plural,
 	"short":  short,
 	"join":   func(s []string) string { return strings.Join(s, ", ") },
+	"isDir":  func(p string) bool { return strings.HasSuffix(p, "/") },
 }).ParseFS(files, "machines.html", "toolkits.html"))
 
 // Pages is the Machines and Toolkits pages.
@@ -115,7 +117,8 @@ func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) 
 }
 
 // view is the Machines page as it is drawn. View is the tab chosen:
-// drawing, text or written.
+// drawing, text or written. File is the file chosen where it is no machine
+// and is listed in .corbieignore or included.
 type view struct {
 	Dir, DirFull string
 	*index
@@ -129,21 +132,22 @@ type view struct {
 	Found      []problem
 	Place      *place
 	Uses       []use
-	Piece      bool
+	File       *entry
 	Included   []string
 	Controller bool
 	Runs       bool
 	Drawing    template.HTML
 }
 
-// A place is where a machine lives and how its runs start, as its file
-// says: its location, its lifetime, what a changed file does to its runs,
-// how many may run at once, who may send to it and call it, and the
-// locations it may send to and call.
+// A place is what a machine is for, where it lives and how its runs start,
+// as its file says: its description, its location, its lifetime, what a
+// changed file does to its runs, how many may run at once, who may send to
+// it and call it, the locations it may send to and call, and the
+// permissions a job uses only after its ask approves.
 type place struct {
-	Location, Lifetime, Started, Update, Updated string
-	Runs                                         int
-	Receives, Sends                              []string
+	Description, Location, Lifetime, Started, Update, Updated string
+	Runs                                                      int
+	Receives, Sends, Approve                                  []string
 }
 
 // A use is a secret or a value a machine uses, and, acting as the
@@ -200,7 +204,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		v.Piece = ix.piece(v.Open)
+		v.File = ix.file(v.Open)
 		v.Included = ix.included[v.Open]
 		switch {
 		case v.Drawable && v.View == "written":
@@ -230,7 +234,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 	page.Write(w, s)
 }
 
-// opened reads the file chosen, its type and first line, the problems found in
+// opened reads the file chosen, its type and name, the problems found in
 // it, and the mark by which the page knows any of them changed.
 func (h *handler) opened(v *view) ([]byte, error) {
 	src, base, err := h.dir.read(v.Open)
@@ -243,11 +247,11 @@ func (h *handler) opened(v *view) ([]byte, error) {
 			base += m.Draft.Hash() + fmt.Sprint(m.Draft.Definition.Lines)
 		}
 		var name string
-		v.Kind, name = firstLine(src)
+		v.Kind, name = typeIn(src)
 		if m.Draft != nil {
 			v.Kind, name = m.Draft.Definition.Type, m.Draft.Definition.Name
 		}
-		v.First = v.Kind + ": " + name
+		v.First = cmp.Or(typeAndName(v.Kind, name), "a machine")
 	}
 	v.Base = hash(fmt.Appendf([]byte(base), "%v%v", v.Found, v.index.included[v.Open]))
 	return src, nil
@@ -256,7 +260,7 @@ func (h *handler) opened(v *view) ([]byte, error) {
 // placeOf gives where a machine lives and how its runs start.
 func placeOf(m *client.Machine) *place {
 	def := m.Draft.Definition
-	p := &place{Location: m.Location, Lifetime: def.Lifetime, Update: def.Update, Runs: def.Runs}
+	p := &place{Description: def.Description, Location: m.Location, Lifetime: def.Lifetime, Update: def.Update, Runs: def.Runs, Approve: def.Approve}
 	p.Started = startedBy(def.Lifetime, m.Location)
 	p.Updated = "a changed file leaves its runs to finish on the definition they started with"
 	if def.Update == machine.UpdateRestart {
