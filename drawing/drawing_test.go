@@ -847,3 +847,104 @@ stages:
 		t.Errorf("a call's card does not link to the run it called:\n%s", run)
 	}
 }
+
+func Test_drawing_conditions_approvals_and_calls_are_marked(t *testing.T) {
+	// A toolkit or a tool with when: has a dashed border and its condition
+	// in its tooltip.
+	def := definition(t, `agent: helper
+model: { name: claude-sonnet-5-5, secret: KEY }
+prompt: hello
+toolkits:
+  orders:
+    include: ./orders.yaml
+    when: "${input.asker.scopes.includes('orders')}"
+  notes:
+    description: notes
+    tools:
+      jot: { description: jots, job: ./w.js }
+tools:
+  look: { description: looks, job: ./w.js, when: "${input.look}" }
+`, map[string]string{"w.js": script, "orders.yaml": "description: orders\ntools:\n  read: { description: reads, job: ./w.js }\n"})
+	svg := draw(t, def, nil)
+	for _, want := range []string{
+		`<g class="state holder toolkit when"><rect`,
+		`>orders</text><title>orders.yaml` + "\n" + `when: input.asker.scopes.includes(&#39;orders&#39;)</title>`,
+		`<g class="state holder toolkit"><rect`,
+		"<title>looks\nwhen: input.look</title>",
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("the drawing does not hold %q:\n%s", want, svg)
+		}
+	}
+	if got := group(t, svg, "look"); got != "state tool when" {
+		t.Errorf("a tool with when: is drawn as %q", got)
+	}
+	if got := group(t, svg, "jot"); got != "state tool" {
+		t.Errorf("a tool with no when: is drawn as %q", got)
+	}
+	folded := draw(t, def, &Run{Steps: []Step{{Asked: []string{"jot"}}}})
+	if !strings.Contains(folded, `<g class="state holder toolkit when folded">`) || !strings.Contains(folded, "<title>read\nwhen: input.asker") {
+		t.Errorf("a folded toolkit with when: is not dashed with its condition:\n%s", folded)
+	}
+
+	// A job of any machine with approve: true says so, and a stage or a
+	// state whose job is held for the ask is marked held.
+	flow := definition(t, `flow: deploy
+ask: { machine: ./approval.yaml }
+stages:
+  plan: { job: ./w.js }
+  ship: { job: { script: ./w.js, approve: true }, follows: [plan] }
+  pipeline: { job: { call: { at: ci/pipeline }, approve: true }, follows: [plan] }
+  later: { job: { call: { at: "${input.at}" } }, follows: [plan] }
+  far: { job: { call: { at: /work/ci/pipeline } }, follows: [plan] }
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
+	if strings.Count(svg, ">approve: true<") != 2 {
+		t.Errorf("the jobs with approve: true do not say so:\n%s", svg)
+	}
+	for name, want := range map[string]string{"ship": "state stage held", "pipeline": "state stage now"} {
+		if got := group(t, svg, name); got != want {
+			t.Errorf("stage %s is drawn as %q, not %q", name, got, want)
+		}
+	}
+	chart := definition(t, `statechart: deploys
+ask: { machine: ./approval.yaml }
+initial: shipping
+states:
+  shipping:
+    job: { script: ./w.js, approve: true }
+    on: { done: over }
+  over: { end: done }
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
+	svg = draw(t, chart, &Run{Steps: []Step{{Shown: states("shipping")}}, Going: []string{"shipping"}, Held: []string{"shipping"}})
+	if got := group(t, svg, "shipping"); got != "state held" || !strings.Contains(svg, ">approve: true<") {
+		t.Errorf("a state whose job is held is drawn as %q:\n%s", got, svg)
+	}
+
+	// On the Machines page a call's card links to the machine at the
+	// location it writes out; one an expression gives has no link.
+	draft, err := machine.Parse([]byte(`flow: deploy
+stages:
+  pipeline: { job: { call: { at: ci/pipeline } } }
+  later: { job: { call: { at: "${input.at}" } } }
+  gone: { job: { call: { at: ci/gone } } }
+`), machine.Given(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	u := Unfold{Href: func(string) string { return "" }, Called: func(at string) string {
+		asked = append(asked, at)
+		if at == "ci/pipeline" {
+			return "/machines?file=ci/pipeline.yaml"
+		}
+		return ""
+	}}
+	page := string(must(Unfolded(draft, u)))
+	if !strings.Contains(page, `<a href="/machines?file=ci/pipeline.yaml"><g class="state stage">`) || strings.Count(page, "<a href") != 1 {
+		t.Errorf("a call's card does not link to the machine it calls:\n%s", page)
+	}
+	if slices.Contains(asked, "${input.at}") {
+		t.Errorf("a location an expression gives is looked up: %v", asked)
+	}
+}

@@ -1,6 +1,7 @@
 package machines
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -19,28 +20,33 @@ import (
 
 // A toolkit is a group of tools under an agent's `toolkits:`, as the
 // Toolkits page shows it. File is the file it is included from, where one is
-// written, Opening says opening it needs approval, and Broken that its file
-// has problems.
+// written, Instructions the first line of its `instructions:`, or
+// InstructionsFile the file they are included from, Opening says opening it
+// needs approval, and Broken that its file has problems.
 type toolkit struct {
-	ID, Name, Description, File string
-	Opening, Broken             bool
-	Tools                       []toolkitTool
-	Offered                     []offer
-	key                         string
+	ID, Name, Description, File    string
+	Instructions, InstructionsFile string
+	Opening, Broken                bool
+	Tools                          []toolkitTool
+	Offered                        []offer
+	key                            string
 }
 
-// A toolkitTool is a tool of a toolkit: its job's kind, the file that job
-// names, and whether the job needs approval.
+// A toolkitTool is a tool of a toolkit: its job's kind, script, machine or
+// call, the file that job names, the location a call names, the names of
+// the input a call fixes, its `when:`, and whether the job needs approval.
 type toolkitTool struct {
-	Name, Description, Job, File string
-	Approve                      bool
+	Name, Description, Job, File, Call, When string
+	Fixed                                    []string
+	Approve                                  bool
 }
 
-// An offer is an agent that offers a toolkit, the machines that start it,
-// and for an agent in a file of its own, how its location's runs start.
+// An offer is an agent that offers a toolkit, with the `when:` of its entry,
+// the machines that start it, and for an agent in a file of its own, how its
+// location's runs start.
 type offer struct {
-	Name, File, Lifetime, Started string
-	Starts                        []start
+	Name, File, When, Lifetime, Started string
+	Starts                              []start
 }
 
 // A start is a machine that starts an agent.
@@ -68,19 +74,21 @@ type node struct {
 	name, kind string
 }
 
-// toolkitIndex is what the machines in a directory say of toolkits.
+// toolkitIndex is what the machines in a directory say of toolkits: above
+// gives the files of the machines that run or call the machine in a file.
 type toolkitIndex struct {
+	ix       *index
 	byFile   map[string]*node
 	above    map[string][]string
 	toolkits map[string]*toolkit
 }
 
 // toolkitsOf reads every toolkit in the directory: those that its machines
-// offer, and through them the machines they name, and those that no agent
-// offers. A machine with problems offers none, since Corbie does not write
-// it out.
+// offer, and through them the machines they name and call, and those that
+// no agent offers. A machine with problems offers none, since Corbie does
+// not write it out.
 func (d *dir) toolkitsOf(ix *index) []toolkit {
-	px := &toolkitIndex{byFile: map[string]*node{}, above: map[string][]string{}, toolkits: map[string]*toolkit{}}
+	px := &toolkitIndex{ix: ix, byFile: map[string]*node{}, above: map[string][]string{}, toolkits: map[string]*toolkit{}}
 	for _, file := range sortedKeys(ix.machines) {
 		if m := ix.machines[file]; m.Draft != nil {
 			px.add(file, m.Draft)
@@ -140,12 +148,20 @@ func (px *toolkitIndex) add(file string, d *machine.Draft) {
 }
 
 // read reads a machine, in its own file or written in place in that file: the
-// toolkits of an agent, and the machines it names.
+// toolkits of an agent, the machines it names, and those its calls name.
 func (px *toolkitIndex) read(file string, d *machine.Draft) {
 	if d.Definition.Type == "agent" {
 		var a agent.Agent
 		if json.Unmarshal(d.Definition.Body, &a) == nil {
 			px.offers(file, &a, d)
+		}
+	}
+	for _, j := range machine.Jobs(d.Definition) {
+		if j.Job.Call == nil || j.Job.Call.Expr != "" {
+			continue
+		}
+		if called := px.ix.fileAt(j.Job.Call.At); called != "" && !slices.Contains(px.above[called], file) {
+			px.above[called] = append(px.above[called], file)
 		}
 	}
 	for _, name := range sortedKeys(d.Children) {
@@ -173,7 +189,7 @@ func (px *toolkitIndex) offers(file string, a *agent.Agent, d *machine.Draft) {
 				tools = append(tools, tool)
 			}
 		}
-		included := drawing.ToolkitFile(d.Definition, name)
+		included := drawing.ToolkitFile(d.Definition, name, file)
 		key := included
 		if key == "" {
 			key = name + "\x00" + a.Toolkits[name].Description + "\x00" + strings.Join(tools, " ")
@@ -181,26 +197,54 @@ func (px *toolkitIndex) offers(file string, a *agent.Agent, d *machine.Draft) {
 		p := px.toolkits[key]
 		if p == nil {
 			p = &toolkit{Name: name, Description: a.Toolkits[name].Description, File: included, key: key}
+			p.Instructions, p.InstructionsFile = instructionsOf(d.Definition, name, a.Toolkits[name].Instructions, cmp.Or(included, file))
 			for _, tool := range tools {
-				p.Tools = append(p.Tools, toolOf(tool, a.Tools[tool], d))
+				p.Tools = append(p.Tools, px.ix.toolOf(tool, a.Tools[tool], d))
 			}
 			px.toolkits[key] = p
 		}
 		p.Opening = p.Opening || a.Toolkits[name].Approve
 		if !slices.ContainsFunc(p.Offered, func(o offer) bool { return o.File == file && o.Name == d.Definition.Name }) {
-			p.Offered = append(p.Offered, offer{Name: d.Definition.Name, File: file})
+			p.Offered = append(p.Offered, offer{Name: d.Definition.Name, File: file, When: a.Toolkits[name].When})
 		}
 	}
 }
 
+// instructionsOf gives a toolkit's instructions as the page shows them: the
+// file they are included from, where that is not the toolkit's own, or
+// their first line.
+func instructionsOf(def *machine.Definition, name, text, own string) (string, string) {
+	if text == "" {
+		return "", ""
+	}
+	if file := fileOf(def.Lines["toolkits."+name+".instructions"]); file != "" && file != own {
+		return "", file
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return first, ""
+}
+
+// fileOf gives the file of a value's file and line, as base.yaml:3.
+func fileOf(line string) string {
+	if i := strings.LastIndexByte(line, ':'); i >= 0 {
+		return line[:i]
+	}
+	return line
+}
+
 // toolOf gives a tool as the page shows it, its paths written from the
-// directory.
-func toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitTool {
-	out := toolkitTool{Name: name, Description: t.Description}
+// directory: a call's file is that of the machine at the location it calls.
+func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitTool {
+	out := toolkitTool{Name: name, Description: t.Description, When: t.When}
 	if t.Job == nil {
 		return out
 	}
 	out.Approve = t.Job.Approve
+	if t.Call != "" {
+		fixed, _ := t.Job.Input.(map[string]any)
+		out.Job, out.Call, out.File, out.Fixed = "call", t.Call, ix.fileAt(t.Call), sortedKeys(fixed)
+		return out
+	}
 	if t.Job.IsMachine() {
 		out.Job = "machine"
 		if d.Children[t.Job.Machine] != nil && !strings.HasPrefix(t.Job.Machine, "in-place-") {
@@ -221,9 +265,38 @@ func writtenFrom(file, name string) string {
 	return fromFile(file, name)
 }
 
+// fileAt gives the file of the machine at a location a definition writes
+// out, from the tree's prefix or from / where it begins with /, or nothing
+// where the directory has no machine there.
+func (ix *index) fileAt(at string) string {
+	if at == "" || machine.HasExpr(at) {
+		return ""
+	}
+	location := at
+	if !strings.HasPrefix(at, "/") {
+		location = path.Join(ix.Prefix, at)
+	}
+	for _, file := range sortedKeys(ix.machines) {
+		if ix.machines[file].Location == location {
+			return file
+		}
+	}
+	return ""
+}
+
+// called gives the address on the Machines page of the machine at a
+// location a call writes out, or none.
+func (ix *index) called(at string) string {
+	if file := ix.fileAt(at); file != "" {
+		return "/machines?" + url.Values{"file": {file}}.Encode()
+	}
+	return ""
+}
+
 // startsOf gives the machines that start the agent in a file: for an agent
-// in a file of its own, each machine that runs that file with `machine:`;
-// for one written in place, the machine it is written in.
+// in a file of its own, each machine that runs that file with `machine:` or
+// calls its location; for one written in place, the machine it is written
+// in.
 func (px *toolkitIndex) startsOf(file string) []start {
 	if h := px.byFile[file]; h.kind != "agent" {
 		return []start{{Name: h.name, File: file, Type: h.kind}}
@@ -248,54 +321,82 @@ func startedBy(lifetime, location string) string {
 	return "a call, or corbie run submit " + location + ", starts each run"
 }
 
-// unoffered gives each piece in the directory that is written as a toolkit
-// and that no agent offers.
+// unoffered gives each file .corbieignore lists that is written as a toolkit
+// and that no agent offers. A .yaml file in the list is one .corbieignore
+// lists, since Corbie reads every other as a machine.
 func (d *dir) unoffered(ix *index, known []toolkit) []toolkit {
 	var found []toolkit
 	for _, piece := range ix.Pieces {
-		if p, ok := d.writtenToolkit(piece.Path); ok && !slices.ContainsFunc(known, func(k toolkit) bool { return k.File == piece.Path }) {
+		if p, ok := d.writtenToolkit(ix, piece.Path); ok && !slices.ContainsFunc(known, func(k toolkit) bool { return k.File == piece.Path }) {
 			found = append(found, p)
 		}
 	}
 	return found
 }
 
-// writtenToolkit reads a file with `description:` and `tools:` at its top
-// level as a toolkit: a machine's file is not one. A toolkit has no name
-// until an agent offers it, so it goes by its directory's name.
-func (d *dir) writtenToolkit(rel string) (toolkit, bool) {
+// A writtenTool is a tool as a toolkit's file writes it.
+type writtenTool struct {
+	Description, Call, When string
+	Job                     any
+	Input                   map[string]any
+	Approve                 bool
+}
+
+// writtenToolkit reads a .yaml file with `description:` and `tools:` at its
+// top level, and no key that gives a type, as a toolkit. A toolkit has no
+// name until an agent offers it, so it goes by its file's name.
+func (d *dir) writtenToolkit(ix *index, rel string) (toolkit, bool) {
+	if !strings.HasSuffix(rel, ".yaml") {
+		return toolkit{}, false
+	}
 	src, _, err := d.read(rel)
 	if err != nil {
 		return toolkit{}, false
 	}
-	if kind, _ := firstLine(src); kind != "" {
+	var top map[string]any
+	if yaml.Unmarshal(src, &top) != nil {
 		return toolkit{}, false
 	}
-	var written struct {
-		Description string
-		Tools       map[string]struct {
-			Description string
-			Job         any
+	for key := range top {
+		if _, typed := machine.TypeOf(key); typed {
+			return toolkit{}, false
 		}
+	}
+	var written struct {
+		Description  string
+		Instructions any
+		Tools        map[string]writtenTool
 	}
 	if yaml.Unmarshal(src, &written) != nil || written.Description == "" || written.Tools == nil {
 		return toolkit{}, false
 	}
-	name := path.Base(path.Dir(rel))
-	if name == "." {
-		name = strings.TrimSuffix(path.Base(rel), ".yaml")
+	p := toolkit{Name: strings.TrimSuffix(path.Base(rel), ".yaml"), Description: written.Description, File: rel, key: rel}
+	switch in := written.Instructions.(type) {
+	case string:
+		p.Instructions, _, _ = strings.Cut(strings.TrimSpace(in), "\n")
+	case map[string]any:
+		included, _ := in["include"].(string)
+		p.InstructionsFile = writtenFrom(rel, included)
 	}
-	p := toolkit{Name: name, Description: written.Description, File: rel, key: rel}
 	for _, tool := range sortedKeys(written.Tools) {
-		p.Tools = append(p.Tools, writtenTool(tool, written.Tools[tool].Description, written.Tools[tool].Job, rel))
+		p.Tools = append(p.Tools, ix.writtenTool(tool, written.Tools[tool], rel))
 	}
 	return p, true
 }
 
-// writtenTool gives a tool as a toolkit's file writes it. Its job is a
+// writtenTool gives a tool as a toolkit's file writes it. A call takes its
+// description from the machine at the location it calls; any other job is a
 // script's path, or a mapping.
-func writtenTool(name, description string, written any, file string) toolkitTool {
-	t := toolkitTool{Name: name, Description: description, Job: "script"}
+func (ix *index) writtenTool(name string, w writtenTool, file string) toolkitTool {
+	t := toolkitTool{Name: name, Description: w.Description, Job: "script", When: condition(w.When)}
+	if w.Call != "" {
+		t.Job, t.Call, t.File, t.Fixed, t.Approve = "call", w.Call, ix.fileAt(w.Call), sortedKeys(w.Input), w.Approve
+		if m := ix.machines[t.File]; m != nil && m.Draft != nil {
+			t.Description = m.Draft.Definition.Description
+		}
+		return t
+	}
+	written := w.Job
 	job, _ := written.(map[string]any)
 	if job == nil {
 		script, _ := written.(string)
@@ -310,6 +411,15 @@ func writtenTool(name, description string, written any, file string) toolkitTool
 		t.Job, t.File = "machine", writtenFrom(file, named)
 	}
 	return t
+}
+
+// condition gives a `when:` as Corbie keeps it: the expression, without the
+// ${ } it is written in.
+func condition(when string) string {
+	if src, ok := machine.OneExpr(when); ok {
+		return src
+	}
+	return when
 }
 
 // toolkitsPage reads the Toolkits page as an address asks for it: the

@@ -93,10 +93,15 @@ func Draw(def *machine.Definition, run *Run) (template.HTML, error) {
 // Unfold says how a drawing's cards unfold. A card's path is the names of
 // the cards down to it, from the machine drawn, joined by /.
 type Unfold struct {
+	// File is the file of the machine drawn.
+	File string
 	// Open holds the paths of the cards unfolded.
 	Open map[string]bool
 	// Href gives the address of a card's link.
 	Href func(path string) string
+	// Called gives the address of the machine at a location a call writes
+	// out, or none where there is no machine there.
+	Called func(at string) string
 }
 
 // Unfolded gives the drawing of a machine read from its file, with a link
@@ -104,7 +109,7 @@ type Unfold struct {
 // unfolded drawn inside them.
 func Unfolded(draft *machine.Draft, u Unfold) (template.HTML, error) {
 	def := draft.Definition
-	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft})
+	d, err := drawOf(def, nil, &walker{unfold: u, draft: draft, file: u.File})
 	if err != nil {
 		return "", err
 	}
@@ -136,12 +141,13 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 }
 
 // A walker is what a drawing knows of the machines its jobs name. On the
-// Machines page it is a machine's draft and the path of the card it is
-// drawn in. On a run's page it is the machines its definition names and
-// the runs its jobs started.
+// Machines page it is a machine's draft, its file and the path of the card
+// it is drawn in. On a run's page it is the machines its definition names
+// and the runs its jobs started.
 type walker struct {
 	unfold   Unfold
 	draft    *machine.Draft
+	file     string
 	machines map[string]Machine
 	children map[string]Child
 	path     string
@@ -155,7 +161,10 @@ func (w *walker) open(at, job string) (string, *drawn) {
 	if !w.unfold.Open[at] {
 		return href, nil
 	}
-	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], path: at}
+	sub := &walker{unfold: w.unfold, draft: w.draft.Children[job], file: path.Clean(job), path: at}
+	if inPlace(job) {
+		sub.file = w.file
+	}
 	d, err := drawOf(sub.draft.Definition, nil, sub)
 	if err != nil {
 		return href, nil
@@ -169,9 +178,9 @@ func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
 
 // ToolkitFile gives the file a toolkit of an agent is included from, as
 // Corbie writes out the agent: the file its tools are written in, or its
-// `description:` where it has no tools, when that is not the file the
-// agent's type is written in. A toolkit written in place gives nothing.
-func ToolkitFile(def *machine.Definition, toolkit string) string {
+// `description:` where it has no tools, when that is not own, the agent's
+// own file. A toolkit written in place gives nothing.
+func ToolkitFile(def *machine.Definition, toolkit, own string) string {
 	at := "toolkits." + toolkit + "."
 	file := fileOf(def.Lines[at+"description"])
 	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
@@ -180,7 +189,7 @@ func ToolkitFile(def *machine.Definition, toolkit string) string {
 			break
 		}
 	}
-	if file == fileOf(def.Lines[def.Type]) {
+	if file == own {
 		return ""
 	}
 	return file
@@ -194,16 +203,27 @@ func fileOf(line string) string {
 	return line
 }
 
-// describe writes what a card's job is into it: its icon and its line, and
-// where the job names a machine, the link to it. at is the name a run gives
-// the card's job, and its path on the Machines page. The machine is known by
-// its draft, or by the definition a run was started from; one that is
-// neither is known only by how the definition names it. On a run's page the
-// card links to the run its job started.
+// describe writes what a card's job is into it: its icon, its lines, a line
+// where it needs approval, and where the job names a machine, the link to
+// it. at is the name a run gives the card's job, and its path on the
+// Machines page.
 func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
-	switch {
-	case job == nil:
+	if job == nil {
 		return
+	}
+	w.describeJob(it, at, job)
+	if job.Approve {
+		it.lines = append(it.lines, "approve: true")
+	}
+}
+
+// describeJob writes a card's icon, its line and its link. The machine a
+// job names is known by its draft, or by the definition a run was started
+// from; one that is neither is known only by how the definition names it.
+// On a run's page the card links to the run its job started, and on the
+// Machines page a call's card to the machine at the location it writes out.
+func (w *walker) describeJob(it *item, at string, job *machine.JobSpec) {
+	switch {
 	case job.Script != "":
 		it.icon, it.lines = "script", []string{fit("script: " + job.Script)}
 		return
@@ -214,6 +234,8 @@ func (w *walker) describe(it *item, at string, job *machine.JobSpec) {
 		it.icon, it.lines = "file", []string{fit("call: " + addressOf(job.Call))}
 		if c, ok := w.children[at]; ok {
 			it.icon, it.lines, it.href = c.Type, append(it.lines, fit(c.Type+": "+c.Machine)), "/run/"+c.ID
+		} else if w.unfold.Called != nil && job.Call.Expr == "" && !machine.HasExpr(job.Call.At) {
+			it.href = w.unfold.Called(job.Call.At)
 		}
 		return
 	case job.Machine == "":

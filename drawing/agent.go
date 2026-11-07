@@ -12,15 +12,17 @@ import (
 
 // A toolkitBox is one column of what the model can call: a toolkit, or the tools
 // in no toolkit, with where its tools and its ask are drawn. file is the file
-// the toolkit is included from, where it is known.
+// the toolkit is included from, where it is known, when its `when:`, and
+// whens the tools that have one.
 type toolkitBox struct {
-	name, file string
-	toolkit    bool
-	folded     bool
-	tools      []string
-	items      map[string]item
-	ask        *item
-	at         box
+	name, file, when string
+	toolkit          bool
+	folded           bool
+	tools            []string
+	whens            map[string]bool
+	items            map[string]item
+	ask              *item
+	at               box
 }
 
 // askAt is where a toolkit's ask is written, as a run names it.
@@ -156,8 +158,12 @@ func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) dra
 func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox {
 	var groups []*toolkitBox
 	byName := map[string]*toolkitBox{}
+	own := w.file
+	if own == "" {
+		own = fileOf(def.Lines[def.Type])
+	}
 	for _, toolkit := range sortedKeys(a.Toolkits) {
-		g := &toolkitBox{name: toolkit, file: ToolkitFile(def, toolkit), toolkit: true, items: map[string]item{}}
+		g := &toolkitBox{name: toolkit, file: ToolkitFile(def, toolkit, own), when: a.Toolkits[toolkit].When, toolkit: true, whens: map[string]bool{}, items: map[string]item{}}
 		if ask := a.Toolkits[toolkit].Ask; ask != nil {
 			it := item{name: "ask"}
 			w.describe(&it, askAt(toolkit), ask)
@@ -175,16 +181,13 @@ func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox 
 		g := byName[tool.Toolkit]
 		if g == nil {
 			if free == nil {
-				free = &toolkitBox{name: "", items: map[string]item{}}
+				free = &toolkitBox{name: "", whens: map[string]bool{}, items: map[string]item{}}
 			}
 			g = free
 		}
-		it := item{name: t, title: tool.Description}
+		it := item{name: t, title: titleOf(tool.Description, tool.When)}
 		w.describe(&it, t, tool.Job)
-		if tool.Job != nil && tool.Job.Approve {
-			it.lines = append(it.lines, "approve: true")
-		}
-		g.tools, g.items[t] = append(g.tools, t), it
+		g.tools, g.items[t], g.whens[t] = append(g.tools, t), it, tool.When != ""
 	}
 	if free != nil {
 		groups = append(groups, free)
@@ -193,6 +196,19 @@ func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox 
 		g.size()
 	}
 	return groups
+}
+
+// titleOf gives a tooltip of lines: those given, and `when:` where there is
+// a condition.
+func titleOf(first, when string) string {
+	lines := []string{}
+	if first != "" {
+		lines = append(lines, first)
+	}
+	if when != "" {
+		lines = append(lines, "when: "+when)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // A column is what is drawn one below another in the holder of an agent's
@@ -238,24 +254,29 @@ func (g *toolkitBox) used(run *Run) bool {
 
 // paintGroup draws a column of what the model can call, and says whether a
 // tool in it is one the agent waits on. A toolkit's name is cut to its holder,
-// and its tooltip gives the file it is included from.
+// and its tooltip gives the file it is included from and its `when:`. A
+// toolkit or a tool with `when:` has a dashed border.
 func (d *drawn) paintGroup(g *toolkitBox, run *Run) bool {
 	b := g.at
 	y := b.y
+	class := "state holder toolkit"
+	if g.when != "" {
+		class += " when"
+	}
 	if g.folded {
-		fmt.Fprintf(&d.holders, `<g class="state holder toolkit folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
-			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))),
-			num(b.x+14), num(b.y+39), len(g.tools), word(len(g.tools), "tool"), esc(strings.Join(g.tools, ", ")))
+		fmt.Fprintf(&d.holders, `<g class="%s folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
+			class, num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))),
+			num(b.x+14), num(b.y+39), len(g.tools), word(len(g.tools), "tool"), esc(titleOf(strings.Join(g.tools, ", "), g.when)))
 		d.reach(b)
 		return false
 	}
 	if g.toolkit {
 		title := ""
-		if g.file != "" {
-			title = "<title>" + esc(g.file) + "</title>"
+		if t := titleOf(g.file, g.when); t != "" {
+			title = "<title>" + esc(t) + "</title>"
 		}
-		fmt.Fprintf(&d.holders, `<g class="state holder toolkit"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
-			num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))), title)
+		fmt.Fprintf(&d.holders, `<g class="%s"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
+			class, num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))), title)
 		y += innerTop
 	}
 	d.reach(b)
@@ -265,7 +286,11 @@ func (d *drawn) paintGroup(g *toolkitBox, run *Run) bool {
 		now = now || mark == "now" || mark == "held"
 		at := g.items[t].size()
 		at.x, at.y = b.cx()-at.w/2, y
-		d.paint(g.items[t], at, strings.TrimSpace("state tool "+mark), cardR, "")
+		class := strings.TrimSpace("state tool " + mark)
+		if g.whens[t] {
+			class += " when"
+		}
+		d.paint(g.items[t], at, class, cardR, "")
 		y += at.h + 12
 	}
 	if g.ask != nil {

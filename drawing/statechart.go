@@ -667,7 +667,8 @@ func tags(s *statechart.State) []string {
 	return lines
 }
 
-// chartMarks are a run's states, as the drawing marks them.
+// chartMarks are a run's states, as the drawing marks them: a state the run
+// is in whose job is held for the ask is marked held.
 type chartMarks struct {
 	run      *Run
 	now, was map[string]bool // in now, and in at any step
@@ -749,6 +750,8 @@ func (m chartMarks) of(name string) string {
 	switch {
 	case m.run == nil:
 		return ""
+	case m.now[name] && !m.run.Ended && slices.Contains(m.run.Held, name):
+		return "held"
 	case m.now[name] && !m.run.Ended:
 		return "now"
 	case m.now[name] && m.run.Failed:

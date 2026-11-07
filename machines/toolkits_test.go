@@ -63,8 +63,8 @@ toolkits:
 		"own.js":                     "return 1",
 		".kit/dead.yaml":             "flow: dead\nstages:\n  a: { job: { machine: behind.yaml } }\n",
 		"behind.yaml":                "agent: behind\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\ntoolkits:\n  zed: { description: zed, tools: { read: { description: reads, job: { script: ./own.js } } } }\n",
-		"toolkits/new/toolkit.yaml":  "description: something new\ntools:\n  try: { description: tries, job: { script: ./try.js, approve: true } }\n",
-		"toolkits/new/try.js":        "return 1",
+		"toolkits/new.yaml":          "description: something new\ntools:\n  try: { description: tries, job: { script: ./try.js, approve: true } }\n",
+		"toolkits/try.js":            "return 1",
 		".kit/toolkit.yaml":          "description: kept in a dotted directory\ntools: {}\n",
 		"side.yaml":                  "flow: side\nstages:\n  a: { job: { machine: ./side.yml } }\n",
 		"side.yml":                   "agent: sider\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\ntoolkits:\n  yml: { description: from a yml, tools: { read: { description: reads, job: { script: ./own.js } } } }\n",
@@ -125,10 +125,10 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	for _, p := range v.Toolkits {
 		ids = append(ids, p.ID)
 	}
-	if got := strings.Join(ids, " "); got != ".kit kept messages messages-2 new yml zed" {
+	if got := strings.Join(ids, " "); got != "kept messages messages-2 new toolkit yml zed" {
 		t.Fatalf("the toolkits are %q: %+v", got, v.Unread)
 	}
-	if v.Open == nil || v.Open.ID != ".kit" {
+	if v.Open == nil || v.Open.ID != "kept" {
 		t.Errorf("the first toolkit is not open: %+v", v.Open)
 	}
 
@@ -183,7 +183,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if s := yml.Offered[0].Starts; len(s) != 1 || s[0].File != "side.yaml" {
 		t.Errorf("the machine above a .yml file is %+v", s)
 	}
-	if len(unoffered.Offered) != 0 || unoffered.File != "toolkits/new/toolkit.yaml" || !unoffered.Tools[0].Approve || unoffered.Tools[0].File != "toolkits/new/try.js" {
+	if len(unoffered.Offered) != 0 || unoffered.File != "toolkits/new.yaml" || !unoffered.Tools[0].Approve || unoffered.Tools[0].File != "toolkits/try.js" {
 		t.Errorf("the toolkit nothing offers is %+v", unoffered)
 	}
 	link := filepath.Join(t.TempDir(), "link")
@@ -213,7 +213,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 		}
 	}
 	text := do(h, "GET", "/toolkits?toolkit=new&view=text", nil).Body.String()
-	if !strings.Contains(text, `<pre class="code" aria-label="toolkits/new/toolkit.yaml"><span class="l" id="L1"><span class="k">description</span>`) || strings.Contains(text, `class="toolcards"`) {
+	if !strings.Contains(text, `<pre class="code" aria-label="toolkits/new.yaml"><span class="l" id="L1"><span class="k">description</span>`) || strings.Contains(text, `class="toolcards"`) {
 		t.Errorf("the toolkit's Text tab does not show its file:\n%s", text)
 	}
 	if w := do(h, "GET", "/toolkits?toolkit=gone", nil); w.Code != http.StatusNotFound {
@@ -227,19 +227,19 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 func Test_machines_toolkits_show_the_problems_in_their_file(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		".corbieignore":             "toolkits/\n",
-		"a.yaml":                    "agent: a\n" + agentHead + "toolkits:\n  net: { include: ./toolkits/net/toolkit.yaml }\n",
-		"b.yaml":                    "flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n",
-		"r.js":                      "return 1",
-		"toolkits/net/toolkit.yaml": "description: the network\ntools:\n  r:\n    does: r\n    job: { script: r.js }\n",
+		".corbieignore":     "toolkits/\n",
+		"a.yaml":            "agent: a\n" + agentHead + "toolkits:\n  net: { include: ./toolkits/net.yaml }\n",
+		"b.yaml":            "flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n",
+		"r.js":              "return 1",
+		"toolkits/net.yaml": "description: the network\ntools:\n  r:\n    does: r\n    job: { script: r.js }\n",
 	})
 	v := toolkitsView_(t, dir, "net")
 	// The agent that offers the toolkit has problems, so it offers nothing,
 	// and the toolkit's file is marked as having problems, not as unoffered.
-	if v.Open == nil || len(v.Open.Offered) != 0 || !v.Open.Broken || v.Open.File != "toolkits/net/toolkit.yaml" {
+	if v.Open == nil || len(v.Open.Offered) != 0 || !v.Open.Broken || v.Open.File != "toolkits/net.yaml" {
 		t.Fatalf("the toolkit is %+v", v.Open)
 	}
-	if len(v.Found) == 0 || v.Found[0].File != "toolkits/net/toolkit.yaml" || len(v.Found[0].Breaks) != 2 || v.Found[0].Line == 0 {
+	if len(v.Found) == 0 || v.Found[0].File != "toolkits/net.yaml" || len(v.Found[0].Breaks) != 2 || v.Found[0].Line == 0 {
 		t.Errorf("the problems in the toolkit's file are %+v", v.Found)
 	}
 	if !slices.EqualFunc(v.Problems, v.Found, func(a, b problem) bool { return a.File == b.File && a.Line == b.Line && a.Text == b.Text }) {
@@ -448,5 +448,115 @@ func Test_machines_toolkits_page_follows_the_directory(t *testing.T) {
 		if strings.Contains(string(data), "changed on disk") {
 			return
 		}
+	}
+}
+
+// callsProject writes a project whose agent is called by its location, and
+// whose toolkits call machines by theirs.
+func callsProject(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		".corbieignore":    "toolkits/\n",
+		"people/find.yaml": "flow: find\ndescription: Find a person by email.\ninput: { table: string, email: string }\nstages:\n  a: { job: { script: ./find.js } }\n",
+		"people/find.js":   "return 1",
+		"agents/support.yaml": "agent: support\n" + agentHead + "toolkits:\n" +
+			"  orders: { include: toolkits/orders.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
+			"tools:\n  who: { call: people/find, input: { table: staff } }\n",
+		"toolkits/orders.yaml": "description: The orders app.\ninstructions: { include: ./orders.md }\ntools:\n" +
+			"  find: { call: people/find, input: { table: customers }, approve: true, when: \"${input.asker.name != ''}\" }\n",
+		"toolkits/orders.md": "Use these for orders.\nAsk first.\n",
+		"toolkits/infra.yaml": "description: The machines.\ninstructions: |\n  Restart only when asked.\n  Say so.\ntools:\n" +
+			"  restart: { call: people/find, input: { table: vms }, when: \"${input.x}\" }\n",
+		"conversation.yaml": "statechart: conversation\ninitial: talking\nstates:\n  talking:\n    job: { call: { at: agents/support }, input: { text: hi } }\n    on: { done: over, failed: over }\n  over: { end: done }\n",
+		"caller.yaml":       "flow: caller\nstages:\n  a: { job: { call: { at: /" + filepath.Base(dir) + "/agents/support } } }\n",
+		"other.yaml":        "flow: other\nstages:\n  a: { job: { call: { at: /elsewhere/agents/support } } }\n",
+	})
+	return dir
+}
+
+func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
+	dir := callsProject(t)
+	v := toolkitsView_(t, dir, "orders")
+	if len(v.Problems) != 0 {
+		t.Fatalf("the project has problems: %+v", v.Problems)
+	}
+	orders := v.Open
+	if orders == nil || orders.File != "toolkits/orders.yaml" || orders.InstructionsFile != "toolkits/orders.md" || orders.Instructions != "" {
+		t.Fatalf("the toolkit is %+v", orders)
+	}
+	if len(orders.Offered) != 1 || orders.Offered[0].When != "input.asker.scopes.includes('orders:read')" {
+		t.Errorf("the agent offers the toolkit as %+v", orders.Offered)
+	}
+	var starts []string
+	for _, s := range orders.Offered[0].Starts {
+		starts = append(starts, s.File+" "+s.Type)
+	}
+	if got := strings.Join(starts, ", "); got != "caller.yaml flow, conversation.yaml statechart" {
+		t.Errorf("the agent called by its location is started by %q", got)
+	}
+	find := orders.Tools[0]
+	if find.Job != "call" || find.Call != "people/find" || find.File != "people/find.yaml" || !slices.Equal(find.Fixed, []string{"table"}) ||
+		!find.Approve || find.When != "input.asker.name != ''" || find.Description != "Find a person by email." {
+		t.Errorf("the call tool is %+v", find)
+	}
+
+	infra := byDescription(t, v, "The machines.")
+	if infra.Name != "infra" || len(infra.Offered) != 0 || infra.Instructions != "Restart only when asked." {
+		t.Errorf("the toolkit nothing offers is %+v", infra)
+	}
+	if r := infra.Tools[0]; r.Job != "call" || r.File != "people/find.yaml" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
+		t.Errorf("a call tool in a file nothing offers is %+v", r)
+	}
+
+	h, err := New(Config{Dir: dir, Interval: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := do(h, "GET", "/toolkits?toolkit=orders", nil).Body.String()
+	for _, want := range []string{
+		`<p class="instructions">instructions <a href="/machines?file=toolkits%2forders.md"`,
+		`<code class="when">when: input.asker.scopes.includes(&#39;orders:read&#39;)</code>`,
+		`<section class="tool when" title="when: input.asker.name != &#39;&#39;">`,
+		`<p class="job">call <a href="/machines?file=people%2ffind.yaml" title="people/find.yaml"><code>people/find</code></a></p><p class="job">input: table</p>`,
+		"needs approval", ">conversation</a>", ">caller</a>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page does not show %q:\n%s", want, body)
+		}
+	}
+	if body := do(h, "GET", "/toolkits?toolkit=infra", nil).Body.String(); !strings.Contains(body, `<p class="instructions" title="instructions">Restart only when asked.</p>`) {
+		t.Errorf("the instructions written in a toolkit's file are not shown:\n%s", body)
+	}
+
+	// The agent's drawing links a call tool's card to the machine it calls,
+	// and the conversation's to the agent.
+	agent := do(h, "GET", "/machines?file=agents/support.yaml", nil).Body.String()
+	for _, want := range []string{`<a href="/machines?file=people%2Ffind.yaml"><g class="state tool when">`, `<g class="state holder toolkit when">`, ">call: people/find<"} {
+		if !strings.Contains(agent, want) {
+			t.Errorf("the agent's drawing does not hold %q:\n%s", want, agent)
+		}
+	}
+	if body := do(h, "GET", "/machines?file=conversation.yaml", nil).Body.String(); !strings.Contains(body, `<a href="/machines?file=agents%2Fsupport.yaml">`) {
+		t.Errorf("a call's card does not link to the machine it calls:\n%s", body)
+	}
+}
+
+func Test_machines_toolkits_in_one_directory_are_named_by_their_files(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		".corbieignore":        "toolkits/\n",
+		"r.js":                 "return 1",
+		"toolkits/orders.yaml": "description: orders\ntools:\n  r: { description: r, job: { script: r.js } }\n",
+		"toolkits/infra.yaml":  "description: infra\ntools:\n  r: { description: r, job: { script: r.js } }\n",
+		"toolkits/typed.yaml":  "description: typed\ntools: {}\nflow: typed\n",
+	})
+	v := toolkitsView_(t, dir, "")
+	var ids []string
+	for _, p := range v.Toolkits {
+		ids = append(ids, p.ID+" "+p.File)
+	}
+	if got := strings.Join(ids, ", "); got != "infra toolkits/infra.yaml, orders toolkits/orders.yaml" {
+		t.Errorf("the toolkits are %q", got)
 	}
 }

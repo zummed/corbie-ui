@@ -211,7 +211,7 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 			for _, at := range q["open"] {
 				open[at] = true
 			}
-			u := drawing.Unfold{Open: open, Href: hrefs(v.Open, open)}
+			u := drawing.Unfold{File: v.Open, Open: open, Href: hrefs(v.Open, open), Called: ix.called}
 			if v.Drawing, err = drawing.Unfolded(m.Draft, u); err != nil {
 				page.Error(w, http.StatusInternalServerError, err.Error())
 				return
