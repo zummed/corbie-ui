@@ -462,7 +462,7 @@ func pathOf(run *client.Run, byID map[string]*client.Run, under map[string][]*cl
 		root = up
 		path = slices.Insert(path, 0, linkTo(up))
 	}
-	if by := byID[root.StartedBy]; by != nil && !seen[by.ID] {
+	if by := byID[root.Cause.Run]; by != nil && !seen[by.ID] {
 		path[0].Sent = "a send or a call"
 		if f, ok := facts[root.ID]; ok {
 			path[0].Sent = map[bool]string{false: "a send", true: "a call"}[f.Called]
@@ -534,22 +534,18 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		if e.ID != id || e.Step == 0 {
 			continue
 		}
-		s := drawing.Step{Shown: plain(e.Shown)}
+		s := drawing.Step{Shown: e.Shown}
 		for _, event := range e.Events {
 			s.Events = append(s.Events, event.Name)
 			if event.Name == machine.Failed && event.From != "" {
 				s.Failed = append(s.Failed, jobOf(event.From))
 			}
 		}
-		asks := asksOf(e.Asks)
 		for _, a := range e.Asks {
 			if a.Kind != instance.AskScript && a.Kind != instance.AskChild && a.Kind != instance.AskCall {
 				continue
 			}
 			name := jobOf(a.Name)
-			if name == instance.AskName && len(asks) > 0 {
-				name, asks = asks[0], asks[1:]
-			}
 			s.Asked = append(s.Asked, name)
 			if r := byID[cmp.Or(a.Child, callee(a))]; r != nil {
 				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
@@ -561,9 +557,6 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		for _, key := range slices.Sorted(maps.Keys(st.Jobs)) {
 			j := st.Jobs[key]
 			name := jobOf(j.Name)
-			if name == instance.AskName && len(j.ForAsk) > 0 && st.Jobs[j.ForAsk[0]] != nil {
-				name = askAt(&st.Jobs[j.ForAsk[0]].Job)
-			}
 			m.Going = append(m.Going, name)
 			if j.Held {
 				m.Held = append(m.Held, name)
@@ -571,39 +564,6 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		}
 	}
 	return m
-}
-
-// asksOf gives where each ask a step starts is written, in the order the
-// asks start: the order in which the step held the first job of each, less
-// those whose jobs the step denied.
-func asksOf(asks []instance.Ask) []string {
-	var places []string
-	denied := map[string]bool{}
-	for _, a := range asks {
-		if a.Kind == instance.AskFail {
-			denied[a.Name] = true
-		}
-	}
-	started := map[string]bool{}
-	for _, a := range asks {
-		if a.Kind != instance.AskHold || a.Job == nil || denied[a.Name] {
-			continue
-		}
-		if at := askAt(a.Job); !started[at] {
-			started[at] = true
-			places = append(places, at)
-		}
-	}
-	return places
-}
-
-// askAt gives where the ask a held job goes to is written, as the drawing
-// names an ask: the machine's own is `ask`.
-func askAt(job *machine.Job) string {
-	if job.AskAt == "" {
-		return instance.AskName
-	}
-	return job.AskAt
 }
 
 // jobOf gives the name of what asked for a job or set a timer, as the
@@ -631,19 +591,6 @@ func childOf(r *client.Run, at time.Time) child {
 		c.When, c.Took = page.When(r.Ended, at), took(r.Ended.Sub(r.Started))
 	}
 	return c
-}
-
-// plain gives what a type shows as JSON reads it: the drawing reads lists,
-// numbers and mappings as JSON gives them, whatever Go types they were made
-// as.
-func plain(v any) any {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	var out any
-	json.Unmarshal(data, &out)
-	return out
 }
 
 // indentOf gives a value as indented JSON, or nothing for none.

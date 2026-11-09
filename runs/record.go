@@ -199,18 +199,15 @@ type group struct {
 
 // A trace is the run a send or a call reached in a tree of the UI's
 // client, as the row's group shows it before its rows are read: its status
-// and how long it took. A send's trace names what the receiving run's
-// record is matched by: the sending run, the event, its message, when it
-// was sent, and whether it started the run.
+// and how long it took. A send's trace names its cause: the sending run and
+// the step that sent it.
 type trace struct {
 	Run             link
 	Status, Failure string
 	Ended           bool
 	Took            string
-	Call, Started   bool
-	From, Event     string
-	Message         string
-	At              time.Time
+	Call            bool
+	Sent            instance.Cause
 }
 
 // Unix is when a row happened, as the page orders rows.
@@ -333,8 +330,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 	run := linkOf(id, b.byID)
 	own := b.of[id]
 	var out []stepRow
-	var prev any
-	turn := 0
+	var prev machine.Shown
 	jobs := map[string]*instance.Ask{} // the latest ask that started each job, by its name
 	for i, e := range own {
 		n := 0
@@ -350,13 +346,13 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 		}
 		if e.Step == 1 && id == b.top {
 			r := stepRow{Key: e.ID + "/started", What: say("started")}
-			if h := b.byID[id]; h != nil && h.StartedBy != "" {
-				by := linkOf(h.StartedBy, b.byID)
-				if s := b.byID[h.StartedBy]; s != nil {
+			if h := b.byID[id]; h != nil && h.Cause.Run != "" && h.Cause.Run != h.Parent {
+				by := linkOf(h.Cause.Run, b.byID)
+				if s := b.byID[h.Cause.Run]; s != nil {
 					by.Machine = cmp.Or(addressOf(s, ""), s.Location, s.Machine)
 				}
 				r.What = say("started by ", linked(&by))
-				r.Facts = []fact{{Name: "started by", Text: h.StartedBy, Run: &by}}
+				r.Facts = []fact{{Name: "cause", Text: h.Cause.Run + " step " + strconv.Itoa(h.Cause.Step), Run: &by}}
 			}
 			for _, ev := range e.Events {
 				if ev.Name == machine.Start {
@@ -390,7 +386,8 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				}
 				r.Facts = append(r.Facts, fact{Name: "error", Text: failure(ev.Data)})
 				add(r)
-			case run.Type == "agent" && ev.Name == machine.Done && isTurn(jobs[named(ev.From)]):
+			case run.Type == "agent" && ev.Name == machine.Done && isTurn(ev.From):
+				turn := prev.Turn
 				data, _ := ev.Data.(map[string]any)
 				calls, _ := data["calls"].([]any)
 				for _, c := range calls {
@@ -414,7 +411,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 		}
 		switch run.Type {
 		case "statechart":
-			was, now := statesOf(prev), statesOf(e.Shown)
+			was, now := prev.States, e.Shown.States
 			left := slices.DeleteFunc(slices.Clone(was), func(s string) bool { return slices.Contains(now, s) })
 			entered := slices.DeleteFunc(slices.Clone(now), func(s string) bool { return slices.Contains(was, s) })
 			var w []word
@@ -431,7 +428,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				add(stepRow{What: w, Facts: []fact{{Name: "states", Text: strings.Join(now, ", ")}}})
 			}
 		case "flow":
-			was, now := stagesOf(prev), stagesOf(e.Shown)
+			was, now := prev.Stages, e.Shown.Stages
 			for _, s := range slices.Sorted(maps.Keys(now)) {
 				st := now[s]
 				if st == was[s] || (st != instance.Done && st != instance.Failed && st != "skipped") {
@@ -498,10 +495,9 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				r.Trace = b.traceOf(called, &trace{Call: true})
 				add(r)
 			case instance.AskScript:
-				if run.Type == "agent" && isTurn(a) {
-					turn++
-					model := modelOf(a.Job.Input)
-					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" to ", bold(model)), Facts: []fact{{Name: "turn", Text: strconv.Itoa(turn)}, {Name: "model", Text: model}, {Name: "runner", Text: a.Runner}}})
+				if run.Type == "agent" && isTurn(a.Name) {
+					turn, model := strconv.Itoa(e.Shown.Turn), modelOf(a.Job)
+					add(stepRow{What: say("turn "+turn+" to ", bold(model)), Facts: []fact{{Name: "turn", Text: turn}, {Name: "model", Text: model}, {Name: "runner", Text: a.Runner}}})
 				}
 			case instance.AskWake:
 				if name, ok := strings.CutPrefix(a.What, "timer."); ok {
@@ -511,7 +507,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			case instance.AskEvent:
 				r := b.sendOf(a)
 				if r.Trace != nil {
-					r.Trace.From, r.Trace.At = id, e.Time
+					r.Trace.Sent = instance.Cause{Run: id, Step: e.Step}
 				}
 				add(r)
 			case instance.AskHold:
@@ -638,7 +634,7 @@ func (b *rowBuilder) sendOf(a *instance.Ask) stepRow {
 		}
 		r.Facts = append(r.Facts, fact{Name: name, Text: to.ID + statusOf(b.byID[to.ID]), Run: to})
 		if a.Location != "" {
-			r.Trace = b.traceOf(*to, &trace{Started: a.Run != "", Event: event, Message: a.Message})
+			r.Trace = b.traceOf(*to, &trace{})
 		}
 	}
 	if undelivered {
@@ -666,45 +662,71 @@ func (b *rowBuilder) traceOf(run link, t *trace) *trace {
 }
 
 // traced gives the rows of a trace's group, from the record of the run it
-// reached: for a call every row of the run, and for a send the rows from
-// the step that took the event up to the next step that took another sent
-// event. Its rows are at depth.
+// reached: for a call every row of the run, and for a send the rows of the
+// steps the send caused. Its rows are at depth.
 func traced(t *trace, entries []client.Entry, byID map[string]*client.Run, readable func(string) bool, now, day time.Time, depth int) []stepRow {
 	rows := rowsAt(t.Run.ID, entries, byID, readable, now, day, depth)
 	if t.Call {
 		return rows
 	}
-	from, to := 0, 0
-	if t.Started {
-		from = 1
+	caused := causedBy(t.Sent, t.Run.ID, entries, byID)
+	return slices.DeleteFunc(rows, func(r stepRow) bool { return !caused[r.Step] })
+}
+
+// causedBy gives the steps of a run that a cause outside it caused: each
+// step that took an event with that cause, and each step that took an event
+// whose cause is one of those steps, a job, a timer or a run one of them
+// asked for, or a run whose cause leads back to one of them.
+func causedBy(cause instance.Cause, id string, entries []client.Entry, byID map[string]*client.Run) map[int]bool {
+	caused := map[int]bool{}
+	asked := map[string]int{} // the step that asked for each job, timer and run
+	// stepOf gives the step of the run that caused an event, or none.
+	stepOf := func(ev instance.Arrived) int {
+		c := ev.Cause
+		if c == (instance.Cause{}) && ev.Name == machine.Timer {
+			return asked["timer "+ev.From]
+		}
+		if c == (instance.Cause{}) {
+			return cmp.Or(asked["job "+ev.From], asked["job "+named(ev.From)])
+		}
+		// Another run's cause names the step of the run that started it.
+		for c.Run != "" && c.Run != id {
+			if n := asked["run "+c.Run]; n > 0 {
+				return n
+			}
+			h := byID[c.Run]
+			if h == nil {
+				return 0
+			}
+			c = h.Cause
+		}
+		return c.Step
 	}
 	for _, e := range entries {
-		if e.ID != t.Run.ID || e.Step == 0 {
+		if e.ID != id || e.Step == 0 {
 			continue
 		}
 		for _, ev := range e.Events {
-			switch {
-			case from == 0 && tookSent(t, e, ev):
-				from = e.Step
-			case from != 0 && e.Step > from && to == 0 && ev.Sender != nil:
-				to = e.Step
+			if ev.Cause == cause || caused[stepOf(ev)] {
+				caused[e.Step] = true
+			}
+		}
+		for _, a := range e.Asks {
+			switch a.Kind {
+			case instance.AskScript, instance.AskHold:
+				asked["job "+a.Name] = e.Step
+			case instance.AskChild:
+				asked["job "+a.Name], asked["run "+a.Child] = e.Step, e.Step
+			case instance.AskCall:
+				asked["job "+a.Name], asked["run "+a.Run] = e.Step, e.Step
+			case instance.AskWake:
+				if name, ok := strings.CutPrefix(a.What, "timer."); ok {
+					asked["timer "+name] = e.Step
+				}
 			}
 		}
 	}
-	if from == 0 {
-		return nil
-	}
-	return slices.DeleteFunc(rows, func(r stepRow) bool { return r.Step < from || to != 0 && r.Step >= to })
-}
-
-// tookSent says whether an event a run took is the one a trace's send
-// sent: by the message it came from, or by its sender and its name at or
-// after the time it was sent.
-func tookSent(t *trace, e client.Entry, ev instance.Arrived) bool {
-	if t.Message != "" && strings.HasSuffix(ev.Source, t.Message) {
-		return true
-	}
-	return ev.Sender != nil && ev.Sender.Run == t.From && ev.Name == t.Event && !e.Time.Before(t.At)
+	return caused
 }
 
 // resultOf gives what a job gave, from the first of entries that took its
@@ -763,14 +785,15 @@ func statusOf(r *client.Run) string {
 	return ", " + r.Status
 }
 
-// isTurn says whether a job is an agent's turn: Corbie's own script that
-// asks the model.
-func isTurn(a *instance.Ask) bool {
-	return a != nil && a.Job != nil && jobOf(a.Name) == "turn" && strings.HasPrefix(a.Job.Script, "corbie:")
-}
+// isTurn says whether a job of an agent is a turn: the job named turn.
+func isTurn(name string) bool { return jobOf(name) == "turn" }
 
-// modelOf gives the name of the model a turn asks.
-func modelOf(input any) string {
+// modelOf gives the name of the model a turn asks, which its input names.
+func modelOf(job *machine.Job) string {
+	var input any
+	if job != nil {
+		input = job.Input
+	}
 	in, _ := input.(map[string]any)
 	model, _ := in["model"].(map[string]any)
 	name, _ := model["name"].(string)
@@ -835,28 +858,6 @@ func failure(data any) string {
 		return text
 	}
 	return compact(data)
-}
-
-func statesOf(shown any) []string {
-	m, _ := plain(shown).(map[string]any)
-	list, _ := m["states"].([]any)
-	var out []string
-	for _, s := range list {
-		if s, ok := s.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func stagesOf(shown any) map[string]string {
-	m, _ := plain(shown).(map[string]any)
-	stages, _ := m["stages"].(map[string]any)
-	out := map[string]string{}
-	for k, v := range stages {
-		out[k], _ = v.(string)
-	}
-	return out
 }
 
 // say makes words of strings and words.

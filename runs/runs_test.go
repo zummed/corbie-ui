@@ -2,8 +2,10 @@ package runs
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,9 +28,9 @@ import (
 	"github.com/zummed/corbie/runner"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/agent"
-	_ "github.com/zummed/corbie/flow"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/agent"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 // A test's runs run their jobs in processes of this test binary, as a
@@ -447,31 +449,28 @@ func get(t *testing.T, h http.Handler, path string) string {
 }
 
 func Test_runs_own_run_shown_in_full(t *testing.T) {
-	// Each ask a step starts is named by where it is written, in the order
-	// the step held the first job of each, and a job's failure that ended
+	// The ask a step starts is named ask, and a job's failure that ended
 	// the run is noted.
-	restart := &machine.Job{Name: "restart", AskAt: "toolkits.infra.ask", Shown: map[string]any{"toolkit": "infra"}}
+	restart := &machine.Job{Name: "restart", Shown: map[string]any{"toolkit": "infra"}}
 	entries := []client.Entry{{ID: "a-client/1", Step: 1,
 		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
 		Asks: []instance.Ask{
 			{Kind: instance.AskHold, Name: "restart#1", Job: restart},
 			{Kind: instance.AskHold, Name: "look#1", Job: &machine.Job{Name: "look"}},
 			{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/2"},
-			{Kind: instance.AskChild, Name: "ask#2", Child: "a-client/3"},
 		}}}
 	byID := map[string]*client.Run{
 		"a-client/2": {ID: "a-client/2", Machine: "approval", Type: "flow"},
-		"a-client/3": {ID: "a-client/3", Machine: "own", Type: "flow"},
 	}
 	st := &instance.State{Jobs: map[string]*instance.Going{
 		"restart": {Job: *restart, Held: true},
 		"ask#1":   {Job: machine.Job{Name: "ask"}, ForAsk: []string{"restart"}},
 	}}
 	m := marksOf("a-client/1", entries, "failed", st, byID)
-	if m.Children["toolkits.infra.ask"].ID != "a-client/2" || m.Children["ask"].ID != "a-client/3" {
-		t.Errorf("the asks' runs are known as %+v", m.Children)
+	if m.Children["ask"].ID != "a-client/2" {
+		t.Errorf("the ask's run is known as %+v", m.Children)
 	}
-	if strings.Join(m.Going, " ") != "toolkits.infra.ask restart" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
+	if strings.Join(m.Going, " ") != "ask restart" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
 	}
 
@@ -511,11 +510,11 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	// is folded.
 	now := at
 	tree := []client.Entry{
-		{ID: "a-client/1", Step: 1, Time: now, Shown: map[string]any{"states": []string{"answering"}},
+		{ID: "a-client/1", Step: 1, Time: now, Shown: machine.Shown{States: []string{"answering"}},
 			Events: []instance.Arrived{{Event: machine.Event{Name: "start"}}},
 			Asks:   []instance.Ask{{Kind: instance.AskChild, Name: "answering", Child: "a-client/2"}}},
-		{ID: "a-client/2", Step: 1, Time: now, Shown: map[string]any{"stages": map[string]any{"asker": "running"}}},
-		{ID: "a-client/2", Step: 2, Time: now, Status: "done", Shown: map[string]any{"stages": map[string]any{"asker": "done"}},
+		{ID: "a-client/2", Step: 1, Time: now, Shown: machine.Shown{Stages: map[string]string{"asker": "running"}}},
+		{ID: "a-client/2", Step: 2, Time: now, Status: "done", Shown: machine.Shown{Stages: map[string]string{"asker": "done"}},
 			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "asker"}}}},
 	}
 	byID = map[string]*client.Run{
@@ -533,6 +532,32 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	g := rows[2].Group
 	if g == nil || !g.Ended || g.Steps != 2 || len(g.Rows) != 2 || g.Rows[0].Said() != "stage asker done" || g.Rows[0].Depth != 1 || g.Rows[1].Said() != "done" {
 		t.Errorf("the child's rows are not under the row that started it: %+v", g)
+	}
+
+	// An agent's turn is the job named turn, whatever script makes it, and
+	// its number is the turn the step shows the agent on.
+	turn := func(name string) instance.Ask {
+		return instance.Ask{Kind: instance.AskScript, Name: name, Job: &machine.Job{Script: "./model.js", Input: map[string]any{"model": map[string]any{"name": "test-model"}}}}
+	}
+	agent := []client.Entry{
+		{ID: "a-client/1", Step: 1, Time: now, Shown: machine.Shown{Turn: 1}, Asks: []instance.Ask{turn("turn")}},
+		{ID: "a-client/1", Step: 2, Time: now, Shown: machine.Shown{Turn: 1},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "turn", Data: map[string]any{"calls": []any{map[string]any{"name": "add", "args": map[string]any{"n": 41}}}, "stop": "tools"}}}},
+			Asks:   []instance.Ask{{Kind: instance.AskScript, Name: "add", Job: &machine.Job{Script: "./add.js"}}}},
+		{ID: "a-client/1", Step: 3, Time: now, Shown: machine.Shown{Turn: 2},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "add", Data: 42}}}, Asks: []instance.Ask{turn("turn#2")}},
+		{ID: "a-client/1", Step: 4, Time: now, Status: "done", Shown: machine.Shown{Turn: 2},
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "turn#2", Data: map[string]any{"text": "It is 42.", "stop": "end"}}}}},
+	}
+	said = nil
+	for _, r := range rowsOf("a-client/1", agent, map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "adder", Type: "agent", Status: "done"}}, nil, now, now) {
+		said = append(said, r.Said())
+	}
+	if got := strings.Join(said, "; "); got != "started; turn 1 to test-model; turn 1 called add(n: 41); add done; turn 2 to test-model; turn 2 replied It is 42.; done" {
+		t.Errorf("the agent's rows are %q", got)
+	}
+	if got := shownOf(&instance.Step{State: instance.State{Type: "agent", Inner: jsontext.Value(`{"turn": 2}`)}}); got != "turn 2" {
+		t.Errorf("an agent on its second turn is listed as [%s]", got)
 	}
 
 	l, viewer, id := local(t)
@@ -584,7 +609,7 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 		"a-client/1": {ID: "a-client/1", Machine: "slack-listen", Type: "statechart", Status: "running", Location: "/acme/gromit/slack/gromit"},
 		"a-client/2": {ID: "a-client/2", Machine: "slack-chat-ask", Type: "statechart", Status: "done", Location: "/acme/gromit/slack/chat/ask"},
 		"a-client/3": {ID: "a-client/3", Machine: "boiler", Type: "statechart", Status: "running", Location: "/home/devices/boiler"},
-		"a-client/4": {ID: "a-client/4", Machine: "conversation", Type: "statechart", Status: "running", StartedBy: "a-client/1", Location: "/acme/conversation", Key: key},
+		"a-client/4": {ID: "a-client/4", Machine: "conversation", Type: "statechart", Status: "running", Cause: instance.Cause{Run: "a-client/1", Step: 3}, Location: "/acme/conversation", Key: key},
 		"a-client/5": {ID: "a-client/5", Machine: "turn", Type: "flow", Status: "running", Parent: "a-client/4", Location: "/acme/conversation"},
 		"a-client/6": {ID: "a-client/6", Machine: "weather", Type: "flow", Status: "done", Location: "/home/weather"},
 	}
@@ -1115,21 +1140,27 @@ states:
 		t.Errorf("another client read the group, %d:\n%s", w.Code, w.Body.String())
 	}
 
-	// A send's group ends at the next step that took another sent event.
+	// A send's group holds the steps the send caused: the step that took
+	// it, and the steps that took the timers, jobs and runs those steps
+	// asked for, and nothing another send caused.
 	key := "1"
+	knocked := instance.Cause{Run: desk, Step: 2}
+	elsewhere := instance.Cause{Run: "lab-client/9", Step: 4}
 	from := &machine.Address{At: "/house/desk", Run: desk}
 	entries := []client.Entry{
-		{ID: room, Step: 1, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "start"}}}},
-		{ID: room, Step: 2, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "knock", Sender: from}, Source: "x/y.knock.send"}}},
-		{ID: room, Step: 3, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "timer", From: "pause"}}}},
-		{ID: room, Step: 4, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "knock", Sender: &machine.Address{At: "/house/hall", Key: &key, Run: "lab-client/9"}}}}},
+		{ID: room, Step: 1, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "start"}, Cause: instance.Cause{Client: "a-client", Message: "m"}}}},
+		{ID: room, Step: 2, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "knock", Sender: from}, Cause: knocked}},
+			Asks: []instance.Ask{{Kind: instance.AskWake, What: "timer.pause"}, {Kind: instance.AskChild, Name: "open", Child: "a-client/8"}}},
+		{ID: room, Step: 3, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "knock", Sender: &machine.Address{At: "/house/hall", Key: &key, Run: "lab-client/9"}}, Cause: elsewhere}},
+			Asks: []instance.Ask{{Kind: instance.AskScript, Name: "look"}}},
+		{ID: room, Step: 4, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "timer", From: "pause"}}}},
+		{ID: room, Step: 5, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "look"}}}},
+		{ID: room, Step: 6, Time: at, Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "a-client/8"}, Cause: instance.Cause{Run: "a-client/8", Step: 3}}}},
 	}
 	byID := map[string]*client.Run{room: {ID: room, Machine: "room", Type: "statechart"}}
-	var steps []int
-	for _, r := range traced(&trace{Run: link{ID: room}, Message: "y.knock.send"}, entries, byID, nil, at, at, 1) {
-		steps = append(steps, r.Step)
-	}
-	if fmt.Sprint(steps) != "[2 3]" {
+	caused := causedBy(knocked, room, entries, byID)
+	steps := slices.Sorted(maps.Keys(caused))
+	if fmt.Sprint(steps) != "[2 4 6]" {
 		t.Errorf("the send's group holds the rows of steps %v", steps)
 	}
 }

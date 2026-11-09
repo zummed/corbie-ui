@@ -194,7 +194,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := do(h, "GET", "/toolkits?toolkit=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, or corbie run submit /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
+	if body := do(h, "GET", "/toolkits?toolkit=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, a send, or corbie run submit /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
 		t.Errorf("an agent does not say what starts it:\n%s", body)
 	}
 	body := do(h, "GET", "/toolkits?toolkit=messages-2", nil).Body.String()
@@ -280,11 +280,11 @@ func Test_machines_toolkits_are_one_by_their_file(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":             "toolkits/\n",
-		"a.yaml":                    "agent: a\n" + agentHead + "toolkits:\n  network: { include: ./toolkits/net/toolkit.yaml }\n",
-		"b.yaml":                    "agent: b\n" + agentHead + "toolkits:\n  net: { include: ./toolkits/net/toolkit.yaml }\n",
+		"a.yaml":                    "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: net } }\ntoolkits:\n  network: { include: ./toolkits/net/toolkit.yaml }\n",
+		"b.yaml":                    "agent: b\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: net } }\ntoolkits:\n  net: { include: ./toolkits/net/toolkit.yaml }\n",
 		"say.yaml":                  "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":                      "return 1",
-		"toolkits/net/toolkit.yaml": "description: the network\nask: { machine: say.yaml, input: { toolkit: net } }\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
+		"toolkits/net/toolkit.yaml": "description: the network\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
 	})
 	v := toolkitsView_(t, dir, "")
 	if len(v.Toolkits) != 1 {
@@ -300,10 +300,10 @@ func Test_machines_toolkits_file_by_default(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":   "toolkits/\n",
-		"a.yaml":          "agent: a\n" + agentHead + "toolkits:\n  p: { include: ./toolkits/x.yaml, description: changed here }\n",
+		"a.yaml":          "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: \"${input.name}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, description: changed here }\n",
 		"say.yaml":        "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":            "return 1",
-		"toolkits/x.yaml": "description: as written\nask: { machine: say.yaml, input: { toolkit: \"${input.name}\" } }\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
+		"toolkits/x.yaml": "description: as written\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
 	})
 	v := toolkitsView_(t, dir, "")
 	if len(v.Toolkits) != 1 || v.Toolkits[0].File != "toolkits/x.yaml" {
@@ -394,12 +394,12 @@ func Test_machines_toolkits_add_what_each_agent_writes(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":   "toolkits/\n",
-		"a.yaml":          "agent: a\n" + agentHead + "toolkits:\n  p: { include: ./toolkits/x.yaml }\n",
-		"b.yaml":          "agent: b\n" + agentHead + "toolkits:\n  p: { include: ./toolkits/x.yaml, approve: true }\n",
-		"c.yaml":          "agent: c\n" + agentHead + "toolkits:\n  p: { include: ./toolkits/x.yaml, ask: { machine: ./say.yaml, input: { toolkit: other } } }\n",
+		"a.yaml":          "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml }\n",
+		"b.yaml":          "agent: b\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, approve: true }\n",
+		"c.yaml":          "agent: c\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, when: \"${input.go}\" }\n",
 		"say.yaml":        "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":            "return 1",
-		"toolkits/x.yaml": "description: x\nask: { machine: say.yaml, input: { toolkit: x } }\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
+		"toolkits/x.yaml": "description: x\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
 	})
 	v := toolkitsView_(t, dir, "")
 	if len(v.Toolkits) != 1 {

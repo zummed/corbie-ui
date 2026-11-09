@@ -24,7 +24,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **R-runs-08** The drawing beside Steps shows the selected row's run as of the row's step, from its record up to that step and the state that step left, and the row's details give the entries of that step, with the values emitted since the step before, in the words `corbie run show --record` prints. A send names the address or the client it went to and links to the run that took it or that it started, an undelivered send gives the reason, from the send or from the controller's note of it, a send whose event went to another run links to that run, a send to a keyed run by its ID gives the run's key, a call job links to the run it started, an event a run sent links to that run, and the path begins with the run whose send or call started the root. *Test:* `runs_a_step_shows_its_run_as_it_was`
 
-**R-runs-12** A send or a call to a run in a tree of the UI's client is a group, folded, whose row ends with that run's title, where it is not its machine's name, and its status, and whose rows are read when it is opened, one level below the row: for a call every row of the run it started, and for a send the rows of the run that took the event, from the step that took it up to the next step that took another sent event. *Test:* `runs_a_send_shows_the_rows_it_caused`, `runs_a_call_shows_the_run_it_called`
+**R-runs-12** A send or a call to a run in a tree of the UI's client is a group, folded, whose row ends with that run's title, where it is not its machine's name, and its status, and whose rows are read when it is opened, one level below the row: for a call every row of the run it started, and for a send the rows of the steps in the run that took the event whose causes, as Corbie names them, lead back to the send: the step that took the event, and each step that took the end of a job, a timer, a child or a call those steps asked for, or an event from a run they started. *Test:* `runs_a_send_shows_the_rows_it_caused`, `runs_a_call_shows_the_run_it_called`
 
 **R-runs-13** On a running run's page the selected row is the newest row, which it follows as rows are added, until the person selects another row; then the head of Steps offers Follow, which selects the newest row and follows again. An ended run's page has no Follow. *Test:* `runs_follow_returns_to_the_newest_row`
 
@@ -32,7 +32,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **C-runs-01** A file of a run's result is sent as a download, with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. A result can hold HTML or SVG a script fetched from anywhere, and shown in a page it would run with the UI's cookie. *Test:* `runs_result_file_is_a_download`
 
-**C-runs-02** A run in another client's tree is read only through the list and Corbie's client package, which gives its status and nothing from its record, on its page and in a send's or a call's group. The UI holds the controller's keys too, and must not read a run another way. *Test:* `runs_other_clients_run_shows_no_record`
+**C-runs-02** A run in another client's tree is read only through the list and Corbie's client package as a viewer, which gives its status and nothing from its record, on its page and in a send's or a call's group. The UI holds the controller's keys too, and must not read a run another way. *Test:* `runs_other_clients_run_shows_no_record`
 
 ## Acting on a run
 

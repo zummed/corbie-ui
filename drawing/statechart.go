@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
-	"github.com/zummed/corbie/statechart"
+	"github.com/zummed/corbie/machine/statechart"
 )
 
 // chart is a statechart being laid out: every state by its name, the state
@@ -686,7 +686,7 @@ func (ch *chart) marks(run *Run) chartMarks {
 	in := ch.with(ch.entering(ch.start[""])...)
 	maps.Copy(m.was, in)
 	for _, step := range run.Steps {
-		after := ch.with(listed(shown(step.Shown, "states"))...)
+		after := ch.with(step.Shown.States...)
 		m.taken = map[rule]bool{}
 		for _, r := range ch.took(in, step.Events, after) {
 			m.taken[r] = true
@@ -760,18 +760,6 @@ func (m chartMarks) of(name string) string {
 		return "done"
 	}
 	return "never"
-}
-
-// listed reads a list of names from what a type shows.
-func listed(v any) []string {
-	list, _ := v.([]any)
-	var names []string
-	for _, item := range list {
-		if s, ok := item.(string); ok {
-			names = append(names, s)
-		}
-	}
-	return names
 }
 
 func sortedKeys[V any](m map[string]V) []string {

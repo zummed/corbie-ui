@@ -6,14 +6,14 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/machine/agent"
 )
 
 // A toolkitBox is one column of what the model can call: a toolkit, or the tools
-// in no toolkit, with where its tools and its ask are drawn. file is the file
-// the toolkit is included from, where it is known, when its `when:`, and
-// whens the tools that have one.
+// in no toolkit, with where its tools are drawn. file is the file the
+// toolkit is included from, where it is known, when its `when:`, and whens
+// the tools that have one.
 type toolkitBox struct {
 	name, file, when string
 	toolkit          bool
@@ -21,12 +21,8 @@ type toolkitBox struct {
 	tools            []string
 	whens            map[string]bool
 	items            map[string]item
-	ask              *item
 	at               box
 }
-
-// askAt is where a toolkit's ask is written, as a run names it.
-func askAt(toolkit string) string { return "toolkits." + toolkit + ".ask" }
 
 // foldedH is how high a folded toolkit is: its name and how many tools it has.
 const foldedH = 52.0
@@ -39,10 +35,6 @@ func (g *toolkitBox) size() {
 	}
 	if g.toolkit {
 		g.at.h, g.at.w = innerTop+inner, cardW+2*inner
-	}
-	if g.ask != nil {
-		g.at.h += g.ask.size().h + 12
-		g.at.w = math.Max(g.at.w, g.ask.size().w)
 	}
 	for _, t := range g.tools {
 		b := g.items[t].size()
@@ -93,7 +85,6 @@ func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) dra
 	reply := item{name: "reply", narrow: true}.size()
 	reply.x = left + (total-reply.w)/2
 
-	waiting, _ := shown(run.latest(), "waiting").(string)
 	var d drawn
 	y := top.bottom()
 	class := ""
@@ -134,21 +125,13 @@ func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) dra
 		d.down(top, reply, "", "")
 	}
 
-	mark := ""
-	switch {
-	case run == nil:
-	case run.failedAt("turn"):
-		mark = "failed"
-	case waiting == "turn" && !run.Ended:
-		mark = "now"
-	default:
+	mark := jobMark(run, "turn")
+	if mark != "" && mark != "failed" && mark != "now" {
 		mark = "done"
 	}
 	d.paint(model, top, strings.TrimSpace("state model "+mark), cardR, "")
-	if run != nil {
-		if turn, ok := shown(run.latest(), "turn").(float64); ok {
-			fmt.Fprintf(&d.shapes, `<text class="tag" x="%s" y="%s" text-anchor="start">turn %d</text>`, num(top.x+4), num(top.y-8), int(turn))
-		}
+	if turn := run.latest().Turn; turn > 0 {
+		fmt.Fprintf(&d.shapes, `<text class="tag" x="%s" y="%s" text-anchor="start">turn %d</text>`, num(top.x+4), num(top.y-8), turn)
 	}
 	d.paint(item{name: "reply"}, reply, "state reply", cardR, "")
 	return d
@@ -164,11 +147,6 @@ func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox 
 	}
 	for _, toolkit := range sortedKeys(a.Toolkits) {
 		g := &toolkitBox{name: toolkit, file: ToolkitFile(def, toolkit, own), when: a.Toolkits[toolkit].When, toolkit: true, whens: map[string]bool{}, items: map[string]item{}}
-		if ask := a.Toolkits[toolkit].Ask; ask != nil {
-			it := item{name: "ask"}
-			w.describe(&it, askAt(toolkit), ask)
-			g.ask = &it
-		}
 		byName[toolkit] = g
 		groups = append(groups, g)
 	}
@@ -224,7 +202,7 @@ func (c column) size() (w, h float64) {
 }
 
 // columnsOf gives each group a column of its own, but on a run's page a
-// toolkit whose tools and ask the run has not asked for is folded, and the
+// toolkit whose tools the run has not asked for is folded, and the
 // toolkits folded are one column after the others.
 func columnsOf(groups []*toolkitBox, run *Run) []column {
 	var columns []column
@@ -244,11 +222,8 @@ func columnsOf(groups []*toolkitBox, run *Run) []column {
 	return columns
 }
 
-// used says a run has asked for a toolkit's ask or one of its tools.
+// used says a run has asked for one of a toolkit's tools.
 func (g *toolkitBox) used(run *Run) bool {
-	if g.ask != nil && jobMark(run, askAt(g.name)) != "never" {
-		return true
-	}
 	return slices.ContainsFunc(g.tools, func(t string) bool { return jobMark(run, t) != "never" })
 }
 
@@ -292,11 +267,6 @@ func (d *drawn) paintGroup(g *toolkitBox, run *Run) bool {
 		}
 		d.paint(g.items[t], at, class, cardR, "")
 		y += at.h + 12
-	}
-	if g.ask != nil {
-		at := g.ask.size()
-		at.x, at.y = b.cx()-at.w/2, y
-		d.paint(*g.ask, at, strings.TrimSpace("state ask "+jobMark(run, askAt(g.name))), cardR, "")
 	}
 	return now
 }
