@@ -19,9 +19,9 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
 
-	_ "github.com/zummed/corbie/agent"
-	_ "github.com/zummed/corbie/flow"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/agent"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 // corbie runs one of Corbie's commands, and fails the test if it fails.

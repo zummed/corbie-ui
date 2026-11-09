@@ -20,7 +20,7 @@ machine   its machine's name, for a child that machine: started
 
 ## The list
 
-The list reads every run whose status the UI may read. The UI lists as a viewer where the store lets a viewer read, as `corbie run ls --all` does with no client: every client's runs on a directory, and on a bucket with a viewer's key. Where the store does not, as on a served directory or a bucket with a client's key, it lists its client's own, as `corbie run ls --all` does for that client.
+The list reads the status of every run, as `corbie run ls --all` does with no client. The store lets every client and a viewer read every run's status.
 
 ### Locations
 
@@ -64,7 +64,7 @@ running  support wants to run restart.                  slack-chat-ask [open, wa
 - The line begins with the root's status and its name. A long address is cut in its middle, since keys differ at their end, and a title at its end, before its key.
 - The chain runs from the root to the deepest running run, through the newest running child at each level. Each machine has its type's icon and opens its run's page.
 - A chain of more than three machines shows the first, `…` and the last, and the `…` gives the whole chain in its tooltip.
-- The brackets after the deepest machine hold the states or stages it is in, or what an agent waits for.
+- The brackets after the deepest machine hold the states or stages it is in, or the turn an agent is on: `turn 2`.
 - Then come what the deepest run waits on and when the root started.
 
 An ended line holds its status, name, machine, the number of runs under it where there are any, when it ended and how long it took.
@@ -170,18 +170,23 @@ A send or a call to a run in a tree of the UI's client folds the rows it caused 
 
 ```
 call    every row of the run the call started
-send    the rows of the run that took the event, from the step that took it up to the next step that took another sent event, with the runs started in between
+send    the rows of the steps the send caused in the run that took the event, with the runs those steps started
 ```
+
+Corbie names the cause of each event a step takes. A step the send caused is one of these:
+
+- The step took the event, whose cause is the sender's step.
+- The step took the end of a job, a timer, a child or a call that a step the send caused asked for.
+- The step took an event whose cause is a run started by a step the send caused, or a run started by such a run.
 
 - The rows are read when the group is first opened, and read again as the page follows the run.
 - A group whose rows cannot be read shows the error, and its rows are read again when it is next opened.
 - The rows of a send's group can hold another send or call, which folds in the same way.
-- A send's group is approximate where events from two senders arrive close together: it ends at the first other sent event, whoever sent it.
 - A send or a call to a run in another client's tree is a link to its page, which shows only its status.
 
 In the house example, the desk at `/house/desk` sends `knock` and then `leave` to the room at `/house/room#1`, and the trip at `/lab/trip` calls the weather at `/lab/weather`. On the desk's page:
 
-1. `⇢ sent knock to /house/room#1 · started room` unfolds to the room's rows from `started by` and `⇠ knock from /house/desk`, up to the step that took `leave`.
+1. `⇢ sent knock to /house/room#1 · started room` unfolds to the room's rows `started by` and `⇠ knock from /house/desk`.
 2. `⇢ sent leave to /house/room#1 · room` unfolds to `⇠ leave from /house/desk` and the room entering `closed`.
 
 On the trip's page, `⇢ called /lab/weather · weather` unfolds to every row of the weather run: `started by`, then `stage look done`.

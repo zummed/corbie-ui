@@ -18,7 +18,7 @@ import (
 	"github.com/zummed/corbie/client/cli"
 	corbiectl "github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/statechart"
 	"github.com/zummed/corbie/store"
 )
 

@@ -12,10 +12,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zummed/corbie/agent"
-	"github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/machine"
-	"github.com/zummed/corbie/statechart"
+	"github.com/zummed/corbie/machine/agent"
+	"github.com/zummed/corbie/machine/flow"
+	"github.com/zummed/corbie/machine/statechart"
 )
 
 // A Run is what a run shows of its state as of one step, to be marked on
@@ -26,8 +26,7 @@ type Run struct {
 	Steps []Step
 	// Going are the jobs going after the latest step, and Held those of
 	// them held for the ask. A job is named as the definition names what
-	// asked for it, and an ask by where it is written: `ask` for the
-	// machine's own, `toolkits.<name>.ask` for a toolkit's.
+	// asked for it, and the ask as `ask`.
 	Going, Held []string
 	// Children are the runs its jobs started, by the job's name.
 	Children map[string]Child
@@ -40,11 +39,11 @@ type Run struct {
 	Ended, Failed bool
 }
 
-// A Step is one step of a run's record: what the machine's type showed of
-// its state after it, the events it took, the jobs whose failure it took,
-// and the jobs it asked for, by name.
+// A Step is one step of a run's record: the run's state after it, the
+// events it took, the jobs whose failure it took, and the jobs it asked
+// for, by name.
 type Step struct {
-	Shown  any
+	Shown  machine.Shown
 	Events []string
 	Failed []string
 	Asked  []string
@@ -57,10 +56,10 @@ type Child struct{ ID, Machine, Type string }
 // A Machine is a machine a definition names: its type and its name.
 type Machine struct{ Type, Name string }
 
-// latest gives what the type showed at the latest step.
-func (r *Run) latest() any {
+// latest gives the run's state after the latest step.
+func (r *Run) latest() machine.Shown {
 	if r == nil || len(r.Steps) == 0 {
-		return nil
+		return machine.Shown{}
 	}
 	return r.Steps[len(r.Steps)-1].Shown
 }
@@ -531,9 +530,3 @@ func fit(line string) string {
 }
 
 func esc(s string) string { return template.HTMLEscapeString(s) }
-
-// shown reads a field of what a type shows of its state.
-func shown(v any, field string) any {
-	m, _ := v.(map[string]any)
-	return m[field]
-}

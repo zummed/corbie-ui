@@ -23,9 +23,9 @@ import (
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/agent"
-	_ "github.com/zummed/corbie/flow"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/agent"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 const review = `statechart: review
@@ -157,8 +157,8 @@ states:
 		".kit/unused.yaml":      "flow: unused\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/post.yaml":        "flow: post\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/hear.js":          "return 1",
-		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
-		"toolkits/toolkit.yaml": "description: messages\nask: { machine: .kit/post.yaml }\ntools:\n  tell: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n",
+		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nask: { machine: .kit/post.yaml }\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
+		"toolkits/toolkit.yaml": "description: messages\ntools:\n  tell: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n",
 		"people/scopes.yaml":    "people: []\n",
 		".corbieignore":         "toolkits/\npeople/scopes.yaml\nshared/\n",
 	} {
@@ -772,7 +772,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"<span>approve</span><span>send:devices/boiler, net:hub.lan</span>",
 		},
 		"services/weather.yaml": {
-			"<span>lifetime</span><span>transient: a call, or corbie run submit " + prefix + "/services/weather, starts each run</span>",
+			"<span>lifetime</span><span>transient: a call, a send, or corbie run submit " + prefix + "/services/weather, starts each run</span>",
 			"<span>update</span><span>drain: a changed file leaves its runs to finish on the definition they started with</span>",
 			"<span>receives</span><span>every event from rooms/*<br>and anything from its tree's client</span>",
 			"<span>sends to</span><span>none</span>",

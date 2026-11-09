@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -528,8 +529,8 @@ func descent(r *client.Run, under map[string][]*client.Run, kids func([]*client.
 // all gives every run of kids.
 func all(kids []*client.Run) []*client.Run { return kids }
 
-// shownOf gives the states or stages a run is in, or what an agent waits
-// for, from what its type shows of its latest step.
+// shownOf gives the states or running stages a run is in, or the turn an
+// agent is on, from the run's state after its latest step.
 func shownOf(step *instance.Step) string {
 	if step == nil {
 		return ""
@@ -538,22 +539,15 @@ func shownOf(step *instance.Step) string {
 	if !ok {
 		return ""
 	}
-	shown, _ := plain(t.Show(nil, step.State.Inner)).(map[string]any)
-	var names []string
-	if states, ok := shown["states"].([]any); ok {
-		for _, s := range states {
-			names = append(names, fmt.Sprint(s))
+	shown := t.Show(step.State.Inner)
+	names := slices.Clone(shown.States)
+	for _, name := range slices.Sorted(maps.Keys(shown.Stages)) {
+		if shown.Stages[name] == instance.Running {
+			names = append(names, name)
 		}
 	}
-	if stages, ok := shown["stages"].(map[string]any); ok {
-		for _, name := range slices.Sorted(maps.Keys(stages)) {
-			if stages[name] == instance.Running {
-				names = append(names, name)
-			}
-		}
-	}
-	if waiting, ok := shown["waiting"].(string); ok && waiting != "" {
-		names = append(names, waiting)
+	if shown.Turn > 0 {
+		names = append(names, "turn "+strconv.Itoa(shown.Turn))
 	}
 	return strings.Join(names, ", ")
 }

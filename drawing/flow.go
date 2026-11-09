@@ -6,8 +6,8 @@ import (
 	"math"
 	"slices"
 
-	"github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/machine/flow"
 )
 
 func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
@@ -118,14 +118,7 @@ func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
 			}
 		}
 	}
-	stages := map[string]string{}
-	if run != nil {
-		if m, ok := shown(run.latest(), "stages").(map[string]any); ok {
-			for n, s := range m {
-				stages[n], _ = s.(string)
-			}
-		}
-	}
+	stages := run.latest().Stages
 	for _, n := range names {
 		s, b := f.Stages[n], at[n]
 		class := "state stage"

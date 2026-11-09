@@ -14,9 +14,9 @@ import (
 
 	"github.com/zummed/corbie/machine"
 
-	_ "github.com/zummed/corbie/agent"
-	_ "github.com/zummed/corbie/flow"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/agent"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 func definition(t *testing.T, src string, files map[string]string) *machine.Definition {
@@ -49,14 +49,8 @@ func centre(t *testing.T, svg template.HTML, name string) (float64, float64) {
 	return x, y
 }
 
-// states gives what a statechart shows at a step: the states it is in.
-func states(names ...string) map[string]any {
-	var list []any
-	for _, n := range names {
-		list = append(list, n)
-	}
-	return map[string]any{"states": list}
-}
+// states gives a statechart's state at a step: the states it is in.
+func states(names ...string) machine.Shown { return machine.Shown{States: names} }
 
 // group gives the class of the shape that holds a name.
 func group(t *testing.T, svg string, name string) string {
@@ -449,7 +443,7 @@ func Test_drawing_run_is_marked_on_the_drawing(t *testing.T) {
 	}
 
 	flow := definition(t, "flow: two\nstages:\n  a: { job: ./w.js }\n  b: { job: ./w.js, follows: [a] }\n  c: { job: ./w.js, follows: [b] }\n", map[string]string{"w.js": script})
-	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"a": "done", "b": "running", "c": "waiting"}}}}})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"a": "done", "b": "running", "c": "waiting"}}}}})
 	for name, want := range map[string]string{"a": "state stage done", "b": "state stage now", "c": "state stage never"} {
 		if got := group(t, svg, name); got != want {
 			t.Errorf("stage %s is drawn as %q, not %q", name, got, want)
@@ -463,7 +457,7 @@ tools:
   shelf: { description: a shelf, args: { shelf: string }, job: ./w.js }
   helper: { description: a helper, args: { topic: string }, job: { machine: ./two.yaml } }
 `, map[string]string{"w.js": script, "two.yaml": "flow: two\nstages:\n  a: { job: ./w.js }\n"})
-	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: map[string]any{"turn": 2.0, "waiting": "tools"}, Asked: []string{"shelf"}}}, Going: []string{"shelf"}})
+	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: machine.Shown{Turn: 2}, Asked: []string{"shelf"}}}, Going: []string{"shelf"}})
 	if got := group(t, svg, "shelf"); got != "state tool now" {
 		t.Errorf("the tool the agent waits on is drawn as %q", got)
 	}
@@ -484,28 +478,25 @@ tools:
 		t.Errorf("the state the run started in and left in its first step is drawn as %q", got)
 	}
 
-	// An agent waiting on the ask: the ask is going, the tool it holds is
-	// held, and a tool used at an earlier step is done. Each ask is named by
-	// where it is written: the toolkit's ask is going, and the agent's never
-	// ran.
+	// An agent waiting on the ask: the ask is going, the tool of a toolkit
+	// it holds is held, and a tool used at an earlier step is done.
 	helper := definition(t, `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
-ask: { machine: ./own.yaml }
+ask: { machine: ./approval.yaml }
 tools:
   look: { description: looks, job: ./w.js }
   idle: { description: idles, job: ./w.js }
 toolkits:
   messages:
     description: messages
-    ask: { machine: ./approval.yaml }
     tools:
       tell: { description: tells someone, job: { script: ./w.js, approve: true } }
-`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n", "own.yaml": "flow: own\nstages:\n  a: { job: ./w.js }\n"})
+`, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
 	svg = draw(t, helper, &Run{
-		Steps: []Step{{Asked: []string{"look"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"toolkits.messages.ask"}}},
-		Going: []string{"tell", "toolkits.messages.ask"}, Held: []string{"tell"},
-		Children: map[string]Child{"toolkits.messages.ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
+		Steps: []Step{{Asked: []string{"look"}}, {Shown: machine.Shown{Turn: 2}, Asked: []string{"ask"}}},
+		Going: []string{"tell", "ask"}, Held: []string{"tell"},
+		Children: map[string]Child{"ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
 	})
 	for name, want := range map[string]string{"tell": "state tool held", "look": "state tool done", "idle": "state tool never"} {
 		if got := group(t, svg, name); got != want {
@@ -517,20 +508,20 @@ toolkits:
 	for _, a := range asks {
 		got = append(got, a[1]+": "+a[2])
 	}
-	if strings.Join(got, "; ") != "state ask now: flow: approval; state ask never: machine: ./own.yaml" {
-		t.Errorf("the toolkit's ask and the agent's are drawn as %q", got)
+	if strings.Join(got, "; ") != "state ask now: flow: approval" {
+		t.Errorf("the agent's ask is drawn as %q", got)
 	}
 	if strings.Count(svg, `href="/run/a-client/2"`) != 1 {
-		t.Errorf("the run the toolkit's ask started is linked from another card:\n%s", svg)
+		t.Errorf("the run the ask started is linked from another card:\n%s", svg)
 	}
 
 	// A run that ended: a flow's stage still running is marked by how the run
 	// ended, and an agent whose turn failed has its model marked failed.
-	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"a": "done", "b": "running", "c": "waiting"}}}}, Ended: true})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"a": "done", "b": "running", "c": "waiting"}}}}, Ended: true})
 	if got := group(t, svg, "b"); got != "state stage cancelled" {
 		t.Errorf("the stage running when its run was cancelled is drawn as %q", got)
 	}
-	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: map[string]any{"turn": 1.0, "waiting": ""}, Failed: []string{"turn"}}}, Ended: true, Failed: true})
+	svg = draw(t, librarian, &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"turn"}, Failed: []string{"turn"}}}, Ended: true, Failed: true})
 	if got := group(t, svg, "claude-sonnet-5-5"); got != "state model failed" {
 		t.Errorf("the model of an agent whose turn failed is drawn as %q", got)
 	}
@@ -590,12 +581,12 @@ func Test_drawing_agent_is_a_loop_of_model_and_tools(t *testing.T) {
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 limits: { turns: 7 }
+ask: { machine: ./approval.yaml }
 tools:
   look: { description: looks at a thing, job: ./w.js }
 toolkits:
   messages:
     description: messages
-    ask: { machine: ./approval.yaml }
     tools:
       tell: { description: tells someone, job: { script: ./w.js, approve: true } }
 `, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
@@ -624,7 +615,7 @@ toolkits:
 	if n := strings.Count(text, `class="edge`); n != 2 {
 		t.Errorf("%d arrows, and an agent has one from its model to its tools and one to its reply:\n%s", n, text)
 	}
-	running, _ := Draw(def, &Run{Steps: []Step{{Shown: map[string]any{"waiting": "tools"}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
+	running, _ := Draw(def, &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
 	for _, svg := range []string{text, string(running)} {
 		if strings.Contains(svg, "blob_read") || strings.Contains(svg, ">open<") {
 			t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
@@ -776,7 +767,7 @@ toolkits:
     tools:
       disk: { description: disks, job: ./w.js }
 `, map[string]string{"w.js": script})
-	svg := draw(t, def, &Run{Steps: []Step{{Asked: []string{"lights"}}, {Shown: map[string]any{"waiting": "tools"}, Asked: []string{"ping"}}}, Going: []string{"ping"}})
+	svg := draw(t, def, &Run{Steps: []Step{{Asked: []string{"lights"}}, {Shown: machine.Shown{Turn: 1}, Asked: []string{"ping"}}}, Going: []string{"ping"}})
 	for name, want := range map[string]string{"bins": "state holder toolkit folded", "servers": "state holder toolkit folded", "home": "state holder toolkit", "net": "state holder toolkit"} {
 		if got := group(t, svg, name); got != want {
 			t.Errorf("toolkit %s is drawn as %q, not %q", name, got, want)
@@ -897,7 +888,7 @@ stages:
   later: { job: { call: { at: "${input.at}" } }, follows: [plan] }
   far: { job: { call: { at: /work/ci/pipeline } }, follows: [plan] }
 `, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
-	svg = draw(t, flow, &Run{Steps: []Step{{Shown: map[string]any{"stages": map[string]any{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
+	svg = draw(t, flow, &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
 	if strings.Count(svg, ">approve: true<") != 2 {
 		t.Errorf("the jobs with approve: true do not say so:\n%s", svg)
 	}

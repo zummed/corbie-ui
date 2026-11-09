@@ -13,8 +13,8 @@ import (
 
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie/agent"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/machine/agent"
 )
 
 // A toolkit is a group of tools under an agent's `toolkits:`, as the
@@ -326,7 +326,7 @@ func startedBy(lifetime, location string) string {
 	case machine.LifetimeKeyed:
 		return "a send to a key starts the run for that key"
 	}
-	return "a call, or corbie run submit " + location + ", starts each run"
+	return "a call, a send, or corbie run submit " + location + ", starts each run"
 }
 
 // toolkitsPage reads the Toolkits page as an address asks for it: the

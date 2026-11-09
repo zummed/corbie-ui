@@ -2,7 +2,6 @@ package serve
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/zummed/corbie/client"
@@ -18,7 +17,7 @@ type storeError struct{ error }
 func (e storeError) Unwrap() error { return e.error }
 
 // parties is what the UI acts as: a lister of runs, which reads every
-// run's status the store lets it read, and the client and the controller
+// run's status, and the client and the controller
 // where it was started as them.
 type parties struct {
 	lister     *client.Client
@@ -91,14 +90,11 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 		p.names = append(p.names, p.controller.Name)
 	}
 	p.address, p.store = e.Address(), s
-	// Every run's status is listed where the store lets a viewer read it;
-	// where it does not, the client lists its own.
+	// Every run's status is listed as a viewer lists it: the store lets
+	// every party that reads heads read them all.
 	p.lister = client.New(nil, card, s)
 	if _, err := p.lister.List(ctx, client.Filter{}); err != nil {
-		if p.client == nil || errors.Is(err, store.ErrUnreachable) {
-			return nil, storeError{err}
-		}
-		p.lister = p.client
+		return nil, storeError{err}
 	}
 	return p, nil
 }
