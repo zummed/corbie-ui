@@ -198,7 +198,7 @@ func listed(ix *index) []string {
 func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	dir := project(t)
 	write(t, dir, map[string]string{
-		"gromit/b.yaml":      "flow: b\nlifetime: singleton\nstages:\n  a: { job: { machine: .kit/post.yaml } }\n",
+		"grouse/b.yaml":      "flow: b\nlifetime: singleton\nstages:\n  a: { job: { machine: .kit/post.yaml } }\n",
 		"bad.yaml":           "flow: bad\nstages: {}\ncolour: blue\n",
 		"keyed.yaml":         "statechart: keyed\nlifetime: keyed\ninclude: ./shared/states.yaml\n",
 		"shared/states.yaml": "initial: a\nstates:\n  a: { on: { go: b } }\n  b: { end: done }\n",
@@ -212,7 +212,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 		". bad.yaml flow: bad 2", ". keyed.yaml statechart: keyed keyed 0", ". later.yaml flow: later transient 0", ". router.yaml flow: router transient 0",
 		". support.yaml agent: support transient 0", ". talker.yaml agent: talker transient 0",
 		".kit .kit/conversation.yaml statechart: conversation transient 0", ".kit .kit/listen.yaml statechart: listen transient 0", ".kit .kit/post.yaml flow: post transient 0", ".kit .kit/unused.yaml flow: unused transient 0",
-		"gromit gromit/b.yaml flow: b singleton 0",
+		"grouse grouse/b.yaml flow: b singleton 0",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("the list is\n%s\nand not\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -224,15 +224,15 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if want := []string{"people/scopes.yaml true 0", "prompt.md false 1", "shared/ true 0", "shared/states.yaml true 1", "toolkits/ true 0", "toolkits/toolkit.yaml true 1"}; !slices.Equal(files, want) {
 		t.Errorf("the files are %v, and not %v", files, want)
 	}
-	if ix.Prefix != "/"+filepath.Base(dir) || ix.Groups[len(ix.Groups)-1].Entries[0].Location != ix.Prefix+"/gromit/b" {
+	if ix.Prefix != "/"+filepath.Base(dir) || ix.Groups[len(ix.Groups)-1].Entries[0].Location != ix.Prefix+"/grouse/b" {
 		t.Errorf("the prefix is %q and the locations %+v", ix.Prefix, ix.Groups)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	body := do(h, "GET", "/machines?file=gromit/b.yaml", nil).Body.String()
+	body := do(h, "GET", "/machines?file=grouse/b.yaml", nil).Body.String()
 	_, list, _ := strings.Cut(body, `id="files"`)
 	list, _, _ = strings.Cut(list, "</nav>")
 	list, filesList, _ := strings.Cut(list, `<h2 class="kind">Files<a href="/machines?file=.corbieignore">.corbieignore</a></h2>`)
-	for _, want := range []string{`<h2 class="group" title="gromit">gromit/</h2>`, `<h2 class="group" title=".kit">.kit/</h2>`, `<use href="#g-agent"/>`, "<small>agent: support · transient</small>", "<small>flow: b · singleton</small>", `title="` + ix.Prefix + `/gromit/b">b.yaml<`, `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=gromit%2fb.yaml" aria-current="page"`} {
+	for _, want := range []string{`<h2 class="group" title="grouse">grouse/</h2>`, `<h2 class="group" title=".kit">.kit/</h2>`, `<use href="#g-agent"/>`, "<small>agent: support · transient</small>", "<small>flow: b · singleton</small>", `title="` + ix.Prefix + `/grouse/b">b.yaml<`, `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=grouse%2fb.yaml" aria-current="page"`} {
 		if !strings.Contains(list, want) {
 			t.Errorf("the list does not show %s:\n%s", want, list)
 		}
@@ -262,7 +262,7 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if !strings.Contains(script, `<span class="facts">a file</span>`) || strings.Contains(script, "Included by") {
 		t.Errorf("a script no machine takes a value from is shown as one of the files:\n%s", script)
 	}
-	if body := do(h, "GET", "/machines?file=./gromit/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
+	if body := do(h, "GET", "/machines?file=./grouse/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
 		t.Errorf("a path written with ./ is not the file chosen")
 	}
 }
