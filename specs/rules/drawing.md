@@ -18,6 +18,10 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-10** A toolkit or a tool with `when:` is drawn with a dashed border and its condition in its tooltip, and a card whose job has `approve: true` says so, in a machine of any type. *Test:* `drawing_conditions_approvals_and_calls_are_marked`
 
+## A decision
+
+**R-drawing-11** A decision is drawn as its model, by its name, above its answers, which name each question, joined by one arrow. *Test:* `drawing_decision_is_its_model_and_its_questions`
+
 ## A machine inside a machine
 
 **R-drawing-07** A card whose job names a machine shows the machine's type and name, known from its file on the Machines page and from the definition the run was started from on a run's page. On the Machines page it is a link that unfolds the machine's drawing inside the card, at any depth, and the same card then folds it; a job whose machine is an expression has no link. On a run's page it links to the run the job started, an ask's card to the run that ask started. *Test:* `drawing_machine_unfolds_in_its_card`

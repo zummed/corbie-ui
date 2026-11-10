@@ -135,6 +135,12 @@ func drawOf(def *machine.Definition, run *Run, w *walker) (drawn, error) {
 			return drawn{}, err
 		}
 		return drawAgent(def, &a, run, w), nil
+	case "decision":
+		var dec agent.Decision
+		if err := json.Unmarshal(def.Body, &dec); err != nil {
+			return drawn{}, err
+		}
+		return drawDecision(&dec, run), nil
 	}
 	return drawn{}, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 }

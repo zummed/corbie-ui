@@ -372,7 +372,7 @@ svg.machine { flex: none; height: auto; }
 .machine .state rect.tile { stroke: none; fill: color-mix(in srgb, var(--s2) 16%, transparent); }
 .machine .state rect.tile.script { fill: color-mix(in srgb, var(--ink2) 16%, transparent); }
 .machine .state rect.tile.statechart { fill: color-mix(in srgb, var(--s1) 18%, transparent); }
-.machine .state rect.tile.agent, .machine .state rect.tile.model { fill: color-mix(in srgb, var(--s3) 18%, transparent); }
+.machine .state rect.tile.agent, .machine .state rect.tile.decision, .machine .state rect.tile.model { fill: color-mix(in srgb, var(--s3) 18%, transparent); }
 .machine .icon { fill: none; stroke: var(--s2); stroke-width: 1.4; }
 .machine .spark { fill: url(#sheen); }
 .machine text.title { font: 600 13px var(--sans); fill: var(--ink); }
