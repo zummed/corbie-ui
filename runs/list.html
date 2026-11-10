@@ -44,7 +44,7 @@
   <div class="head"><span title="{{.Location}}">{{.Location}}</span><span class="facts">{{with .Lifetime}}<span>{{.}}</span>{{end}}{{with .Tree}}<span>tree {{.}}</span>{{end}}<span>{{.Client}}</span></span>
     <span class="acts">{{with .Cancel}}<form data-act method="post" action="/runs/at/cancel"><input type="hidden" name="at" value="{{$.Here.Location}}"><span class="said"></span><button class="btn sm stop" data-cmd="{{cmd .}}">Cancel every run here</button></form>{{end}}</span></div>
   {{if .Send}}<form class="send" data-act="reset" method="post" action="/runs/at/send"><input type="hidden" name="at" value="{{.Location}}"><input name="key" placeholder="key" size="14" required><input name="event" placeholder="event" size="12" required><input name="data" placeholder="data, as JSON" size="18"><button class="btn" data-cmd="corbie run send {{.Location}}#&lt;key&gt; &lt;event&gt; &lt;data&gt;">Send</button><span class="said"></span></form>{{end}}
-  {{if .Start}}<form class="send" data-act="reset" method="post" action="/runs/at/start"><input type="hidden" name="at" value="{{.Location}}"><input name="input" placeholder="input, as JSON" size="30"><button class="btn" data-cmd="corbie run submit {{.Location}} --input &lt;input&gt;">Start</button><span class="said"></span></form>{{end}}
+  {{if .Start}}<form class="send" data-act="reset" method="post" action="/runs/at/start"><input type="hidden" name="at" value="{{.Location}}"><input name="input" placeholder="input, as JSON" size="30"><button class="btn" data-cmd="corbie run start {{.Location}} --input &lt;input&gt;">Start</button><span class="said"></span></form>{{end}}
 {{end}}</section>{{end}}
 {{define "ended"}}{{template "section" .Ended}}{{end}}
 
