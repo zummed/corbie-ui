@@ -111,7 +111,7 @@ Narrowed to one location, the page has a head above the sections with the locati
 ```
 Cancel every run here   every run of the location in the client's tree     corbie run cancel <location>
 Send                    an event to a key, with data; keyed locations       corbie run send <location>#<key> <event> <data>
-Start                   a run, with input; transient locations             corbie run submit <location> --input <input>
+Start                   a run, with input; transient locations             corbie run start <location> --input <input>
 ```
 
 - Cancel is offered at a location in a tree of the UI's client. The command cancels each root running there, one after another, and a run that starts in between is not cancelled.
@@ -137,7 +137,7 @@ Steps lists what happened in the run and in every run under it, one row each, re
 statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started turn
 flow         stage asker done · stage files skipped · stage answer failed
 agent        turn 2 to claude-sonnet-5-5 · turn 2 called restart(vm: “web-1”) · open done
-any run      started · started by /acme/gromit/slack/gromit · held restart for approval · ask started approval · done · failed (denied) · cancelled
+any run      started · started by /acme/grouse/slack/grouse · held restart for approval · ask started approval · done · failed (denied) · cancelled
 ```
 
 Sends and calls between runs read:

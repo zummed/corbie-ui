@@ -74,7 +74,7 @@ breaks 3 machines
 - Paths in a problem's text are written from the directory.
 - A problem is drawn the same way above a list, above a file's text and above a toolkit: a box with a rowan border, holding each problem's place, its text and the machines it breaks.
 - A file an `include:` names that cannot be read is one problem at that file, breaking each machine that includes it, however each writes its path. The other problems of those machines are not listed. Where that file is a machine, its own problem is the one problem, and it breaks that machine too.
-- A machine with problems that reads without any from a directory below this one, read as a tree with that directory's own `.corbieignore`, is listed under one problem for that directory: `gromit/ is the top of a tree, and its machines read their paths from there: start the UI in gromit/`. The machine's own problems are not listed, here or at its text.
+- A machine with problems that reads without any from a directory below this one, read as a tree with that directory's own `.corbieignore`, is listed under one problem for that directory: `grouse/ is the top of a tree, and its machines read their paths from there: start the UI in grouse/`. The machine's own problems are not listed, here or at its text.
 
 ## A machine
 
@@ -173,7 +173,7 @@ The orders app.
 instructions toolkits/orders.md
 
 Offered by                                                         Started by
-support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run submit /acme/agents/support, starts each run
+support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run start /acme/agents/support, starts each run
 
 read_file
 Read one file of a project.

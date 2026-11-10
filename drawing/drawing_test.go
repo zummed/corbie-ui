@@ -938,3 +938,20 @@ stages:
 		t.Errorf("a location an expression gives is looked up: %v", asked)
 	}
 }
+
+// A decision is its model above its answers, with each question's name.
+func Test_drawing_decision_is_its_model_and_its_questions(t *testing.T) {
+	svg := draw(t, definition(t, `decision: triage
+input: { text: string }
+model: { name: jev-latest, secret: TYPESAFE_KEY }
+state: ${input.text}
+questions:
+  urgent: { type: noul, instructions: The customer cannot use the product. }
+  team: { type: choice, instructions: Who handles it, criteria: { billing: money, support: help } }
+`, nil), nil)
+	for _, want := range []string{"jev-latest", "answers", "urgent", "team"} {
+		if !strings.Contains(svg, ">"+want+"<") {
+			t.Errorf("the drawing of a decision does not say %q:\n%s", want, svg)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 # Drawing
 
-A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart and an agent, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs. The Machines page makes it narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
+A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart, an agent and a decision, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs. The Machines page makes it narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
 
 Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./find.js` or `flow: people-find`, with `approve: true` where the job has it. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 
@@ -55,6 +55,10 @@ An agent is three things, one below another, joined by two arrows.
 - On a run's page the file the agent's type is written in is taken as the agent's own file.
 - Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.
 
+## A decision
+
+A decision is two things, one below the other, joined by one arrow: its model, by its name, and its answers, with the name of each question.
+
 ## A machine inside a machine
 
 On a run's page, a card whose job started or called a run links to that run's page.
@@ -72,6 +76,7 @@ A run is drawn as of one step: the step selected in Steps. Its marks come from i
 ```
 flow         each stage's status: waiting, running, held for the ask, done, failed or skipped
 statechart   the states it is in, and whether a state's job is held for the ask; states it was in before are outlined in moss, and states never entered faintly
+decision     the model going now while its job runs
 agent        the turn it is on; the model going now while its turn runs; each tool and the ask going now, held for the ask, used at an earlier step, or never used
 ```
 
