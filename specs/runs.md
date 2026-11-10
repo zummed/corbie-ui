@@ -111,7 +111,7 @@ Narrowed to one location, the page has a head above the sections with the locati
 ```
 Cancel every run here   every run of the location in the client's tree     corbie run cancel <location>
 Send                    an event to a key, with data; keyed locations       corbie run send <location>#<key> <event> <data>
-Start                   a run, with input; transient locations             corbie run submit <location> --input <input>
+Start                   a run, with input; transient locations             corbie run start <location> --input <input>
 ```
 
 - Cancel is offered at a location in a tree of the UI's client. The command cancels each root running there, one after another, and a run that starts in between is not cancelled.

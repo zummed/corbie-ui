@@ -772,7 +772,7 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"<span>approve</span><span>send:devices/boiler, net:hub.lan</span>",
 		},
 		"services/weather.yaml": {
-			"<span>lifetime</span><span>transient: a call, a send, or corbie run submit " + prefix + "/services/weather, starts each run</span>",
+			"<span>lifetime</span><span>transient: a call, a send, or corbie run start " + prefix + "/services/weather, starts each run</span>",
 			"<span>update</span><span>drain: a changed file leaves its runs to finish on the definition they started with</span>",
 			"<span>receives</span><span>every event from rooms/*<br>and anything from its tree's client</span>",
 			"<span>sends to</span><span>none</span>",

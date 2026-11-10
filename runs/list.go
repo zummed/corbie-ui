@@ -607,7 +607,7 @@ func (h *handler) atAct(w http.ResponseWriter, r *http.Request) {
 			page.Error(w, http.StatusBadRequest, "the input is not JSON: "+err.Error())
 			return
 		}
-		call = page.Call{Words: []string{"run", "submit"}, Args: []string{at}}
+		call = page.Call{Words: []string{"run", "start"}, Args: []string{at}}
 		if input != "" {
 			call.Flags = []string{"--input=" + input}
 		}

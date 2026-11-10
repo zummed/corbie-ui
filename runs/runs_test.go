@@ -315,7 +315,7 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 		if c.Words[1] == "cancel" {
 			return page.Answer{Out: `["lab-client/1  taken","lab-client/2  taken"]`}
 		}
-		if c.Words[1] == "submit" {
+		if c.Words[1] == "start" {
 			return page.Answer{Out: `{"id":"lab-client/4"}`}
 		}
 		if strings.HasSuffix(c.Args[0], "#full") {
@@ -353,7 +353,7 @@ func Test_runs_location_actions_run_their_commands(t *testing.T) {
 	want := []string{
 		"corbie run cancel /home/rooms/thermostat",
 		`corbie run send /home/rooms/thermostat#hall set {"target":20}`,
-		`corbie run submit /home/scenes/away --input={"days":2}`,
+		`corbie run start /home/scenes/away --input={"days":2}`,
 		"corbie run send /home/rooms/thermostat#full set",
 	}
 	if strings.Join(calls, "\n") != strings.Join(want, "\n") {

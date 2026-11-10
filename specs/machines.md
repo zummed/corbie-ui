@@ -173,7 +173,7 @@ The orders app.
 instructions toolkits/orders.md
 
 Offered by                                                         Started by
-support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run submit /acme/agents/support, starts each run
+support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run start /acme/agents/support, starts each run
 
 read_file
 Read one file of a project.

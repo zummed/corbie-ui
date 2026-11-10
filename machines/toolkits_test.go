@@ -194,7 +194,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := do(h, "GET", "/toolkits?toolkit=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, a send, or corbie run submit /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
+	if body := do(h, "GET", "/toolkits?toolkit=zed", nil).Body.String(); !strings.Contains(body, ">dead</a>") || !strings.Contains(body, `<span class="dim">transient: a call, a send, or corbie run start /`+filepath.Base(dir)+`/behind, starts each run</span>`) {
 		t.Errorf("an agent does not say what starts it:\n%s", body)
 	}
 	body := do(h, "GET", "/toolkits?toolkit=messages-2", nil).Body.String()

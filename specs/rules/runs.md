@@ -16,7 +16,7 @@ The rules behind [the Runs overview](../runs.md). Area code: `runs`.
 
 **R-runs-02** The page is narrowed by label as `corbie run ls --label` reads it, and by location prefix, which keeps the runs at it and below it; a root or ended run the narrowing leaves is listed with the runs under it. *Test:* `runs_narrowing_holds_for_the_whole_page`
 
-**R-runs-11** Narrowed to one location, the page heads the list with the location and its lifetime. With a client, the head offers Cancel every run here at a location in the client's tree, which runs `corbie run cancel <location>`; Send at a keyed location, which runs `corbie run send <location>#<key> <event> <data>`; and Start at a transient location in the client's tree, which runs `corbie run submit <location> --input <input>`, the data and input written out again from the JSON typed. The page shows the answer: for Send the receipt, and for Start the ID of the run it started. *Test:* `runs_keyed_runs_are_listed_by_key`, `runs_location_actions_run_their_commands`
+**R-runs-11** Narrowed to one location, the page heads the list with the location and its lifetime. With a client, the head offers Cancel every run here at a location in the client's tree, which runs `corbie run cancel <location>`; Send at a keyed location, which runs `corbie run send <location>#<key> <event> <data>`; and Start at a transient location in the client's tree, which runs `corbie run start <location>  --input <input>`, the data and input written out again from the JSON typed. The page shows the answer: for Send the receipt, and for Start the ID of the run it started. *Test:* `runs_keyed_runs_are_listed_by_key`, `runs_location_actions_run_their_commands`
 
 ## One run
 
